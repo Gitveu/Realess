@@ -1,0 +1,12 @@
+*.apkm
+apkm_extracted/
+.gradle/
+**/build/
+**/.gradle/
+**/.kotlin/
+**/local.properties
+**/.idea/
+**/*.iml
+.DS_Store
+**/.DS_Store
+*.hprof
