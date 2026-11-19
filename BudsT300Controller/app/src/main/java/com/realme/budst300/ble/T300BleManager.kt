@@ -92,6 +92,8 @@ class T300BleManager(private val context: Context) {
             log("Авто-обновление состояния ($reason)")
             refreshAncState()
             delay(80)
+            refreshGameMode()
+            delay(80)
             refreshBattery()
         }
     }
@@ -297,6 +299,25 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
+     * Запрос текущего состояния игрового режима
+     */
+    fun refreshGameMode() {
+        val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_GAME_MODE)
+        log("TX GameMode Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+    }
+
+    /**
+     * Установка игрового режима (ВКЛ / ВЫКЛ)
+     */
+    fun setGameMode(enabled: Boolean) {
+        val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_GAME_MODE, enabled)
+        log("TX GameMode [${if (enabled) "ВКЛ" else "ВЫКЛ"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+        _t300State.value = _t300State.value.copy(gameMode = enabled)
+    }
+
+    /**
      * Отправка массива байтов в активный транспорт (SPP или GATT).
      * Кадры TL оборачиваются в транспортный формат OPPOv1 (SOF 0xAA).
      */
@@ -360,9 +381,11 @@ class T300BleManager(private val context: Context) {
 
     private fun finishConnectionReady() {
         scope.launch {
-            delay(150) // Быстрый старт: сначала сразу режим ANC, затем батарея
+            delay(150) // Быстрый старт: сначала сразу режим ANC, игровой режим, затем батарея
             log("✓ Устройство готово! Запрашиваем состояние...")
             refreshAncState()
+            delay(80)
+            refreshGameMode()
             delay(80)
             refreshBattery()
             delay(80)
@@ -372,8 +395,8 @@ class T300BleManager(private val context: Context) {
     }
 
     private fun registerNotifications() {
-        // Подписка на асинхронные события от наушников (3 = ANC, 1 = батарея, 2 = статус)
-        for (eventId in byteArrayOf(0x03, 0x01, 0x02)) {
+        // Подписка на асинхронные события от наушников (3 = ANC, 5 = GameMode, 1 = батарея, 2 = статус)
+        for (eventId in byteArrayOf(0x03, 0x05, 0x01, 0x02)) {
             val frame = T300Protocol.buildRegisterNotificationFrame(eventId)
             sendData(frame)
         }
@@ -385,6 +408,8 @@ class T300BleManager(private val context: Context) {
             while (isActive && _connectionState.value == BleConnectionState.CONNECTED) {
                 delay(POLL_INTERVAL_MS)
                 refreshAncState()
+                delay(80)
+                refreshGameMode()
                 delay(80)
                 refreshBattery()
             }
@@ -536,6 +561,21 @@ class T300BleManager(private val context: Context) {
                     _t300State.value = _t300State.value.copy(ancMode = mode)
                 }
             }
+            T300Protocol.CMD_SWITCH_FEATURE_RSP -> {
+                log("RX $hexCmd [$hexPayload]")
+                val gm = T300Protocol.parseSwitchFeaturePayload(frame.payload, T300Protocol.FEATURE_ID_GAME_MODE)
+                if (gm != null) {
+                    log("RX GameMode State: ${if (gm) "ВКЛ" else "ВЫКЛ"}")
+                    _t300State.value = _t300State.value.copy(gameMode = gm)
+                }
+            }
+            T300Protocol.CMD_SWITCH_FEATURE_SET_RSP -> {
+                val ok = T300Protocol.parseSwitchFeatureSetResponse(frame.payload)
+                log("RX GameMode Set Rsp [$hexPayload] -> ${if (ok) "✓ Подтверждено" else "✗ Ошибка"}")
+                if (ok) {
+                    refreshGameMode()
+                }
+            }
             T300Protocol.CMD_NOTIFICATION_REGISTER_RSP -> {
                 log("RX Event Reg Rsp [$hexPayload]")
             }
@@ -554,6 +594,12 @@ class T300BleManager(private val context: Context) {
                         log("RX Event: ANC переключён на ${mode.title}")
                         _t300State.value = _t300State.value.copy(ancMode = mode)
                     }
+                } else if (frame.payload.isNotEmpty() && frame.payload[0] == T300Protocol.EVENT_TYPE_GAME_MODE) {
+                    val gm = T300Protocol.parseGameModeEventPayload(frame.payload)
+                    if (gm != null) {
+                        log("RX Event: GameMode переключён на ${if (gm) "ВКЛ" else "ВЫКЛ"}")
+                        _t300State.value = _t300State.value.copy(gameMode = gm)
+                    }
                 } else {
                     val eventType = if (frame.payload.isNotEmpty()) {
                         "0x%02X".format(frame.payload[0])
@@ -566,9 +612,13 @@ class T300BleManager(private val context: Context) {
             T300Protocol.CMD_NOTIFICATION -> {
                 log("RX Event $hexCmd [$hexPayload]")
                 val mode = T300Protocol.parseAncEventPayload(frame.payload)
+                val gm = T300Protocol.parseGameModeEventPayload(frame.payload)
                 if (mode != null) {
                     log("RX Event: ANC переключён на ${mode.title}")
                     _t300State.value = _t300State.value.copy(ancMode = mode)
+                } else if (gm != null) {
+                    log("RX Event: GameMode переключён на ${if (gm) "ВКЛ" else "ВЫКЛ"}")
+                    _t300State.value = _t300State.value.copy(gameMode = gm)
                 } else {
                     val eventType = if (frame.payload.isNotEmpty()) {
                         "0x%02X".format(frame.payload[0])

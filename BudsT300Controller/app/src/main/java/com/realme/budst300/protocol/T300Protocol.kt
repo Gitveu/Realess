@@ -27,12 +27,20 @@ object T300Protocol {
     const val CMD_BATTERY_RSP: Int = 0x8106      // 33030 decimal (CMD | 0x8000)
     const val CMD_ANC_STATE_REQ: Int = 0x010C    // 268 decimal
     const val CMD_ANC_STATE_RSP: Int = 0x810C    // 33036 decimal
+    const val CMD_SWITCH_FEATURE_REQ: Int = 0x010D // 269 decimal (Запрос переключателей/функций)
+    const val CMD_SWITCH_FEATURE_RSP: Int = 0x810D // 33037 decimal
     const val CMD_ANC_SET: Int = 0x0404          // 1028 decimal
     const val CMD_ANC_RSP: Int = 0x8404          // 33796 decimal
+    const val CMD_SWITCH_FEATURE_SET: Int = 0x0403 // 1027 decimal (Установка переключателей/функций)
+    const val CMD_SWITCH_FEATURE_SET_RSP: Int = 0x8403 // 33795 decimal
     const val CMD_NOTIFICATION_REGISTER: Int = 0x0201 // 513 decimal (Регистрация на события)
     const val CMD_NOTIFICATION_REGISTER_RSP: Int = 0x8201 // 33281 decimal
     const val CMD_EVENT: Int = 0x0204            // 516 decimal (Асинхронные события)
     const val CMD_NOTIFICATION: Int = 0x8400     // Асинхронные уведомления от устройства
+
+    // Идентификаторы переключателей (SwitchFeature)
+    const val FEATURE_ID_GAME_MODE: Byte = 0x06
+    const val EVENT_TYPE_GAME_MODE: Byte = 0x05
 
     // CCCD UUID для включения notify/indicate
     const val CCCD_UUID_STRING = "00002902-0000-1000-8000-00805f9b34fb"
@@ -67,7 +75,8 @@ object T300Protocol {
         val leftBattery: BatteryInfo = BatteryInfo(ComponentRole.LEFT_EAR, -1, false),
         val rightBattery: BatteryInfo = BatteryInfo(ComponentRole.RIGHT_EAR, -1, false),
         val caseBattery: BatteryInfo = BatteryInfo(ComponentRole.CASE, -1, false),
-        val ancMode: AncMode? = null
+        val ancMode: AncMode? = null,
+        val gameMode: Boolean? = null
     )
 
     data class Frame(
@@ -145,6 +154,22 @@ object T300Protocol {
      */
     fun buildAncStateRequestFrame(address: Byte = DEVICE_ADDRESS_DEFAULT): ByteArray =
         Frame(CMD_ANC_STATE_REQ, address, byteArrayOf(0x01, 0x01)).toByteArray()
+
+    /**
+     * Запрос состояния переключателя (SwitchFeature, Opcode 0x010D).
+     * Для игрового режима featureId = 0x06 (FEATURE_ID_GAME_MODE).
+     * Payload: [0x01, featureId]
+     */
+    fun buildSwitchFeatureRequestFrame(featureId: Byte = FEATURE_ID_GAME_MODE, address: Byte = DEVICE_ADDRESS_DEFAULT): ByteArray =
+        Frame(CMD_SWITCH_FEATURE_REQ, address, byteArrayOf(0x01, featureId)).toByteArray()
+
+    /**
+     * Установка переключателя (SwitchFeature, Opcode 0x0403).
+     * Для игрового режима featureId = 0x06 (FEATURE_ID_GAME_MODE), value = 0x01 (вкл) / 0x00 (выкл).
+     * Payload: [featureId, value]
+     */
+    fun buildSwitchFeatureCommandFrame(featureId: Byte = FEATURE_ID_GAME_MODE, enabled: Boolean, address: Byte = DEVICE_ADDRESS_DEFAULT): ByteArray =
+        Frame(CMD_SWITCH_FEATURE_SET, address, byteArrayOf(featureId, if (enabled) 0x01 else 0x00)).toByteArray()
 
     /**
      * Регистрация на получение асинхронных уведомлений (Opcode 0x0201).
@@ -343,5 +368,44 @@ object T300Protocol {
             p.size == 3 -> AncMode.fromByte(p[2])
             else -> null
         }
+    }
+
+    /**
+     * Парсинг ответа состояния SwitchFeature (Opcode 0x810D).
+     * Структура payload: [status (0x00), count (N), (featureId, value)...]
+     * Возвращает значение для указанного featureId: true = вкл, false = выкл, null = ошибка/не найдено.
+     */
+    fun parseSwitchFeaturePayload(p: ByteArray, targetFeatureId: Byte = FEATURE_ID_GAME_MODE): Boolean? {
+        if (p.size < 4 || p[0].toInt() != 0) return null
+        val count = p[1].toInt() and 0xFF
+        var offset = 2
+        for (i in 0 until count) {
+            if (offset + 1 >= p.size) break
+            val featureId = p[offset]
+            val value = p[offset + 1]
+            if (featureId == targetFeatureId) {
+                return value.toInt() == 1
+            }
+            offset += 2
+        }
+        return null
+    }
+
+    /**
+     * Парсинг ответа подтверждения установки переключателя (Opcode 0x8403).
+     * Payload: [status] (0x00 = Success).
+     */
+    fun parseSwitchFeatureSetResponse(p: ByteArray): Boolean {
+        if (p.isEmpty()) return false
+        return p[0].toInt() == 0
+    }
+
+    /**
+     * Парсинг асинхронного события переключателя (из CMD_EVENT 0x0204, тип события 0x05).
+     * Payload: [0x05, value] -> value: 1 = вкл, 0 = выкл.
+     */
+    fun parseGameModeEventPayload(p: ByteArray): Boolean? {
+        if (p.size < 2 || p[0] != EVENT_TYPE_GAME_MODE) return null
+        return p[1].toInt() == 1
     }
 }

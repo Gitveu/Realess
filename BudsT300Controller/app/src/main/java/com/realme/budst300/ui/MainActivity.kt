@@ -155,6 +155,7 @@ fun MainScreen(
                     if (connectionState == BleConnectionState.CONNECTED) {
                         IconButton(onClick = {
                             viewModel.refreshAncState()
+                            viewModel.refreshGameMode()
                             viewModel.refreshBattery()
                         }) {
                             Icon(Icons.Default.Refresh, contentDescription = "Обновить состояние")
@@ -227,6 +228,18 @@ fun MainScreen(
                 currentMode = t300State.ancMode,
                 enabled = connectionState == BleConnectionState.CONNECTED,
                 onModeSelected = { viewModel.setAncMode(it) }
+            )
+
+            // Секция «Другое» — Игровой режим
+            Text(
+                text = "Другое",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            GameModeCard(
+                gameMode = t300State.gameMode,
+                enabled = connectionState == BleConnectionState.CONNECTED,
+                onToggle = { viewModel.setGameMode(it) }
             )
 
             // Консоль логов для живого наблюдения за протоколом
@@ -441,6 +454,51 @@ fun AncModeSelector(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun GameModeCard(
+    gameMode: Boolean?,
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                Text(
+                    text = "Игровой режим",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+                Text(
+                    text = "Обеспечивает плавный игровой процесс с минимальной задержкой звука.",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+            }
+            Switch(
+                checked = gameMode ?: false,
+                enabled = enabled && gameMode != null,
+                onCheckedChange = { onToggle(it) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.Black,
+                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                    uncheckedThumbColor = Color.Gray,
+                    uncheckedTrackColor = Color(0xFF2C2C2C)
+                )
+            )
         }
     }
 }

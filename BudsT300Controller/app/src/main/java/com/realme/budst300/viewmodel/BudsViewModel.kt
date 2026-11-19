@@ -207,6 +207,14 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         bleManager.setAncMode(mode)
     }
 
+    fun setGameMode(enabled: Boolean) {
+        bleManager.setGameMode(enabled)
+    }
+
+    fun refreshGameMode() {
+        bleManager.refreshGameMode()
+    }
+
     fun refreshBattery() {
         bleManager.refreshBattery()
     }
