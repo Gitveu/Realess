@@ -25,8 +25,13 @@ object T300Protocol {
     // Команды TL-протокола
     const val CMD_BATTERY_REQ: Int = 0x0106      // 262 decimal
     const val CMD_BATTERY_RSP: Int = 0x8106      // 33030 decimal (CMD | 0x8000)
+    const val CMD_ANC_STATE_REQ: Int = 0x010C    // 268 decimal
+    const val CMD_ANC_STATE_RSP: Int = 0x810C    // 33036 decimal
     const val CMD_ANC_SET: Int = 0x0404          // 1028 decimal
     const val CMD_ANC_RSP: Int = 0x8404          // 33796 decimal
+    const val CMD_NOTIFICATION_REGISTER: Int = 0x0201 // 513 decimal (Регистрация на события)
+    const val CMD_NOTIFICATION_REGISTER_RSP: Int = 0x8201 // 33281 decimal
+    const val CMD_EVENT: Int = 0x0204            // 516 decimal (Асинхронные события)
     const val CMD_NOTIFICATION: Int = 0x8400     // Асинхронные уведомления от устройства
 
     // CCCD UUID для включения notify/indicate
@@ -62,7 +67,7 @@ object T300Protocol {
         val leftBattery: BatteryInfo = BatteryInfo(ComponentRole.LEFT_EAR, -1, false),
         val rightBattery: BatteryInfo = BatteryInfo(ComponentRole.RIGHT_EAR, -1, false),
         val caseBattery: BatteryInfo = BatteryInfo(ComponentRole.CASE, -1, false),
-        val ancMode: AncMode = AncMode.OFF
+        val ancMode: AncMode? = null
     )
 
     data class Frame(
@@ -134,6 +139,19 @@ object T300Protocol {
             payload = ByteArray(0)
         ).toByteArray()
     }
+
+    /**
+     * Создание кадра запроса текущего режима ANC: 0x010C -> [0x0C, 0x01, addr, 0x02, 0x00, 0x01, 0x01]
+     */
+    fun buildAncStateRequestFrame(address: Byte = DEVICE_ADDRESS_DEFAULT): ByteArray =
+        Frame(CMD_ANC_STATE_REQ, address, byteArrayOf(0x01, 0x01)).toByteArray()
+
+    /**
+     * Регистрация на получение асинхронных уведомлений (Opcode 0x0201).
+     * eventType: 0x03 = ANC, 0x01 = батарея, 0x02 = статус наушников
+     */
+    fun buildRegisterNotificationFrame(eventType: Byte, address: Byte = DEVICE_ADDRESS_DEFAULT): ByteArray =
+        Frame(CMD_NOTIFICATION_REGISTER, address, byteArrayOf(eventType)).toByteArray()
 
     /**
      * Создание кадра переключения ANC:
@@ -302,5 +320,28 @@ object T300Protocol {
         if (payload.isEmpty()) return false
         val status = payload[0].toInt()
         return status == 0
+    }
+
+    /**
+     * Парсинг ответа состояния ANC (Opcode 0x810C).
+     * Ожидается payload: [status (0x00), action (0x01), type (0x01), noiseStatus]
+     */
+    fun parseAncStatePayload(p: ByteArray): AncMode? {
+        if (p.size < 4 || p[0].toInt() != 0 || p[1].toInt() != 1) return null
+        return AncMode.fromByte(p[3])
+    }
+
+    /**
+     * Парсинг асинхронного события смены ANC (тип 0x03).
+     * Если size >= 4: [03, action, type, noiseStatus], режим в p[3] при action==1.
+     * Если size == 3: [03, type, noiseStatus], режим в p[2].
+     */
+    fun parseAncEventPayload(p: ByteArray): AncMode? {
+        if (p.isEmpty() || p[0].toInt() != 0x03) return null
+        return when {
+            p.size >= 4 -> if (p[1].toInt() == 1) AncMode.fromByte(p[3]) else null
+            p.size == 3 -> AncMode.fromByte(p[2])
+            else -> null
+        }
     }
 }

@@ -211,6 +211,10 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         bleManager.refreshBattery()
     }
 
+    fun refreshAncState() {
+        bleManager.refreshAncState()
+    }
+
     override fun onCleared() {
         super.onCleared()
         try {

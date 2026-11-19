@@ -41,8 +41,8 @@ class T300BleManager(private val context: Context) {
 
     companion object {
         private const val TAG = "T300BleManager"
-        private const val BATTERY_POLL_INTERVAL_MS = 8_000L
-        private const val EVENT_REFRESH_DELAY_MS = 400L
+        private const val POLL_INTERVAL_MS = 2_500L
+        private const val EVENT_REFRESH_DELAY_MS = 120L
         private const val SPP_CONNECT_TIMEOUT_MS = 3_500L
     }
 
@@ -84,12 +84,14 @@ class T300BleManager(private val context: Context) {
         scope.launch { _logFlow.emit(message) }
     }
 
-    private fun scheduleBatteryRefresh(reason: String) {
+    private fun scheduleStateRefresh(reason: String) {
         if (_connectionState.value != BleConnectionState.CONNECTED) return
         eventRefreshJob?.cancel()
         eventRefreshJob = scope.launch {
             delay(EVENT_REFRESH_DELAY_MS)
-            log("Авто-обновление батареи ($reason)")
+            log("Авто-обновление состояния ($reason)")
+            refreshAncState()
+            delay(80)
             refreshBattery()
         }
     }
@@ -286,6 +288,15 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
+     * Запрос текущего режима шумоподавления (ANC)
+     */
+    fun refreshAncState() {
+        val frame = T300Protocol.buildAncStateRequestFrame()
+        log("TX ANC State Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+    }
+
+    /**
      * Отправка массива байтов в активный транспорт (SPP или GATT).
      * Кадры TL оборачиваются в транспортный формат OPPOv1 (SOF 0xAA).
      */
@@ -349,18 +360,32 @@ class T300BleManager(private val context: Context) {
 
     private fun finishConnectionReady() {
         scope.launch {
-            delay(400) // Задержка для стабилизации канала RFCOMM перед первой командой
+            delay(150) // Быстрый старт: сначала сразу режим ANC, затем батарея
             log("✓ Устройство готово! Запрашиваем состояние...")
+            refreshAncState()
+            delay(80)
             refreshBattery()
-            startBatteryPolling()
+            delay(80)
+            registerNotifications()
+            startPolling()
         }
     }
 
-    private fun startBatteryPolling() {
+    private fun registerNotifications() {
+        // Подписка на асинхронные события от наушников (3 = ANC, 1 = батарея, 2 = статус)
+        for (eventId in byteArrayOf(0x03, 0x01, 0x02)) {
+            val frame = T300Protocol.buildRegisterNotificationFrame(eventId)
+            sendData(frame)
+        }
+    }
+
+    private fun startPolling() {
         pollJob?.cancel()
         pollJob = scope.launch {
             while (isActive && _connectionState.value == BleConnectionState.CONNECTED) {
-                delay(BATTERY_POLL_INTERVAL_MS)
+                delay(POLL_INTERVAL_MS)
+                refreshAncState()
+                delay(80)
                 refreshBattery()
             }
         }
@@ -503,15 +528,29 @@ class T300BleManager(private val context: Context) {
                 val isSnapshot = frame.payload.size >= 2 && frame.payload[0].toInt() == 0
                 updateBatteryState(batteries, isSnapshot = isSnapshot)
             }
+            T300Protocol.CMD_ANC_STATE_RSP -> {
+                log("RX $hexCmd [$hexPayload]")
+                val mode = T300Protocol.parseAncStatePayload(frame.payload)
+                if (mode != null) {
+                    log("RX ANC State: ${mode.title}")
+                    _t300State.value = _t300State.value.copy(ancMode = mode)
+                }
+            }
+            T300Protocol.CMD_NOTIFICATION_REGISTER_RSP -> {
+                log("RX Event Reg Rsp [$hexPayload]")
+            }
             T300Protocol.CMD_ANC_RSP -> {
                 val ok = T300Protocol.parseAncResponse(frame.payload)
                 log("RX ANC Rsp [$hexPayload] -> ${if (ok) "✓ Подтверждено" else "✗ Ошибка"}")
+                if (ok) {
+                    refreshAncState()
+                }
             }
-            T300Protocol.CMD_NOTIFICATION -> {
+            T300Protocol.CMD_EVENT -> {
                 log("RX Event $hexCmd [$hexPayload]")
-                if (frame.payload.isNotEmpty() && frame.payload[0].toInt() == 0x03 && frame.payload.size >= 3) {
-                    val modeByte = frame.payload[2]
-                    AncMode.fromByte(modeByte)?.let { mode ->
+                if (frame.payload.isNotEmpty() && frame.payload[0].toInt() == 0x03) {
+                    val mode = T300Protocol.parseAncEventPayload(frame.payload)
+                    if (mode != null) {
                         log("RX Event: ANC переключён на ${mode.title}")
                         _t300State.value = _t300State.value.copy(ancMode = mode)
                     }
@@ -521,12 +560,27 @@ class T300BleManager(private val context: Context) {
                     } else {
                         "пустое"
                     }
-                    scheduleBatteryRefresh("событие $eventType")
+                    scheduleStateRefresh("событие $eventType")
+                }
+            }
+            T300Protocol.CMD_NOTIFICATION -> {
+                log("RX Event $hexCmd [$hexPayload]")
+                val mode = T300Protocol.parseAncEventPayload(frame.payload)
+                if (mode != null) {
+                    log("RX Event: ANC переключён на ${mode.title}")
+                    _t300State.value = _t300State.value.copy(ancMode = mode)
+                } else {
+                    val eventType = if (frame.payload.isNotEmpty()) {
+                        "0x%02X".format(frame.payload[0])
+                    } else {
+                        "пустое"
+                    }
+                    scheduleStateRefresh("событие $eventType")
                 }
             }
             else -> {
                 log("RX Неизвестный кадр: $hexCmd [$hexPayload]")
-                scheduleBatteryRefresh("кадр $hexCmd")
+                scheduleStateRefresh("кадр $hexCmd")
             }
         }
     }

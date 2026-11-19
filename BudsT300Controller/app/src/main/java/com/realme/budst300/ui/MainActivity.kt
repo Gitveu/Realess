@@ -153,8 +153,11 @@ fun MainScreen(
                 ),
                 actions = {
                     if (connectionState == BleConnectionState.CONNECTED) {
-                        IconButton(onClick = { viewModel.refreshBattery() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Обновить батарею")
+                        IconButton(onClick = {
+                            viewModel.refreshAncState()
+                            viewModel.refreshBattery()
+                        }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Обновить состояние")
                         }
                     }
                 }
@@ -404,7 +407,7 @@ fun BatteryCard(
 
 @Composable
 fun AncModeSelector(
-    currentMode: AncMode,
+    currentMode: AncMode?,
     enabled: Boolean,
     onModeSelected: (AncMode) -> Unit
 ) {
