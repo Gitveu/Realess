@@ -104,6 +104,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         if (hasAllPermissions(this, requiredPermissions)) {
             viewModel.onPermissionsGranted()
+            viewModel.refreshAll()
         }
     }
 

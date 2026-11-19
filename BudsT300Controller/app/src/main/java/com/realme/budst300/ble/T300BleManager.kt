@@ -42,7 +42,7 @@ class T300BleManager(private val context: Context) {
 
     companion object {
         private const val TAG = "T300BleManager"
-        private const val POLL_INTERVAL_MS = 2_500L
+        private const val POLL_INTERVAL_MS = 2_000L
         private const val EVENT_REFRESH_DELAY_MS = 120L
         private const val SPP_CONNECT_TIMEOUT_MS = 3_500L
     }
@@ -446,9 +446,11 @@ class T300BleManager(private val context: Context) {
             while (isActive && _connectionState.value == BleConnectionState.CONNECTED) {
                 delay(POLL_INTERVAL_MS)
                 refreshAncState()
-                delay(80)
+                delay(60)
                 refreshGameMode()
-                delay(80)
+                delay(60)
+                refreshEq()
+                delay(60)
                 refreshBattery()
             }
         }

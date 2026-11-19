@@ -233,6 +233,15 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         bleManager.refreshAllEq()
     }
 
+    fun refreshAll() {
+        if (connectionState.value == BleConnectionState.CONNECTED) {
+            bleManager.refreshAncState()
+            bleManager.refreshGameMode()
+            bleManager.refreshEq()
+            bleManager.refreshBattery()
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         try {
