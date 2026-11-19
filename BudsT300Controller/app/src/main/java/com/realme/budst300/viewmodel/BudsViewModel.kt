@@ -13,6 +13,7 @@ import androidx.lifecycle.viewModelScope
 import com.realme.budst300.ble.BleConnectionState
 import com.realme.budst300.ble.T300BleManager
 import com.realme.budst300.protocol.T300Protocol.AncMode
+import com.realme.budst300.protocol.T300Protocol.EqPreset
 import com.realme.budst300.protocol.T300Protocol.T300State
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -221,6 +222,15 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refreshAncState() {
         bleManager.refreshAncState()
+    }
+
+    fun setEqPreset(preset: EqPreset) {
+        bleManager.setEqPreset(preset)
+    }
+
+    fun refreshEq() {
+        bleManager.refreshEq()
+        bleManager.refreshAllEq()
     }
 
     override fun onCleared() {

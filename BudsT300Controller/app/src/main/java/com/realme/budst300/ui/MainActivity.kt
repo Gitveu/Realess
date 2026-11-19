@@ -20,8 +20,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -156,6 +158,7 @@ fun MainScreen(
                         IconButton(onClick = {
                             viewModel.refreshAncState()
                             viewModel.refreshGameMode()
+                            viewModel.refreshEq()
                             viewModel.refreshBattery()
                         }) {
                             Icon(Icons.Default.Refresh, contentDescription = "Обновить состояние")
@@ -165,10 +168,12 @@ fun MainScreen(
             )
         }
     ) { padding ->
+        val scrollState = rememberScrollState()
         Column(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
+                .verticalScroll(scrollState)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -230,6 +235,19 @@ fun MainScreen(
                 onModeSelected = { viewModel.setAncMode(it) }
             )
 
+            // Секция звуковых эффектов (эквалайзер)
+            Text(
+                text = "Звуковые эффекты",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            EqPresetSelector(
+                currentPreset = t300State.eqPreset,
+                activeCustomName = t300State.activeCustomEqName,
+                enabled = connectionState == BleConnectionState.CONNECTED,
+                onPresetSelected = { viewModel.setEqPreset(it) }
+            )
+
             // Секция «Другое» — Игровой режим
             Text(
                 text = "Другое",
@@ -243,7 +261,7 @@ fun MainScreen(
             )
 
             // Консоль логов для живого наблюдения за протоколом
-            LogsConsole(logs = logs, modifier = Modifier.weight(1f))
+            LogsConsole(logs = logs, modifier = Modifier.fillMaxWidth().height(180.dp))
         }
     }
 }
@@ -452,6 +470,88 @@ fun AncModeSelector(
                         color = if (selected) MaterialTheme.colorScheme.onPrimary else if (enabled) Color.White else Color.Gray,
                         fontSize = 13.sp
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun EqPresetSelector(
+    currentPreset: T300Protocol.EqPreset?,
+    activeCustomName: String?,
+    enabled: Boolean,
+    onPresetSelected: (T300Protocol.EqPreset) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val presets = listOf(
+                T300Protocol.EqPreset.SERENADE,
+                T300Protocol.EqPreset.ORIGINAL_SOUND,
+                T300Protocol.EqPreset.PURE_BASS,
+                T300Protocol.EqPreset.DEEP_BASS
+            )
+
+            for (row in presets.chunked(2)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    for (preset in row) {
+                        val selected = (preset == currentPreset) && (activeCustomName == null)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (selected) MaterialTheme.colorScheme.primary else Color(0xFF2A2A2A))
+                                .clickable(enabled = enabled) { onPresetSelected(preset) }
+                                .padding(vertical = 12.dp, horizontal = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = preset.title,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selected) MaterialTheme.colorScheme.onPrimary else if (enabled) Color.White else Color.Gray,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (activeCustomName != null) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Пользовательский: $activeCustomName (активен)",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
         }

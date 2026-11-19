@@ -29,10 +29,16 @@ object T300Protocol {
     const val CMD_ANC_STATE_RSP: Int = 0x810C    // 33036 decimal
     const val CMD_SWITCH_FEATURE_REQ: Int = 0x010D // 269 decimal (Запрос переключателей/функций)
     const val CMD_SWITCH_FEATURE_RSP: Int = 0x810D // 33037 decimal
+    const val CMD_EQ_REQ: Int = 0x010F           // 271 decimal (Запрос пресета эквалайзера)
+    const val CMD_EQ_RSP: Int = 0x810F           // 33039 decimal
+    const val CMD_ALL_EQ_REQ: Int = 0x0122       // 290 decimal (Запрос пользовательских кривых EQ)
+    const val CMD_ALL_EQ_RSP: Int = 0x8122       // 33058 decimal
     const val CMD_ANC_SET: Int = 0x0404          // 1028 decimal
     const val CMD_ANC_RSP: Int = 0x8404          // 33796 decimal
     const val CMD_SWITCH_FEATURE_SET: Int = 0x0403 // 1027 decimal (Установка переключателей/функций)
     const val CMD_SWITCH_FEATURE_SET_RSP: Int = 0x8403 // 33795 decimal
+    const val CMD_EQ_SET: Int = 0x0406           // 1030 decimal (Установка пресета эквалайзера)
+    const val CMD_EQ_SET_RSP: Int = 0x8406       // 33798 decimal
     const val CMD_NOTIFICATION_REGISTER: Int = 0x0201 // 513 decimal (Регистрация на события)
     const val CMD_NOTIFICATION_REGISTER_RSP: Int = 0x8201 // 33281 decimal
     const val CMD_EVENT: Int = 0x0204            // 516 decimal (Асинхронные события)
@@ -65,6 +71,23 @@ object T300Protocol {
         }
     }
 
+    enum class EqPreset(val eqId: Byte, val title: String) {
+        SERENADE(0x02, "Серенада"),
+        ORIGINAL_SOUND(0x00, "Оригинальный звук"),
+        PURE_BASS(0x03, "Чистые басы"),
+        DEEP_BASS(0x01, "Глубокие басы");
+
+        companion object {
+            fun fromByte(b: Byte): EqPreset? = entries.firstOrNull { it.eqId == b }
+        }
+    }
+
+    data class CustomEqSummary(
+        val eqId: Int,
+        val name: String,
+        val isSelected: Boolean
+    )
+
     data class BatteryInfo(
         val role: ComponentRole,
         val level: Int,          // 0..100% (-1 если нет данных)
@@ -76,7 +99,9 @@ object T300Protocol {
         val rightBattery: BatteryInfo = BatteryInfo(ComponentRole.RIGHT_EAR, -1, false),
         val caseBattery: BatteryInfo = BatteryInfo(ComponentRole.CASE, -1, false),
         val ancMode: AncMode? = null,
-        val gameMode: Boolean? = null
+        val gameMode: Boolean? = null,
+        val eqPreset: EqPreset? = null,
+        val activeCustomEqName: String? = null
     )
 
     data class Frame(
@@ -190,6 +215,27 @@ object T300Protocol {
             payload = payload
         ).toByteArray()
     }
+
+    /**
+     * Запрос текущего пресета эквалайзера (Opcode 0x010F).
+     * Payload: пустой.
+     */
+    fun buildEqRequestFrame(address: Byte = DEVICE_ADDRESS_DEFAULT): ByteArray =
+        Frame(CMD_EQ_REQ, address, ByteArray(0)).toByteArray()
+
+    /**
+     * Установка пресета эквалайзера (Opcode 0x0406).
+     * Payload: [eqId] (1 байт).
+     */
+    fun buildEqCommandFrame(preset: EqPreset, address: Byte = DEVICE_ADDRESS_DEFAULT): ByteArray =
+        Frame(CMD_EQ_SET, address, byteArrayOf(preset.eqId)).toByteArray()
+
+    /**
+     * Запрос списка пользовательских эквалайзеров (Opcode 0x0122).
+     * Payload: пустой.
+     */
+    fun buildAllEqRequestFrame(address: Byte = DEVICE_ADDRESS_DEFAULT): ByteArray =
+        Frame(CMD_ALL_EQ_REQ, address, ByteArray(0)).toByteArray()
 
     /**
      * Парсер сырого кадра (поддерживает как кадры в обёртке OPPO 0xAA, так и чистые TL-кадры).
@@ -407,5 +453,71 @@ object T300Protocol {
     fun parseGameModeEventPayload(p: ByteArray): Boolean? {
         if (p.size < 2 || p[0] != EVENT_TYPE_GAME_MODE) return null
         return p[1].toInt() == 1
+    }
+
+    /**
+     * Парсинг ответа текущего пресета EQ (Opcode 0x810F).
+     * Структура payload: [status (0x00), eqId]
+     */
+    fun parseEqPayload(p: ByteArray): EqPreset? {
+        if (p.size < 2 || p[0].toInt() != 0) return null
+        return EqPreset.fromByte(p[1])
+    }
+
+    /**
+     * Возвращает сырой eqId из ответа 0x810F (даже если это кастомный ID).
+     */
+    fun parseRawEqId(p: ByteArray): Int? {
+        if (p.size < 2 || p[0].toInt() != 0) return null
+        return p[1].toInt() and 0xFF
+    }
+
+    /**
+     * Парсинг ответа подтверждения установки пресета EQ (Opcode 0x8406).
+     * Payload: [status] (0x00 = Success).
+     */
+    fun parseEqSetResponse(p: ByteArray): Boolean {
+        if (p.isEmpty()) return false
+        return p[0].toInt() == 0
+    }
+
+    /**
+     * Парсинг списка всех пользовательских кривых EQ (Opcode 0x8122).
+     * Формат по CommandUtil.b(1, bArrE):
+     * [0] status (0 = success)
+     * [1] count
+     * Для каждого элемента:
+     *   isSelected (1 байт, 1 = активен)
+     *   minValue (1 байт)
+     *   maxValue (1 байт)
+     *   eqId (1 байт)
+     *   nameLength (1 байт)
+     *   name (nameLength байт UTF-8)
+     *   freqCount (1 байт)
+     *   freqCount * (2 байта частота + 1 байт dB)
+     */
+    fun parseAllEqPayload(p: ByteArray): List<CustomEqSummary> {
+        if (p.size < 2 || p[0].toInt() != 0) return emptyList()
+        val count = p[1].toInt() and 0xFF
+        val result = mutableListOf<CustomEqSummary>()
+        var offset = 2
+        for (i in 0 until count) {
+            if (offset + 5 > p.size) break
+            val isSelected = (p[offset].toInt() and 0xFF) == 1
+            val eqId = p[offset + 3].toInt() and 0xFF
+            val nameLength = p[offset + 4].toInt() and 0xFF
+            offset += 5
+            if (offset + nameLength > p.size) break
+            val name = String(p, offset, nameLength, Charsets.UTF_8)
+            offset += nameLength
+            if (offset >= p.size) {
+                result.add(CustomEqSummary(eqId, name, isSelected))
+                break
+            }
+            val freqCount = p[offset].toInt() and 0xFF
+            offset += 1 + freqCount * 3
+            result.add(CustomEqSummary(eqId, name, isSelected))
+        }
+        return result
     }
 }

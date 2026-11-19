@@ -8,6 +8,7 @@ import android.util.Log
 import com.realme.budst300.protocol.T300Protocol
 import com.realme.budst300.protocol.T300Protocol.AncMode
 import com.realme.budst300.protocol.T300Protocol.ComponentRole
+import com.realme.budst300.protocol.T300Protocol.EqPreset
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -93,6 +94,8 @@ class T300BleManager(private val context: Context) {
             refreshAncState()
             delay(80)
             refreshGameMode()
+            delay(80)
+            refreshEq()
             delay(80)
             refreshBattery()
         }
@@ -318,6 +321,37 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
+     * Запрос текущего пресета эквалайзера (Opcode 0x010F)
+     */
+    fun refreshEq() {
+        val frame = T300Protocol.buildEqRequestFrame()
+        log("TX EQ Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+    }
+
+    /**
+     * Запрос списка пользовательских эквалайзеров (Opcode 0x0122)
+     */
+    fun refreshAllEq() {
+        val frame = T300Protocol.buildAllEqRequestFrame()
+        log("TX All EQ Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+    }
+
+    /**
+     * Установка пресета эквалайзера (Opcode 0x0406)
+     */
+    fun setEqPreset(preset: EqPreset) {
+        val frame = T300Protocol.buildEqCommandFrame(preset)
+        log("TX EQ [${preset.title}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+        _t300State.value = _t300State.value.copy(
+            eqPreset = preset,
+            activeCustomEqName = null
+        )
+    }
+
+    /**
      * Отправка массива байтов в активный транспорт (SPP или GATT).
      * Кадры TL оборачиваются в транспортный формат OPPOv1 (SOF 0xAA).
      */
@@ -381,11 +415,15 @@ class T300BleManager(private val context: Context) {
 
     private fun finishConnectionReady() {
         scope.launch {
-            delay(150) // Быстрый старт: сначала сразу режим ANC, игровой режим, затем батарея
+            delay(150) // Быстрый старт: сначала сразу режим ANC, игровой режим, затем EQ и батарея
             log("✓ Устройство готово! Запрашиваем состояние...")
             refreshAncState()
             delay(80)
             refreshGameMode()
+            delay(80)
+            refreshEq()
+            delay(80)
+            refreshAllEq()
             delay(80)
             refreshBattery()
             delay(80)
@@ -584,6 +622,43 @@ class T300BleManager(private val context: Context) {
                 log("RX ANC Rsp [$hexPayload] -> ${if (ok) "✓ Подтверждено" else "✗ Ошибка"}")
                 if (ok) {
                     refreshAncState()
+                }
+            }
+            T300Protocol.CMD_EQ_RSP -> {
+                log("RX $hexCmd [$hexPayload]")
+                val rawId = T300Protocol.parseRawEqId(frame.payload)
+                val preset = T300Protocol.parseEqPayload(frame.payload)
+                if (preset != null) {
+                    log("RX EQ State: ${preset.title} (id=$rawId)")
+                    _t300State.value = _t300State.value.copy(
+                        eqPreset = preset,
+                        activeCustomEqName = null
+                    )
+                } else if (rawId != null) {
+                    log("RX EQ State: Пользовательский (rawId=$rawId)")
+                    _t300State.value = _t300State.value.copy(
+                        eqPreset = null
+                    )
+                    refreshAllEq()
+                }
+            }
+            T300Protocol.CMD_EQ_SET_RSP -> {
+                val ok = T300Protocol.parseEqSetResponse(frame.payload)
+                log("RX EQ Set Rsp [$hexPayload] -> ${if (ok) "✓ Подтверждено" else "✗ Ошибка"}")
+                if (ok) {
+                    refreshEq()
+                }
+            }
+            T300Protocol.CMD_ALL_EQ_RSP -> {
+                log("RX $hexCmd [$hexPayload]")
+                val customList = T300Protocol.parseAllEqPayload(frame.payload)
+                log("RX All EQ: ${customList.map { "${it.name}${if (it.isSelected) " [активен]" else ""}" }}")
+                val activeCustom = customList.firstOrNull { it.isSelected }
+                if (activeCustom != null) {
+                    _t300State.value = _t300State.value.copy(
+                        eqPreset = null,
+                        activeCustomEqName = activeCustom.name
+                    )
                 }
             }
             T300Protocol.CMD_EVENT -> {
