@@ -49,7 +49,8 @@ object T300Protocol {
     const val CMD_NOTIFICATION: Int = 0x8400     // Асинхронные уведомления от устройства
 
     // Идентификаторы переключателей (SwitchFeature)
-    const val FEATURE_ID_GAME_MODE: Byte = 0x06
+    const val FEATURE_ID_GAME_MODE: Byte = 0x06     // 6 decimal (Игровой режим)
+    const val FEATURE_ID_SPATIAL_AUDIO: Byte = 0x1B // 27 decimal (Пространственное аудио / 3D Sound)
     const val EVENT_TYPE_GAME_MODE: Byte = 0x05
 
     // CCCD UUID для включения notify/indicate
@@ -176,6 +177,7 @@ object T300Protocol {
         val caseBattery: BatteryInfo = BatteryInfo(ComponentRole.CASE, -1, false),
         val ancMode: AncMode? = null,
         val gameMode: Boolean? = null,
+        val spatialAudio: Boolean? = null,
         val eqPreset: EqPreset? = null,
         val activeCustomEqName: String? = null,
         val touchSettings: Map<Pair<TouchSide, TouchGesture>, TouchAction> = emptyMap()

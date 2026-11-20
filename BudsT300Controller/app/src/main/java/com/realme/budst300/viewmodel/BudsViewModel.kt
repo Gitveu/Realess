@@ -236,6 +236,14 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         bleManager.refreshAllEq()
     }
 
+    fun setSpatialAudio(enabled: Boolean) {
+        bleManager.setSpatialAudio(enabled)
+    }
+
+    fun refreshSpatialAudio() {
+        bleManager.refreshSpatialAudio()
+    }
+
     fun setKeySetting(side: TouchSide, gesture: TouchGesture, action: TouchAction) {
         bleManager.setKeySetting(side, gesture, action)
     }
@@ -244,10 +252,15 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         bleManager.refreshKeySettings()
     }
 
+    fun clearLogs() {
+        _recentLogs.value = emptyList()
+    }
+
     fun refreshAll() {
         if (connectionState.value == BleConnectionState.CONNECTED) {
             bleManager.refreshAncState()
             bleManager.refreshGameMode()
+            bleManager.refreshSpatialAudio()
             bleManager.refreshEq()
             bleManager.refreshKeySettings()
             bleManager.refreshBattery()

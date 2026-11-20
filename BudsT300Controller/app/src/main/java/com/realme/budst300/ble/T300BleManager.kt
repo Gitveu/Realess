@@ -98,6 +98,8 @@ class T300BleManager(private val context: Context) {
             delay(80)
             refreshGameMode()
             delay(80)
+            refreshSpatialAudio()
+            delay(80)
             refreshEq()
             delay(80)
             refreshBattery()
@@ -326,6 +328,25 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
+     * Запрос текущего состояния пространственного аудио (Feature 27 / 0x1B)
+     */
+    fun refreshSpatialAudio() {
+        val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_SPATIAL_AUDIO)
+        log("TX SpatialAudio Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+    }
+
+    /**
+     * Установка пространственного аудио (ВКЛ / ВЫКЛ)
+     */
+    fun setSpatialAudio(enabled: Boolean) {
+        val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_SPATIAL_AUDIO, enabled)
+        log("TX SpatialAudio [${if (enabled) "ВКЛ" else "ВЫКЛ"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+        _t300State.value = _t300State.value.copy(spatialAudio = enabled)
+    }
+
+    /**
      * Запрос текущего пресета эквалайзера (Opcode 0x010F)
      */
     fun refreshEq() {
@@ -449,6 +470,8 @@ class T300BleManager(private val context: Context) {
             delay(80)
             refreshGameMode()
             delay(80)
+            refreshSpatialAudio()
+            delay(80)
             refreshEq()
             delay(80)
             refreshAllEq()
@@ -478,6 +501,8 @@ class T300BleManager(private val context: Context) {
                 refreshAncState()
                 delay(60)
                 refreshGameMode()
+                delay(60)
+                refreshSpatialAudio()
                 delay(60)
                 refreshEq()
                 delay(60)
@@ -638,12 +663,18 @@ class T300BleManager(private val context: Context) {
                     log("RX GameMode State: ${if (gm) "ВКЛ" else "ВЫКЛ"}")
                     _t300State.value = _t300State.value.copy(gameMode = gm)
                 }
+                val sa = T300Protocol.parseSwitchFeaturePayload(frame.payload, T300Protocol.FEATURE_ID_SPATIAL_AUDIO)
+                if (sa != null) {
+                    log("RX SpatialAudio State: ${if (sa) "ВКЛ" else "ВЫКЛ"}")
+                    _t300State.value = _t300State.value.copy(spatialAudio = sa)
+                }
             }
             T300Protocol.CMD_SWITCH_FEATURE_SET_RSP -> {
                 val ok = T300Protocol.parseSwitchFeatureSetResponse(frame.payload)
-                log("RX GameMode Set Rsp [$hexPayload] -> ${if (ok) "✓ Подтверждено" else "✗ Ошибка"}")
+                log("RX SwitchFeature Set Rsp [$hexPayload] -> ${if (ok) "✓ Подтверждено" else "✗ Ошибка"}")
                 if (ok) {
                     refreshGameMode()
+                    refreshSpatialAudio()
                 }
             }
             T300Protocol.CMD_NOTIFICATION_REGISTER_RSP -> {

@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,6 +21,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,6 +35,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -166,6 +171,7 @@ fun MainScreen(
                         IconButton(onClick = {
                             viewModel.refreshAncState()
                             viewModel.refreshGameMode()
+                            viewModel.refreshSpatialAudio()
                             viewModel.refreshEq()
                             viewModel.refreshKeySettings()
                             viewModel.refreshBattery()
@@ -273,6 +279,18 @@ fun MainScreen(
                 }
             )
 
+            // Секция пространственного аудио
+            Text(
+                text = "Пространственное аудио",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            SpatialAudioCard(
+                spatialAudio = t300State.spatialAudio,
+                enabled = connectionState == BleConnectionState.CONNECTED,
+                onToggle = { viewModel.setSpatialAudio(it) }
+            )
+
             // Секция «Другое» — Игровой режим
             Text(
                 text = "Другое",
@@ -286,7 +304,11 @@ fun MainScreen(
             )
 
             // Консоль логов для живого наблюдения за протоколом
-            LogsConsole(logs = logs, modifier = Modifier.fillMaxWidth().height(180.dp))
+            LogsConsole(
+                logs = logs,
+                onClearLogs = { viewModel.clearLogs() },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
 
         // Диалог выбора действия для жеста
@@ -770,6 +792,71 @@ fun GestureActionSelectionDialog(
 }
 
 @Composable
+fun SpatialAudioCard(
+    spatialAudio: Boolean?,
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column {
+                Text(
+                    text = "Пространственное аудио",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Создаёт кинематографичный трёхмерный звук вокруг вас.",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+            }
+
+            // Переключатель: [ Выкл. ] [ Включить ]
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF2A2A2A))
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                val options = listOf(false to "Выкл.", true to "Включить")
+                options.forEach { (value, label) ->
+                    val isSelected = (spatialAudio == value)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                            .clickable(enabled = enabled && spatialAudio != null) { onToggle(value) }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary else if (enabled) Color.White else Color.Gray,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun GameModeCard(
     gameMode: Boolean?,
     enabled: Boolean,
@@ -815,32 +902,154 @@ fun GameModeCard(
 }
 
 @Composable
-fun LogsConsole(logs: List<String>, modifier: Modifier = Modifier) {
+fun LogsConsole(
+    logs: List<String>,
+    onClearLogs: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isExpanded by remember { mutableStateOf(false) }
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+    val listState = rememberLazyListState()
+
+    // Автоматическая прокрутка к последней строке логов
+    LaunchedEffect(logs.size, isExpanded) {
+        if (isExpanded && logs.isNotEmpty()) {
+            listState.animateScrollToItem(logs.size - 1)
+        }
+    }
+
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0A0A0A)),
-        shape = RoundedCornerShape(12.dp)
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0E0E0E)),
+        shape = RoundedCornerShape(14.dp)
     ) {
-        Column(modifier = Modifier.padding(8.dp)) {
-            Text("Протокольный лог (SPP / GATT live):", fontSize = 11.sp, color = Color.Gray)
-            Spacer(modifier = Modifier.height(4.dp))
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                reverseLayout = true
+        Column(modifier = Modifier.padding(12.dp)) {
+            // Заголовок панели логов и кнопки управления
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { isExpanded = !isExpanded }
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                items(logs.reversed()) { log ->
-                    Text(
-                        text = log,
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = when {
-                            log.contains("RX") -> Color(0xFF81C784)
-                            log.contains("TX") -> Color(0xFF64B5F6)
-                            log.contains("✓") -> Color(0xFFFFD54F)
-                            log.contains("Ошибка") || log.contains("недоступны") -> Color(0xFFE57373)
-                            else -> Color(0xFFB0BEC5)
-                        }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Code,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Протокольный лог",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "(${logs.size})",
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isExpanded) {
+                        // Кнопка Скопировать
+                        IconButton(
+                            onClick = {
+                                if (logs.isNotEmpty()) {
+                                    clipboardManager.setText(AnnotatedString(logs.joinToString("\n")))
+                                    Toast.makeText(context, "Логи скопированы (${logs.size} строк)", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "Скопировать логи",
+                                tint = Color.LightGray,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        // Кнопка Очистить
+                        IconButton(
+                            onClick = onClearLogs,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteOutline,
+                                contentDescription = "Очистить логи",
+                                tint = Color.LightGray,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    // Кнопка Свернуть / Развернуть
+                    IconButton(
+                        onClick = { isExpanded = !isExpanded },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = if (isExpanded) "Свернуть" else "Развернуть",
+                            tint = Color.LightGray
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(visible = isExpanded) {
+                Column(modifier = Modifier.padding(top = 8.dp)) {
+                    HorizontalDivider(color = Color(0xFF222222), thickness = 1.dp)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (logs.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(80.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Логи пусты", color = Color.DarkGray, fontSize = 12.sp)
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(220.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF050505))
+                                .padding(8.dp)
+                        ) {
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                items(logs) { log ->
+                                    Text(
+                                        text = log,
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        lineHeight = 15.sp,
+                                        color = when {
+                                            log.contains("RX") -> Color(0xFF81C784)
+                                            log.contains("TX") -> Color(0xFF64B5F6)
+                                            log.contains("✓") -> Color(0xFFFFD54F)
+                                            log.contains("Ошибка") || log.contains("недоступны") -> Color(0xFFE57373)
+                                            else -> Color(0xFFB0BEC5)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
