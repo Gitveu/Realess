@@ -7,9 +7,11 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.media.MediaPlayer
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.realme.budst300.R
 import com.realme.budst300.ble.BleConnectionState
 import com.realme.budst300.ble.T300BleManager
 import com.realme.budst300.protocol.T300Protocol.AncMode
@@ -54,6 +56,10 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _hasPermissions = MutableStateFlow(false)
     val hasPermissions: StateFlow<Boolean> = _hasPermissions.asStateFlow()
+
+    private var demoPlayer: MediaPlayer? = null
+    private val _isPlayingDemo = MutableStateFlow(false)
+    val isPlayingDemo: StateFlow<Boolean> = _isPlayingDemo.asStateFlow()
 
     private val bluetoothReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -238,10 +244,46 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setSpatialAudio(enabled: Boolean) {
         bleManager.setSpatialAudio(enabled)
+        if (_isPlayingDemo.value) {
+            startDemoAudio()
+        }
     }
 
     fun refreshSpatialAudio() {
         bleManager.refreshSpatialAudio()
+    }
+
+    fun toggleDemoAudio() {
+        if (_isPlayingDemo.value) {
+            stopDemoAudio()
+        } else {
+            startDemoAudio()
+        }
+    }
+
+    fun startDemoAudio() {
+        stopDemoAudio()
+        val isSpatial = t300State.value.spatialAudio == true
+        val resId = if (isSpatial) R.raw.headset_spatial_audio_fix else R.raw.headset_spatial_audio_off
+        try {
+            demoPlayer = MediaPlayer.create(getApplication(), resId)?.apply {
+                isLooping = true
+                setOnCompletionListener { _isPlayingDemo.value = false }
+                start()
+            }
+            _isPlayingDemo.value = (demoPlayer != null)
+        } catch (_: Exception) {
+            _isPlayingDemo.value = false
+        }
+    }
+
+    fun stopDemoAudio() {
+        try {
+            demoPlayer?.stop()
+            demoPlayer?.release()
+        } catch (_: Exception) {}
+        demoPlayer = null
+        _isPlayingDemo.value = false
     }
 
     fun setKeySetting(side: TouchSide, gesture: TouchGesture, action: TouchAction) {
@@ -269,6 +311,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        stopDemoAudio()
         try {
             getApplication<Application>().unregisterReceiver(bluetoothReceiver)
             a2dpProfile?.let { bluetoothAdapter?.closeProfileProxy(BluetoothProfile.A2DP, it) }

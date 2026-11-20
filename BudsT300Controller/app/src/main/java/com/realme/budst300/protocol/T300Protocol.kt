@@ -486,7 +486,10 @@ object T300Protocol {
 
             val role = ComponentRole.fromId(componentId)
             if (role != null) {
-                result.add(BatteryInfo(role, level, isCharging))
+                // Если кейс закрыт / неактивен, наушники присылают 03 00 (0% без зарядки).
+                // В таком случае заряд считается недоступным (-1 / "—").
+                val effectiveLevel = if (role == ComponentRole.CASE && level == 0 && !isCharging) -1 else level
+                result.add(BatteryInfo(role, effectiveLevel, isCharging))
             }
             offset += 2
         }

@@ -643,8 +643,8 @@ class T300BleManager(private val context: Context) {
         when (frame.command) {
             T300Protocol.CMD_BATTERY_RSP -> {
                 val parsed = T300Protocol.parseBatteryPayload(frame.payload)
-                log("RX Battery [$hexPayload] -> ${parsed.map { "${it.role.title}: ${it.level}%${if (it.isCharging) " ⚡" else ""}" }}")
                 val batteries = normalizeBatteries(parsed)
+                log("RX Battery [$hexPayload] -> ${batteries.map { "${it.role.title}: ${if (it.level >= 0) "${it.level}%" else "недоступен"}${if (it.isCharging) " ⚡" else ""}" }}")
                 val isSnapshot = frame.payload.size >= 2 && frame.payload[0].toInt() == 0
                 updateBatteryState(batteries, isSnapshot = isSnapshot)
             }

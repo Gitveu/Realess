@@ -117,6 +117,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        viewModel.stopDemoAudio()
+    }
+
     private fun checkAndRequestPermissions() {
         if (hasAllPermissions(this, requiredPermissions)) {
             viewModel.onPermissionsGranted()
@@ -155,6 +160,7 @@ fun MainScreen(
     val detectedDevice by viewModel.detectedBudsDevice.collectAsState()
     val logs by viewModel.recentLogs.collectAsState()
     val hasPermissions by viewModel.hasPermissions.collectAsState()
+    val isPlayingDemo by viewModel.isPlayingDemo.collectAsState()
 
     var selectedTouchSide by remember { mutableStateOf(TouchSide.LEFT) }
     var activeEditingGesture by remember { mutableStateOf<Pair<TouchSide, TouchGesture>?>(null) }
@@ -287,8 +293,10 @@ fun MainScreen(
             )
             SpatialAudioCard(
                 spatialAudio = t300State.spatialAudio,
+                isPlayingDemo = isPlayingDemo,
                 enabled = connectionState == BleConnectionState.CONNECTED,
-                onToggle = { viewModel.setSpatialAudio(it) }
+                onToggle = { viewModel.setSpatialAudio(it) },
+                onToggleDemo = { viewModel.toggleDemoAudio() }
             )
 
             // Секция «Другое» — Игровой режим
@@ -794,8 +802,10 @@ fun GestureActionSelectionDialog(
 @Composable
 fun SpatialAudioCard(
     spatialAudio: Boolean?,
+    isPlayingDemo: Boolean,
     enabled: Boolean,
-    onToggle: (Boolean) -> Unit
+    onToggle: (Boolean) -> Unit,
+    onToggleDemo: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -850,6 +860,52 @@ fun SpatialAudioCard(
                             fontSize = 13.sp
                         )
                     }
+                }
+            }
+
+            HorizontalDivider(color = Color(0xFF2C2C2C), thickness = 0.5.dp)
+
+            // Кнопка тестового звука из realme Link
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (isPlayingDemo) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color(0xFF222222))
+                    .clickable { onToggleDemo() }
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (isPlayingDemo) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = if (isPlayingDemo) MaterialTheme.colorScheme.primary else Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = if (isPlayingDemo) "Воспроизведение демо-звука..." else "Прослушать демо-звук (realme)",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (isPlayingDemo) MaterialTheme.colorScheme.primary else Color.White
+                        )
+                        Text(
+                            text = if (spatialAudio == true) "Сэмпл: Пространственный 3D (fix)" else "Сэмпл: Обычный стерео (off)",
+                            fontSize = 11.sp,
+                            color = Color.Gray
+                        )
+                    }
+                }
+
+                if (isPlayingDemo) {
+                    Text(
+                        text = "Стоп",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
         }
