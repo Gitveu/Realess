@@ -9,6 +9,9 @@ import com.realme.budst300.protocol.T300Protocol
 import com.realme.budst300.protocol.T300Protocol.AncMode
 import com.realme.budst300.protocol.T300Protocol.ComponentRole
 import com.realme.budst300.protocol.T300Protocol.EqPreset
+import com.realme.budst300.protocol.T300Protocol.TouchSide
+import com.realme.budst300.protocol.T300Protocol.TouchGesture
+import com.realme.budst300.protocol.T300Protocol.TouchAction
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -98,6 +101,8 @@ class T300BleManager(private val context: Context) {
             refreshEq()
             delay(80)
             refreshBattery()
+            delay(80)
+            refreshKeySettings()
         }
     }
 
@@ -352,6 +357,29 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
+     * Запрос текущих настроек кнопок (Opcode 0x0108)
+     */
+    fun refreshKeySettings() {
+        val frame = T300Protocol.buildKeyFunctionRequestFrame()
+        log("TX KeySettings Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+    }
+
+    /**
+     * Установка настройки кнопки для выбранного наушника и жеста (Opcode 0x0401)
+     */
+    fun setKeySetting(side: TouchSide, gesture: TouchGesture, action: TouchAction) {
+        val frame = T300Protocol.buildKeyFunctionCommandFrame(side, gesture, action)
+        log("TX KeySetting [${side.title} ${gesture.title} -> ${action.title}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+
+        // Оптимистичное обновление UI
+        val currentMap = _t300State.value.touchSettings.toMutableMap()
+        currentMap[Pair(side, gesture)] = action
+        _t300State.value = _t300State.value.copy(touchSettings = currentMap)
+    }
+
+    /**
      * Отправка массива байтов в активный транспорт (SPP или GATT).
      * Кадры TL оборачиваются в транспортный формат OPPOv1 (SOF 0xAA).
      */
@@ -426,6 +454,8 @@ class T300BleManager(private val context: Context) {
             refreshAllEq()
             delay(80)
             refreshBattery()
+            delay(80)
+            refreshKeySettings()
             delay(80)
             registerNotifications()
             startPolling()
@@ -661,6 +691,25 @@ class T300BleManager(private val context: Context) {
                         eqPreset = null,
                         activeCustomEqName = activeCustom.name
                     )
+                }
+            }
+            T300Protocol.CMD_KEY_FUNCTION_RSP -> {
+                log("RX $hexCmd [$hexPayload]")
+                val items = T300Protocol.parseKeyFunctionPayload(frame.payload)
+                if (items.isNotEmpty()) {
+                    log("RX KeySettings: ${items.map { "${it.side.title} ${it.gesture.title} = ${it.action.title}" }}")
+                    val currentMap = _t300State.value.touchSettings.toMutableMap()
+                    for (item in items) {
+                        currentMap[Pair(item.side, item.gesture)] = item.action
+                    }
+                    _t300State.value = _t300State.value.copy(touchSettings = currentMap)
+                }
+            }
+            T300Protocol.CMD_KEY_FUNCTION_SET_RSP -> {
+                val ok = T300Protocol.parseKeyFunctionSetResponse(frame.payload)
+                log("RX KeySetting Set Rsp [$hexPayload] -> ${if (ok) "✓ Подтверждено" else "✗ Ошибка"}")
+                if (ok) {
+                    refreshKeySettings()
                 }
             }
             T300Protocol.CMD_EVENT -> {

@@ -15,6 +15,9 @@ import com.realme.budst300.ble.T300BleManager
 import com.realme.budst300.protocol.T300Protocol.AncMode
 import com.realme.budst300.protocol.T300Protocol.EqPreset
 import com.realme.budst300.protocol.T300Protocol.T300State
+import com.realme.budst300.protocol.T300Protocol.TouchSide
+import com.realme.budst300.protocol.T300Protocol.TouchGesture
+import com.realme.budst300.protocol.T300Protocol.TouchAction
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -233,11 +236,20 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         bleManager.refreshAllEq()
     }
 
+    fun setKeySetting(side: TouchSide, gesture: TouchGesture, action: TouchAction) {
+        bleManager.setKeySetting(side, gesture, action)
+    }
+
+    fun refreshKeySettings() {
+        bleManager.refreshKeySettings()
+    }
+
     fun refreshAll() {
         if (connectionState.value == BleConnectionState.CONNECTED) {
             bleManager.refreshAncState()
             bleManager.refreshGameMode()
             bleManager.refreshEq()
+            bleManager.refreshKeySettings()
             bleManager.refreshBattery()
         }
     }

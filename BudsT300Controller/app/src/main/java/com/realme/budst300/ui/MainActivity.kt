@@ -41,6 +41,10 @@ import androidx.core.content.ContextCompat
 import com.realme.budst300.ble.BleConnectionState
 import com.realme.budst300.protocol.T300Protocol
 import com.realme.budst300.protocol.T300Protocol.AncMode
+import com.realme.budst300.protocol.T300Protocol.TouchSide
+import com.realme.budst300.protocol.T300Protocol.TouchGesture
+import com.realme.budst300.protocol.T300Protocol.TouchAction
+import com.realme.budst300.protocol.T300Protocol.getAvailableActions
 import com.realme.budst300.viewmodel.BudsViewModel
 import com.realme.budst300.viewmodel.SystemDeviceStatus
 
@@ -147,6 +151,9 @@ fun MainScreen(
     val logs by viewModel.recentLogs.collectAsState()
     val hasPermissions by viewModel.hasPermissions.collectAsState()
 
+    var selectedTouchSide by remember { mutableStateOf(TouchSide.LEFT) }
+    var activeEditingGesture by remember { mutableStateOf<Pair<TouchSide, TouchGesture>?>(null) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -160,6 +167,7 @@ fun MainScreen(
                             viewModel.refreshAncState()
                             viewModel.refreshGameMode()
                             viewModel.refreshEq()
+                            viewModel.refreshKeySettings()
                             viewModel.refreshBattery()
                         }) {
                             Icon(Icons.Default.Refresh, contentDescription = "Обновить состояние")
@@ -249,6 +257,22 @@ fun MainScreen(
                 onPresetSelected = { viewModel.setEqPreset(it) }
             )
 
+            // Секция настройки кнопок (жестов)
+            Text(
+                text = "Настройка кнопок",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            ButtonSettingsCard(
+                selectedSide = selectedTouchSide,
+                touchSettings = t300State.touchSettings,
+                enabled = connectionState == BleConnectionState.CONNECTED,
+                onSideSelected = { selectedTouchSide = it },
+                onGestureClick = { gesture ->
+                    activeEditingGesture = Pair(selectedTouchSide, gesture)
+                }
+            )
+
             // Секция «Другое» — Игровой режим
             Text(
                 text = "Другое",
@@ -263,6 +287,22 @@ fun MainScreen(
 
             // Консоль логов для живого наблюдения за протоколом
             LogsConsole(logs = logs, modifier = Modifier.fillMaxWidth().height(180.dp))
+        }
+
+        // Диалог выбора действия для жеста
+        if (activeEditingGesture != null) {
+            val (side, gesture) = activeEditingGesture!!
+            val currentAction = t300State.touchSettings[Pair(side, gesture)]
+            GestureActionSelectionDialog(
+                side = side,
+                gesture = gesture,
+                currentAction = currentAction,
+                onActionSelected = { action ->
+                    viewModel.setKeySetting(side, gesture, action)
+                    activeEditingGesture = null
+                },
+                onDismiss = { activeEditingGesture = null }
+            )
         }
     }
 }
@@ -557,6 +597,176 @@ fun EqPresetSelector(
             }
         }
     }
+}
+
+@Composable
+fun ButtonSettingsCard(
+    selectedSide: TouchSide,
+    touchSettings: Map<Pair<TouchSide, TouchGesture>, TouchAction>,
+    enabled: Boolean,
+    onSideSelected: (TouchSide) -> Unit,
+    onGestureClick: (TouchGesture) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Переключатель наушника (Левый / Правый)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF2A2A2A))
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                TouchSide.entries.forEach { side ->
+                    val isSelected = (side == selectedSide)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                            .clickable(enabled = enabled) { onSideSelected(side) }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "${side.title} наушник",
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary else if (enabled) Color.White else Color.Gray,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+
+            // Список 3 жестов
+            val gestures = listOf(
+                TouchGesture.DOUBLE_TAP,
+                TouchGesture.TRIPLE_TAP,
+                TouchGesture.LONG_PRESS
+            )
+
+            gestures.forEachIndexed { index, gesture ->
+                val action = touchSettings[Pair(selectedSide, gesture)]
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(enabled = enabled) { onGestureClick(gesture) }
+                        .padding(horizontal = 8.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = gesture.title,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (enabled) Color.White else Color.Gray
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = action?.title ?: "—",
+                            fontSize = 12.sp,
+                            color = when {
+                                !enabled -> Color.DarkGray
+                                action != null -> MaterialTheme.colorScheme.primary
+                                else -> Color.Gray
+                            }
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = if (enabled) Color.Gray else Color(0xFF3A3A3A),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                if (index < gestures.lastIndex) {
+                    HorizontalDivider(color = Color(0xFF2C2C2C), thickness = 0.5.dp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun GestureActionSelectionDialog(
+    side: TouchSide,
+    gesture: TouchGesture,
+    currentAction: TouchAction?,
+    onActionSelected: (TouchAction) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val allowedActions = remember(gesture, currentAction) {
+        val list = getAvailableActions(gesture).toMutableList()
+        if (currentAction != null && currentAction !in list) {
+            list.add(0, currentAction)
+        }
+        list
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "${side.title} наушник: ${gesture.title}",
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                allowedActions.forEach { action ->
+                    val isSelected = (action == currentAction)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onActionSelected(action) }
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = isSelected,
+                            onClick = { onActionSelected(action) },
+                            colors = RadioButtonDefaults.colors(
+                                selectedColor = MaterialTheme.colorScheme.primary,
+                                unselectedColor = Color.Gray
+                            )
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = action.title,
+                            fontSize = 14.sp,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена", color = MaterialTheme.colorScheme.primary)
+            }
+        },
+        containerColor = Color(0xFF242424)
+    )
 }
 
 @Composable

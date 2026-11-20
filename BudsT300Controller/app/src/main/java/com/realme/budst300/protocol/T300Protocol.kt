@@ -33,6 +33,10 @@ object T300Protocol {
     const val CMD_EQ_RSP: Int = 0x810F           // 33039 decimal
     const val CMD_ALL_EQ_REQ: Int = 0x0122       // 290 decimal (Запрос пользовательских кривых EQ)
     const val CMD_ALL_EQ_RSP: Int = 0x8122       // 33058 decimal
+    const val CMD_KEY_FUNCTION_REQ: Int = 0x0108     // 264 decimal (Запрос настроек кнопок)
+    const val CMD_KEY_FUNCTION_RSP: Int = 0x8108     // 33032 decimal
+    const val CMD_KEY_FUNCTION_SET: Int = 0x0401     // 1025 decimal (Установка настроек кнопок)
+    const val CMD_KEY_FUNCTION_SET_RSP: Int = 0x8401 // 33793 decimal
     const val CMD_ANC_SET: Int = 0x0404          // 1028 decimal
     const val CMD_ANC_RSP: Int = 0x8404          // 33796 decimal
     const val CMD_SWITCH_FEATURE_SET: Int = 0x0403 // 1027 decimal (Установка переключателей/функций)
@@ -88,6 +92,78 @@ object T300Protocol {
         val isSelected: Boolean
     )
 
+    enum class TouchSide(val deviceType: Byte, val title: String) {
+        LEFT(0x01, "Левый"),
+        RIGHT(0x02, "Правый");
+
+        companion object {
+            fun fromDeviceType(b: Byte): TouchSide? = entries.firstOrNull { it.deviceType == b }
+        }
+    }
+
+    enum class TouchGesture(val actionId: Byte, val title: String) {
+        DOUBLE_TAP(0x02, "Двойное касание"),
+        TRIPLE_TAP(0x03, "Тройное касание"),
+        LONG_PRESS(0x04, "Касание и удержание");
+
+        companion object {
+            fun fromActionId(b: Byte): TouchGesture? = entries.firstOrNull { it.actionId == b }
+        }
+    }
+
+    enum class TouchAction(val functionId: Byte, val title: String) {
+        PLAY_PAUSE(0x01, "Воспроизведение / Пауза"),
+        NEXT_TRACK(0x06, "Следующая композиция"),
+        PREV_TRACK(0x05, "Предыдущая композиция"),
+        VOICE_ASSISTANT(0x03, "Голосовой помощник"),
+        ANC_TOGGLE(0x08, "Шумоподавление"),
+        DEVICE_SWITCH(0x0D, "Переключить устройства"),
+        GAME_MODE(0x11, "Игровой режим"),
+        VOLUME_UP(0x0B, "Увеличение громкости"),
+        VOLUME_DOWN(0x0C, "Уменьшение громкости"),
+        NONE(0x00, "Нет действия");
+
+        companion object {
+            fun fromFunctionId(b: Byte): TouchAction {
+                if (b.toInt() == 4) return VOICE_ASSISTANT
+                return entries.firstOrNull { it.functionId == b } ?: NONE
+            }
+        }
+    }
+
+    fun getAvailableActions(gesture: TouchGesture): List<TouchAction> {
+        return when (gesture) {
+            TouchGesture.DOUBLE_TAP -> listOf(
+                TouchAction.PLAY_PAUSE,
+                TouchAction.NEXT_TRACK,
+                TouchAction.VOICE_ASSISTANT,
+                TouchAction.NONE
+            )
+            TouchGesture.TRIPLE_TAP -> listOf(
+                TouchAction.PREV_TRACK,
+                TouchAction.NEXT_TRACK,
+                TouchAction.VOLUME_UP,
+                TouchAction.VOLUME_DOWN,
+                TouchAction.DEVICE_SWITCH,
+                TouchAction.VOICE_ASSISTANT,
+                TouchAction.GAME_MODE,
+                TouchAction.NONE
+            )
+            TouchGesture.LONG_PRESS -> listOf(
+                TouchAction.ANC_TOGGLE,
+                TouchAction.VOICE_ASSISTANT,
+                TouchAction.GAME_MODE,
+                TouchAction.NONE
+            )
+        }
+    }
+
+    data class KeySettingItem(
+        val side: TouchSide,
+        val gesture: TouchGesture,
+        val action: TouchAction
+    )
+
     data class BatteryInfo(
         val role: ComponentRole,
         val level: Int,          // 0..100% (-1 если нет данных)
@@ -101,7 +177,8 @@ object T300Protocol {
         val ancMode: AncMode? = null,
         val gameMode: Boolean? = null,
         val eqPreset: EqPreset? = null,
-        val activeCustomEqName: String? = null
+        val activeCustomEqName: String? = null,
+        val touchSettings: Map<Pair<TouchSide, TouchGesture>, TouchAction> = emptyMap()
     )
 
     data class Frame(
@@ -236,6 +313,37 @@ object T300Protocol {
      */
     fun buildAllEqRequestFrame(address: Byte = DEVICE_ADDRESS_DEFAULT): ByteArray =
         Frame(CMD_ALL_EQ_REQ, address, ByteArray(0)).toByteArray()
+
+    private val KEY_FUNCTION_REQ_PAYLOAD = byteArrayOf(
+        0x0E, // count = 14
+        0x01, 0x03, 0x04, 0x05, 0x06, 0x0B, 0x0C, 0x08, 0x0D, 0x11, 0x1F, 0x1A, 0x1B, 0x00
+    )
+
+    /**
+     * Запрос текущих настроек кнопок (Opcode 0x0108).
+     */
+    fun buildKeyFunctionRequestFrame(address: Byte = DEVICE_ADDRESS_DEFAULT): ByteArray =
+        Frame(CMD_KEY_FUNCTION_REQ, address, KEY_FUNCTION_REQ_PAYLOAD).toByteArray()
+
+    /**
+     * Установка настройки кнопки (Opcode 0x0401).
+     * Payload: [0x01, deviceType, 0x01, actionId, functionId]
+     */
+    fun buildKeyFunctionCommandFrame(
+        side: TouchSide,
+        gesture: TouchGesture,
+        action: TouchAction,
+        address: Byte = DEVICE_ADDRESS_DEFAULT
+    ): ByteArray {
+        val payload = byteArrayOf(
+            0x01,           // count = 1
+            side.deviceType,
+            0x01,           // button = 1
+            gesture.actionId,
+            action.functionId
+        )
+        return Frame(CMD_KEY_FUNCTION_SET, address, payload).toByteArray()
+    }
 
     /**
      * Парсер сырого кадра (поддерживает как кадры в обёртке OPPO 0xAA, так и чистые TL-кадры).
@@ -519,5 +627,43 @@ object T300Protocol {
             result.add(CustomEqSummary(eqId, name, isSelected))
         }
         return result
+    }
+
+    /**
+     * Парсинг ответа настроек кнопок (Opcode 0x8108).
+     * Формат: [status (0x00), count (N), (deviceType, button, action, function)...]
+     */
+    fun parseKeyFunctionPayload(p: ByteArray): List<KeySettingItem> {
+        if (p.size < 2 || p[0].toInt() != 0) return emptyList()
+        val count = p[1].toInt() and 0xFF
+        if (p.size < 2 + count * 4) return emptyList()
+
+        val result = mutableListOf<KeySettingItem>()
+        var offset = 2
+        for (i in 0 until count) {
+            val devType = p[offset]
+            val button = p[offset + 1]
+            val actionId = p[offset + 2]
+            val funcId = p[offset + 3]
+
+            val side = TouchSide.fromDeviceType(devType)
+            val gesture = TouchGesture.fromActionId(actionId)
+            val action = TouchAction.fromFunctionId(funcId)
+
+            if (side != null && gesture != null) {
+                result.add(KeySettingItem(side, gesture, action))
+            }
+            offset += 4
+        }
+        return result
+    }
+
+    /**
+     * Парсинг ответа подтверждения установки настройки кнопки (Opcode 0x8401).
+     * Payload: [status] (0x00 = Success).
+     */
+    fun parseKeyFunctionSetResponse(p: ByteArray): Boolean {
+        if (p.isEmpty()) return false
+        return p[0].toInt() == 0
     }
 }
