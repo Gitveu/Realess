@@ -93,7 +93,7 @@ class T300BleManager(private val context: Context) {
         eventRefreshJob?.cancel()
         eventRefreshJob = scope.launch {
             delay(EVENT_REFRESH_DELAY_MS)
-            log("Авто-обновление состояния ($reason)")
+            log("Auto-refreshing state ($reason)")
             refreshAncState()
             delay(80)
             refreshGameMode()
@@ -109,31 +109,31 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
-     * Подключение к наушникам Buds T300:
-     * 1. В первую очередь пробуем прямой RFCOMM SPP-сокет (как в realme Link).
-     * 2. В случае неудачи — fallback на BLE GATT.
+     * Connect to Buds T300:
+     * 1. Try direct RFCOMM SPP socket first (as in realme Link).
+     * 2. Fall back to BLE GATT if SPP fails.
      */
     fun connect(device: BluetoothDevice) {
         disconnect()
         _connectionState.value = BleConnectionState.CONNECTING
         val name = device.name ?: "Buds T300"
-        log("Старт подключения к $name (${device.address})...")
+        log("Starting connection to $name (${device.address})...")
 
         scope.launch {
-            // Попытка 1: RFCOMM SPP
+            // Attempt 1: RFCOMM SPP
             val sppConnected = tryConnectSpp(device)
             if (sppConnected) {
                 return@launch
             }
 
-            // Попытка 2: BLE GATT Fallback
-            log("SPP сокеты недоступны. Переход на BLE GATT...")
+            // Attempt 2: BLE GATT Fallback
+            log("SPP sockets unavailable. Falling back to BLE GATT...")
             connectGatt(device)
         }
     }
 
     /**
-     * Попытка подключиться через RFCOMM BluetoothSocket
+     * Attempt connection via RFCOMM BluetoothSocket
      */
     private suspend fun tryConnectSpp(device: BluetoothDevice): Boolean {
         bluetoothAdapter?.cancelDiscovery()
@@ -141,7 +141,7 @@ class T300BleManager(private val context: Context) {
         for (uuid in T300GattConfig.KNOWN_SPP_UUIDS) {
             val isRealmeDefault = (uuid == T300GattConfig.REALME_VENDOR_SPP_UUID)
             val uuidLabel = if (isRealmeDefault) "Realme Vendor SPP" else "SPP $uuid"
-            log("Попытка SPP ($uuidLabel)...")
+            log("Attempting SPP ($uuidLabel)...")
 
             val success = tryConnectSingleSocket(device, uuid, insecure = false) ||
                           tryConnectSingleSocket(device, uuid, insecure = true)
@@ -149,7 +149,7 @@ class T300BleManager(private val context: Context) {
             if (success) {
                 activeTransport = ActiveTransport.RFCOMM_SPP
                 _connectionState.value = BleConnectionState.CONNECTED
-                log("✓ SPP успешно подключён через $uuidLabel!")
+                log("✓ SPP connected successfully via $uuidLabel!")
 
                 startSocketReader()
                 finishConnectionReady()
@@ -217,7 +217,7 @@ class T300BleManager(private val context: Context) {
                 }
             } catch (e: IOException) {
                 if (isActive) {
-                    log("Разрыв соединения SPP: ${e.message}")
+                    log("SPP connection closed: ${e.message}")
                 }
             } finally {
                 if (_connectionState.value == BleConnectionState.CONNECTED) {
@@ -277,21 +277,21 @@ class T300BleManager(private val context: Context) {
 
         activeTransport = ActiveTransport.NONE
         _connectionState.value = BleConnectionState.DISCONNECTED
-        log("Соединение разорвано")
+        log("Connection closed")
     }
 
     /**
-     * Переключение режима шумоподавления (ANC)
+     * Set ANC Mode
      */
     fun setAncMode(mode: AncMode) {
         val frame = T300Protocol.buildAncCommandFrame(mode)
-        log("TX ANC [${mode.title}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        log("TX ANC [${mode.name}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
         _t300State.value = _t300State.value.copy(ancMode = mode)
     }
 
     /**
-     * Принудительный запрос уровня заряда батареи
+     * Request battery levels
      */
     fun refreshBattery() {
         val frame = T300Protocol.buildBatteryRequestFrame()
@@ -300,7 +300,7 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
-     * Запрос текущего режима шумоподавления (ANC)
+     * Request current ANC mode
      */
     fun refreshAncState() {
         val frame = T300Protocol.buildAncStateRequestFrame()
@@ -309,7 +309,7 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
-     * Запрос текущего состояния игрового режима
+     * Request Game Mode state
      */
     fun refreshGameMode() {
         val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_GAME_MODE)
@@ -318,17 +318,17 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
-     * Установка игрового режима (ВКЛ / ВЫКЛ)
+     * Set Game Mode (ON / OFF)
      */
     fun setGameMode(enabled: Boolean) {
         val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_GAME_MODE, enabled)
-        log("TX GameMode [${if (enabled) "ВКЛ" else "ВЫКЛ"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        log("TX GameMode [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
         _t300State.value = _t300State.value.copy(gameMode = enabled)
     }
 
     /**
-     * Запрос текущего состояния пространственного аудио (Feature 27 / 0x1B)
+     * Request Spatial Audio state (Feature 27 / 0x1B)
      */
     fun refreshSpatialAudio() {
         val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_SPATIAL_AUDIO)
@@ -337,17 +337,17 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
-     * Установка пространственного аудио (ВКЛ / ВЫКЛ)
+     * Set Spatial Audio (ON / OFF)
      */
     fun setSpatialAudio(enabled: Boolean) {
         val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_SPATIAL_AUDIO, enabled)
-        log("TX SpatialAudio [${if (enabled) "ВКЛ" else "ВЫКЛ"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        log("TX SpatialAudio [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
         _t300State.value = _t300State.value.copy(spatialAudio = enabled)
     }
 
     /**
-     * Запрос текущего пресета эквалайзера (Opcode 0x010F)
+     * Request current EQ preset (Opcode 0x010F)
      */
     fun refreshEq() {
         val frame = T300Protocol.buildEqRequestFrame()
@@ -356,7 +356,7 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
-     * Запрос списка пользовательских эквалайзеров (Opcode 0x0122)
+     * Request custom EQ curves (Opcode 0x0122)
      */
     fun refreshAllEq() {
         val frame = T300Protocol.buildAllEqRequestFrame()
@@ -365,11 +365,11 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
-     * Установка пресета эквалайзера (Opcode 0x0406)
+     * Set EQ preset (Opcode 0x0406)
      */
     fun setEqPreset(preset: EqPreset) {
         val frame = T300Protocol.buildEqCommandFrame(preset)
-        log("TX EQ [${preset.title}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        log("TX EQ [${preset.name}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
         _t300State.value = _t300State.value.copy(
             eqPreset = preset,
@@ -378,7 +378,7 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
-     * Запрос текущих настроек кнопок (Opcode 0x0108)
+     * Request touch button settings (Opcode 0x0108)
      */
     fun refreshKeySettings() {
         val frame = T300Protocol.buildKeyFunctionRequestFrame()
@@ -387,14 +387,14 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
-     * Установка настройки кнопки для выбранного наушника и жеста (Opcode 0x0401)
+     * Set touch button setting (Opcode 0x0401)
      */
     fun setKeySetting(side: TouchSide, gesture: TouchGesture, action: TouchAction) {
         val frame = T300Protocol.buildKeyFunctionCommandFrame(side, gesture, action)
-        log("TX KeySetting [${side.title} ${gesture.title} -> ${action.title}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        log("TX KeySetting [${side.name} ${gesture.name} -> ${action.name}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
 
-        // Оптимистичное обновление UI
+        // Optimistic UI update
         val currentMap = _t300State.value.touchSettings.toMutableMap()
         currentMap[Pair(side, gesture)] = action
         _t300State.value = _t300State.value.copy(touchSettings = currentMap)
@@ -414,21 +414,21 @@ class T300BleManager(private val context: Context) {
                     ActiveTransport.RFCOMM_SPP -> {
                         val out = socketOutputStream
                         if (out == null || bluetoothSocket?.isConnected != true) {
-                            log("Ошибка: RFCOMM сокет не готов")
+                            log("Error: RFCOMM socket not ready")
                             return@withLock
                         }
                         try {
                             out.write(wireData)
                             out.flush()
                         } catch (e: Exception) {
-                            log("Ошибка отправки SPP: ${e.message}")
+                            log("Error sending SPP: ${e.message}")
                         }
                     }
                     ActiveTransport.BLE_GATT -> {
                         val gatt = bluetoothGatt
                         val char = writeCharacteristic
                         if (gatt == null || char == null) {
-                            log("Ошибка: GATT канал записи не готов")
+                            log("Error: GATT write characteristic not ready")
                             return@withLock
                         }
                         try {
@@ -451,11 +451,11 @@ class T300BleManager(private val context: Context) {
                             }
                             delay(40)
                         } catch (e: Exception) {
-                            log("Ошибка отправки GATT: ${e.message}")
+                            log("Error sending GATT: ${e.message}")
                         }
                     }
                     ActiveTransport.NONE -> {
-                        log("Ошибка: нет активного соединения")
+                        log("Error: no active connection")
                     }
                 }
             }
@@ -464,8 +464,8 @@ class T300BleManager(private val context: Context) {
 
     private fun finishConnectionReady() {
         scope.launch {
-            delay(150) // Быстрый старт: сначала сразу режим ANC, игровой режим, затем EQ и батарея
-            log("✓ Устройство готово! Запрашиваем состояние...")
+            delay(150)
+            log("✓ Device ready! Requesting state...")
             refreshAncState()
             delay(80)
             refreshGameMode()
@@ -515,12 +515,12 @@ class T300BleManager(private val context: Context) {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
-                    log("GATT подключён (status=$status). Поиск сервисов...")
+                    log("GATT connected (status=$status). Discovering services...")
                     _connectionState.value = BleConnectionState.DISCOVERING_SERVICES
                     gatt.discoverServices()
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
-                    log("GATT отключён (status=$status)")
+                    log("GATT disconnected (status=$status)")
                     disconnect()
                 }
             }
@@ -528,7 +528,7 @@ class T300BleManager(private val context: Context) {
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
-                log("Ошибка обнаружения GATT-сервисов: status=$status")
+                log("GATT service discovery failed: status=$status")
                 disconnect()
                 return
             }
@@ -576,7 +576,7 @@ class T300BleManager(private val context: Context) {
             }
 
             if (foundWrite == null || foundNotify == null) {
-                log("GATT: каналы записи/уведомлений не найдены")
+                log("GATT: write/notify characteristics not found")
                 disconnect()
                 return
             }
@@ -644,7 +644,16 @@ class T300BleManager(private val context: Context) {
             T300Protocol.CMD_BATTERY_RSP -> {
                 val parsed = T300Protocol.parseBatteryPayload(frame.payload)
                 val batteries = normalizeBatteries(parsed)
-                log("RX Battery [$hexPayload] -> ${batteries.map { "${it.role.title}: ${if (it.level >= 0) "${it.level}%" else "недоступен"}${if (it.isCharging) " ⚡" else ""}" }}")
+                val validBatteries = batteries.filter { it.level >= 0 }
+                val batteryStrs = validBatteries.map {
+                    val roleName = when (it.role) {
+                        ComponentRole.LEFT_EAR -> "Left"
+                        ComponentRole.RIGHT_EAR -> "Right"
+                        ComponentRole.CASE -> "Case"
+                    }
+                    "$roleName: ${it.level}%${if (it.isCharging) " ⚡" else ""}"
+                }
+                log("RX Battery [$hexPayload] -> $batteryStrs")
                 val isSnapshot = frame.payload.size >= 2 && frame.payload[0].toInt() == 0
                 updateBatteryState(batteries, isSnapshot = isSnapshot)
             }
@@ -652,7 +661,7 @@ class T300BleManager(private val context: Context) {
                 log("RX $hexCmd [$hexPayload]")
                 val mode = T300Protocol.parseAncStatePayload(frame.payload)
                 if (mode != null) {
-                    log("RX ANC State: ${mode.title}")
+                    log("RX ANC State: ${mode.name}")
                     _t300State.value = _t300State.value.copy(ancMode = mode)
                 }
             }
@@ -660,18 +669,18 @@ class T300BleManager(private val context: Context) {
                 log("RX $hexCmd [$hexPayload]")
                 val gm = T300Protocol.parseSwitchFeaturePayload(frame.payload, T300Protocol.FEATURE_ID_GAME_MODE)
                 if (gm != null) {
-                    log("RX GameMode State: ${if (gm) "ВКЛ" else "ВЫКЛ"}")
+                    log("RX GameMode State: ${if (gm) "ON" else "OFF"}")
                     _t300State.value = _t300State.value.copy(gameMode = gm)
                 }
                 val sa = T300Protocol.parseSwitchFeaturePayload(frame.payload, T300Protocol.FEATURE_ID_SPATIAL_AUDIO)
                 if (sa != null) {
-                    log("RX SpatialAudio State: ${if (sa) "ВКЛ" else "ВЫКЛ"}")
+                    log("RX SpatialAudio State: ${if (sa) "ON" else "OFF"}")
                     _t300State.value = _t300State.value.copy(spatialAudio = sa)
                 }
             }
             T300Protocol.CMD_SWITCH_FEATURE_SET_RSP -> {
                 val ok = T300Protocol.parseSwitchFeatureSetResponse(frame.payload)
-                log("RX SwitchFeature Set Rsp [$hexPayload] -> ${if (ok) "✓ Подтверждено" else "✗ Ошибка"}")
+                log("RX SwitchFeature Set Rsp [$hexPayload] -> ${if (ok) "✓ Confirmed" else "✗ Error"}")
                 if (ok) {
                     refreshGameMode()
                     refreshSpatialAudio()
@@ -682,7 +691,7 @@ class T300BleManager(private val context: Context) {
             }
             T300Protocol.CMD_ANC_RSP -> {
                 val ok = T300Protocol.parseAncResponse(frame.payload)
-                log("RX ANC Rsp [$hexPayload] -> ${if (ok) "✓ Подтверждено" else "✗ Ошибка"}")
+                log("RX ANC Rsp [$hexPayload] -> ${if (ok) "✓ Confirmed" else "✗ Error"}")
                 if (ok) {
                     refreshAncState()
                 }
@@ -692,13 +701,13 @@ class T300BleManager(private val context: Context) {
                 val rawId = T300Protocol.parseRawEqId(frame.payload)
                 val preset = T300Protocol.parseEqPayload(frame.payload)
                 if (preset != null) {
-                    log("RX EQ State: ${preset.title} (id=$rawId)")
+                    log("RX EQ State: ${preset.name} (id=$rawId)")
                     _t300State.value = _t300State.value.copy(
                         eqPreset = preset,
                         activeCustomEqName = null
                     )
                 } else if (rawId != null) {
-                    log("RX EQ State: Пользовательский (rawId=$rawId)")
+                    log("RX EQ State: Custom (rawId=$rawId)")
                     _t300State.value = _t300State.value.copy(
                         eqPreset = null
                     )
@@ -707,7 +716,7 @@ class T300BleManager(private val context: Context) {
             }
             T300Protocol.CMD_EQ_SET_RSP -> {
                 val ok = T300Protocol.parseEqSetResponse(frame.payload)
-                log("RX EQ Set Rsp [$hexPayload] -> ${if (ok) "✓ Подтверждено" else "✗ Ошибка"}")
+                log("RX EQ Set Rsp [$hexPayload] -> ${if (ok) "✓ Confirmed" else "✗ Error"}")
                 if (ok) {
                     refreshEq()
                 }
@@ -715,7 +724,7 @@ class T300BleManager(private val context: Context) {
             T300Protocol.CMD_ALL_EQ_RSP -> {
                 log("RX $hexCmd [$hexPayload]")
                 val customList = T300Protocol.parseAllEqPayload(frame.payload)
-                log("RX All EQ: ${customList.map { "${it.name}${if (it.isSelected) " [активен]" else ""}" }}")
+                log("RX All EQ: ${customList.map { "${it.name}${if (it.isSelected) " [active]" else ""}" }}")
                 val activeCustom = customList.firstOrNull { it.isSelected }
                 if (activeCustom != null) {
                     _t300State.value = _t300State.value.copy(
@@ -728,7 +737,7 @@ class T300BleManager(private val context: Context) {
                 log("RX $hexCmd [$hexPayload]")
                 val items = T300Protocol.parseKeyFunctionPayload(frame.payload)
                 if (items.isNotEmpty()) {
-                    log("RX KeySettings: ${items.map { "${it.side.title} ${it.gesture.title} = ${it.action.title}" }}")
+                    log("RX KeySettings: ${items.map { "${it.side.name} ${it.gesture.name} = ${it.action.name}" }}")
                     val currentMap = _t300State.value.touchSettings.toMutableMap()
                     for (item in items) {
                         currentMap[Pair(item.side, item.gesture)] = item.action
@@ -738,7 +747,7 @@ class T300BleManager(private val context: Context) {
             }
             T300Protocol.CMD_KEY_FUNCTION_SET_RSP -> {
                 val ok = T300Protocol.parseKeyFunctionSetResponse(frame.payload)
-                log("RX KeySetting Set Rsp [$hexPayload] -> ${if (ok) "✓ Подтверждено" else "✗ Ошибка"}")
+                log("RX KeySetting Set Rsp [$hexPayload] -> ${if (ok) "✓ Confirmed" else "✗ Error"}")
                 if (ok) {
                     refreshKeySettings()
                 }
@@ -748,22 +757,22 @@ class T300BleManager(private val context: Context) {
                 if (frame.payload.isNotEmpty() && frame.payload[0].toInt() == 0x03) {
                     val mode = T300Protocol.parseAncEventPayload(frame.payload)
                     if (mode != null) {
-                        log("RX Event: ANC переключён на ${mode.title}")
+                        log("RX Event: ANC switched to ${mode.name}")
                         _t300State.value = _t300State.value.copy(ancMode = mode)
                     }
                 } else if (frame.payload.isNotEmpty() && frame.payload[0] == T300Protocol.EVENT_TYPE_GAME_MODE) {
                     val gm = T300Protocol.parseGameModeEventPayload(frame.payload)
                     if (gm != null) {
-                        log("RX Event: GameMode переключён на ${if (gm) "ВКЛ" else "ВЫКЛ"}")
+                        log("RX Event: GameMode switched to ${if (gm) "ON" else "OFF"}")
                         _t300State.value = _t300State.value.copy(gameMode = gm)
                     }
                 } else {
                     val eventType = if (frame.payload.isNotEmpty()) {
                         "0x%02X".format(frame.payload[0])
                     } else {
-                        "пустое"
+                        "empty"
                     }
-                    scheduleStateRefresh("событие $eventType")
+                    scheduleStateRefresh("event $eventType")
                 }
             }
             T300Protocol.CMD_NOTIFICATION -> {
@@ -771,23 +780,23 @@ class T300BleManager(private val context: Context) {
                 val mode = T300Protocol.parseAncEventPayload(frame.payload)
                 val gm = T300Protocol.parseGameModeEventPayload(frame.payload)
                 if (mode != null) {
-                    log("RX Event: ANC переключён на ${mode.title}")
+                    log("RX Event: ANC switched to ${mode.name}")
                     _t300State.value = _t300State.value.copy(ancMode = mode)
                 } else if (gm != null) {
-                    log("RX Event: GameMode переключён на ${if (gm) "ВКЛ" else "ВЫКЛ"}")
+                    log("RX Event: GameMode switched to ${if (gm) "ON" else "OFF"}")
                     _t300State.value = _t300State.value.copy(gameMode = gm)
                 } else {
                     val eventType = if (frame.payload.isNotEmpty()) {
                         "0x%02X".format(frame.payload[0])
                     } else {
-                        "пустое"
+                        "empty"
                     }
-                    scheduleStateRefresh("событие $eventType")
+                    scheduleStateRefresh("event $eventType")
                 }
             }
             else -> {
-                log("RX Неизвестный кадр: $hexCmd [$hexPayload]")
-                scheduleStateRefresh("кадр $hexCmd")
+                log("RX Unknown frame: $hexCmd [$hexPayload]")
+                scheduleStateRefresh("frame $hexCmd")
             }
         }
     }

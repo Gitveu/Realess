@@ -1,5 +1,7 @@
 package com.realme.budst300.protocol
 
+import androidx.annotation.StringRes
+import com.realme.budst300.R
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -56,31 +58,31 @@ object T300Protocol {
     // CCCD UUID для включения notify/indicate
     const val CCCD_UUID_STRING = "00002902-0000-1000-8000-00805f9b34fb"
 
-    enum class AncMode(val modeByte: Byte, val title: String) {
-        NOISE_REDUCTION(0x08, "Шумоподавление"),
-        OFF(0x01, "Выкл."),
-        TRANSPARENCY(0x02, "Прозрачность");
+    enum class AncMode(val modeByte: Byte, @StringRes val titleRes: Int) {
+        NOISE_REDUCTION(0x08, R.string.anc_noise_reduction),
+        OFF(0x01, R.string.anc_off),
+        TRANSPARENCY(0x02, R.string.anc_transparency);
 
         companion object {
             fun fromByte(b: Byte): AncMode? = entries.firstOrNull { it.modeByte == b }
         }
     }
 
-    enum class ComponentRole(val id: Int, val title: String) {
-        LEFT_EAR(1, "Левый"),
-        RIGHT_EAR(2, "Правый"),
-        CASE(3, "Кейс");
+    enum class ComponentRole(val id: Int, @StringRes val titleRes: Int) {
+        LEFT_EAR(1, R.string.battery_left),
+        RIGHT_EAR(2, R.string.battery_right),
+        CASE(3, R.string.battery_case);
 
         companion object {
             fun fromId(id: Int): ComponentRole? = entries.firstOrNull { it.id == id }
         }
     }
 
-    enum class EqPreset(val eqId: Byte, val title: String) {
-        SERENADE(0x02, "Серенада"),
-        ORIGINAL_SOUND(0x00, "Оригинальный звук"),
-        PURE_BASS(0x03, "Чистые басы"),
-        DEEP_BASS(0x01, "Глубокие басы");
+    enum class EqPreset(val eqId: Byte, @StringRes val titleRes: Int) {
+        SERENADE(0x02, R.string.eq_serenade),
+        ORIGINAL_SOUND(0x00, R.string.eq_original_sound),
+        PURE_BASS(0x03, R.string.eq_pure_bass),
+        DEEP_BASS(0x01, R.string.eq_deep_bass);
 
         companion object {
             fun fromByte(b: Byte): EqPreset? = entries.firstOrNull { it.eqId == b }
@@ -93,36 +95,36 @@ object T300Protocol {
         val isSelected: Boolean
     )
 
-    enum class TouchSide(val deviceType: Byte, val title: String) {
-        LEFT(0x01, "Левый"),
-        RIGHT(0x02, "Правый");
+    enum class TouchSide(val deviceType: Byte, @StringRes val titleRes: Int) {
+        LEFT(0x01, R.string.touch_side_left),
+        RIGHT(0x02, R.string.touch_side_right);
 
         companion object {
             fun fromDeviceType(b: Byte): TouchSide? = entries.firstOrNull { it.deviceType == b }
         }
     }
 
-    enum class TouchGesture(val actionId: Byte, val title: String) {
-        DOUBLE_TAP(0x02, "Двойное касание"),
-        TRIPLE_TAP(0x03, "Тройное касание"),
-        LONG_PRESS(0x04, "Касание и удержание");
+    enum class TouchGesture(val actionId: Byte, @StringRes val titleRes: Int) {
+        DOUBLE_TAP(0x02, R.string.gesture_double_tap),
+        TRIPLE_TAP(0x03, R.string.gesture_triple_tap),
+        LONG_PRESS(0x04, R.string.gesture_long_press);
 
         companion object {
             fun fromActionId(b: Byte): TouchGesture? = entries.firstOrNull { it.actionId == b }
         }
     }
 
-    enum class TouchAction(val functionId: Byte, val title: String) {
-        PLAY_PAUSE(0x01, "Воспроизведение / Пауза"),
-        NEXT_TRACK(0x06, "Следующая композиция"),
-        PREV_TRACK(0x05, "Предыдущая композиция"),
-        VOICE_ASSISTANT(0x03, "Голосовой помощник"),
-        ANC_TOGGLE(0x08, "Шумоподавление"),
-        DEVICE_SWITCH(0x0D, "Переключить устройства"),
-        GAME_MODE(0x11, "Игровой режим"),
-        VOLUME_UP(0x0B, "Увеличение громкости"),
-        VOLUME_DOWN(0x0C, "Уменьшение громкости"),
-        NONE(0x00, "Нет действия");
+    enum class TouchAction(val functionId: Byte, @StringRes val titleRes: Int) {
+        PLAY_PAUSE(0x01, R.string.action_play_pause),
+        NEXT_TRACK(0x06, R.string.action_next_track),
+        PREV_TRACK(0x05, R.string.action_prev_track),
+        VOICE_ASSISTANT(0x03, R.string.action_voice_assistant),
+        ANC_TOGGLE(0x08, R.string.action_anc_toggle),
+        DEVICE_SWITCH(0x0D, R.string.action_device_switch),
+        GAME_MODE(0x11, R.string.action_game_mode),
+        VOLUME_UP(0x0B, R.string.action_volume_up),
+        VOLUME_DOWN(0x0C, R.string.action_volume_down),
+        NONE(0x00, R.string.action_none);
 
         companion object {
             fun fromFunctionId(b: Byte): TouchAction {

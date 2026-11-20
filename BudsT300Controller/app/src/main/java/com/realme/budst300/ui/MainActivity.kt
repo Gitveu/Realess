@@ -37,12 +37,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.realme.budst300.BuildConfig
+import com.realme.budst300.R
 import com.realme.budst300.ble.BleConnectionState
 import com.realme.budst300.protocol.T300Protocol
 import com.realme.budst300.protocol.T300Protocol.AncMode
@@ -89,7 +92,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
-                    primary = Color(0xFFFFCC00),     // Жёлтый акцент Realme
+                    primary = Color(0xFFFFCC00),     // Yellow Realme accent
                     onPrimary = Color.Black,
                     surface = Color(0xFF1E1E1E),
                     background = Color(0xFF121212)
@@ -168,7 +171,7 @@ fun MainScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Realme Buds T300", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.app_name), fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
@@ -182,7 +185,7 @@ fun MainScreen(
                             viewModel.refreshKeySettings()
                             viewModel.refreshBattery()
                         }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Обновить состояние")
+                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh_state_desc))
                         }
                     }
                 }
@@ -198,7 +201,7 @@ fun MainScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Баннер отсутствия разрешений (если пользователь их ещё не дал)
+            // Permissions warning banner
             if (!hasPermissions) {
                 PermissionWarningCard(
                     onRequest = onRequestPermissions,
@@ -206,7 +209,7 @@ fun MainScreen(
                 )
             }
 
-            // Автоматическая карточка устройства и статуса
+            // Device status card
             StatusDeviceCard(
                 deviceStatus = deviceStatus,
                 connectionState = connectionState,
@@ -214,9 +217,9 @@ fun MainScreen(
                 onRetryConnect = { viewModel.manualReconnect() }
             )
 
-            // Секция уровня заряда
+            // Battery level section
             Text(
-                text = "Уровень заряда",
+                text = stringResource(R.string.section_battery),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
@@ -226,27 +229,27 @@ fun MainScreen(
             ) {
                 BatteryCard(
                     modifier = Modifier.weight(1f),
-                    title = "Левый",
+                    title = stringResource(R.string.battery_left),
                     battery = t300State.leftBattery,
                     icon = Icons.Default.Headphones
                 )
                 BatteryCard(
                     modifier = Modifier.weight(1f),
-                    title = "Кейс",
+                    title = stringResource(R.string.battery_case),
                     battery = t300State.caseBattery,
                     icon = Icons.Default.Inbox
                 )
                 BatteryCard(
                     modifier = Modifier.weight(1f),
-                    title = "Правый",
+                    title = stringResource(R.string.battery_right),
                     battery = t300State.rightBattery,
                     icon = Icons.Default.Headphones
                 )
             }
 
-            // Секция переключения режимов шумоподавления (ANC)
+            // ANC Section
             Text(
-                text = "Шумоподавление",
+                text = stringResource(R.string.section_anc),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
@@ -256,9 +259,9 @@ fun MainScreen(
                 onModeSelected = { viewModel.setAncMode(it) }
             )
 
-            // Секция звуковых эффектов (эквалайзер)
+            // Sound Effects (EQ) Section
             Text(
-                text = "Звуковые эффекты",
+                text = stringResource(R.string.section_eq),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
@@ -269,9 +272,9 @@ fun MainScreen(
                 onPresetSelected = { viewModel.setEqPreset(it) }
             )
 
-            // Секция настройки кнопок (жестов)
+            // Button Settings (Gestures) Section
             Text(
-                text = "Настройка кнопок",
+                text = stringResource(R.string.section_touch_settings),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
@@ -285,9 +288,9 @@ fun MainScreen(
                 }
             )
 
-            // Секция пространственного аудио
+            // Spatial Audio Section
             Text(
-                text = "Пространственное аудио",
+                text = stringResource(R.string.section_spatial_audio),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
@@ -299,9 +302,9 @@ fun MainScreen(
                 onToggleDemo = { viewModel.toggleDemoAudio() }
             )
 
-            // Секция «Другое» — Игровой режим
+            // Other - Game Mode Section
             Text(
-                text = "Другое",
+                text = stringResource(R.string.section_other),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
@@ -311,15 +314,27 @@ fun MainScreen(
                 onToggle = { viewModel.setGameMode(it) }
             )
 
-            // Консоль логов для живого наблюдения за протоколом
+            // Logs Console
             LogsConsole(
                 logs = logs,
                 onClearLogs = { viewModel.clearLogs() },
                 modifier = Modifier.fillMaxWidth()
             )
+
+            // Build version at the very bottom
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "build ${BuildConfig.VERSION_CODE}",
+                fontSize = 11.sp,
+                color = Color.DarkGray,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .navigationBarsPadding()
+                    .padding(bottom = 8.dp)
+            )
         }
 
-        // Диалог выбора действия для жеста
+        // Gesture Action Selection Dialog
         if (activeEditingGesture != null) {
             val (side, gesture) = activeEditingGesture!!
             val currentAction = t300State.touchSettings[Pair(side, gesture)]
@@ -349,14 +364,14 @@ fun PermissionWarningCard(onRequest: () -> Unit, onOpenSettings: () -> Unit) {
                 Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFFCC00))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Требуется доступ к Bluetooth",
+                    text = stringResource(R.string.perm_warning_title),
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFFFFCC00),
                     fontSize = 15.sp
                 )
             }
             Text(
-                text = "Приложению необходимы разрешения «Устройства поблизости» (BLUETOOTH_CONNECT), чтобы автоматически управлять наушниками.",
+                text = stringResource(R.string.perm_warning_message),
                 fontSize = 13.sp,
                 color = Color.LightGray
             )
@@ -365,10 +380,10 @@ fun PermissionWarningCard(onRequest: () -> Unit, onOpenSettings: () -> Unit) {
                     onClick = onRequest,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCC00))
                 ) {
-                    Text("Разрешить доступ", color = Color.Black)
+                    Text(stringResource(R.string.btn_grant_permissions), color = Color.Black)
                 }
                 OutlinedButton(onClick = onOpenSettings) {
-                    Text("Настройки", color = Color.White)
+                    Text(stringResource(R.string.btn_settings), color = Color.White)
                 }
             }
         }
@@ -396,25 +411,25 @@ fun StatusDeviceCard(
             ) {
                 Column {
                     Text(
-                        text = device?.name ?: "realme Buds T300",
+                        text = device?.name ?: stringResource(R.string.default_device_name),
                         fontWeight = FontWeight.Bold,
                         fontSize = 17.sp
                     )
                     Text(
-                        text = device?.address ?: "Поиск сопряжённого устройства...",
+                        text = device?.address ?: stringResource(R.string.status_searching_paired),
                         fontSize = 12.sp,
                         color = Color.Gray
                     )
                 }
 
-                // Индикатор состояния
+                // Status indicator
                 val (badgeText, badgeColor) = when {
-                    connectionState == BleConnectionState.CONNECTED -> "Подключено" to Color(0xFF4CAF50)
-                    connectionState == BleConnectionState.CONNECTING -> "Подключение..." to Color(0xFFFF9800)
-                    deviceStatus == SystemDeviceStatus.DEVICE_CONNECTED_OS -> "В сети (подключение)" to Color(0xFFFF9800)
-                    deviceStatus == SystemDeviceStatus.NO_PAIRED_DEVICE -> "Не сопряжено" to Color(0xFFE53935)
-                    deviceStatus == SystemDeviceStatus.NO_PERMISSIONS -> "Нет прав" to Color(0xFFE53935)
-                    else -> "В кейсе / отключено" to Color.Gray
+                    connectionState == BleConnectionState.CONNECTED -> stringResource(R.string.status_connected) to Color(0xFF4CAF50)
+                    connectionState == BleConnectionState.CONNECTING -> stringResource(R.string.status_connecting) to Color(0xFFFF9800)
+                    deviceStatus == SystemDeviceStatus.DEVICE_CONNECTED_OS -> stringResource(R.string.status_online_connecting) to Color(0xFFFF9800)
+                    deviceStatus == SystemDeviceStatus.NO_PAIRED_DEVICE -> stringResource(R.string.status_not_paired) to Color(0xFFE53935)
+                    deviceStatus == SystemDeviceStatus.NO_PERMISSIONS -> stringResource(R.string.status_no_permissions) to Color(0xFFE53935)
+                    else -> stringResource(R.string.status_in_case_disconnected) to Color.Gray
                 }
 
                 Badge(containerColor = badgeColor.copy(alpha = 0.2f)) {
@@ -427,26 +442,26 @@ fun StatusDeviceCard(
                 }
             }
 
-            // Пояснение статуса
+            // Status hint
             val hintText = when {
-                connectionState == BleConnectionState.CONNECTED -> "✓ Канал прямого управления Buds T300 активен."
-                connectionState == BleConnectionState.CONNECTING -> "Установка соединения с наушниками через SPP/GATT..."
-                deviceStatus == SystemDeviceStatus.DEVICE_DISCONNECTED -> "Наушники не подключены к телефону по Bluetooth. Откройте кейс или наденьте наушники."
-                deviceStatus == SystemDeviceStatus.NO_PAIRED_DEVICE -> "Buds T300 не найдены среди сопряжённых устройств в Android. Выполните сопряжение в настройках телефона."
-                deviceStatus == SystemDeviceStatus.NO_PERMISSIONS -> "Предоставьте доступ к Bluetooth выше."
-                else -> "Ожидание активности устройства..."
+                connectionState == BleConnectionState.CONNECTED -> stringResource(R.string.hint_link_active)
+                connectionState == BleConnectionState.CONNECTING -> stringResource(R.string.hint_connecting)
+                deviceStatus == SystemDeviceStatus.DEVICE_DISCONNECTED -> stringResource(R.string.hint_disconnected)
+                deviceStatus == SystemDeviceStatus.NO_PAIRED_DEVICE -> stringResource(R.string.hint_not_paired)
+                deviceStatus == SystemDeviceStatus.NO_PERMISSIONS -> stringResource(R.string.hint_no_permissions)
+                else -> stringResource(R.string.hint_waiting_activity)
             }
 
             Text(text = hintText, fontSize = 12.sp, color = Color(0xFFAAAAAA))
 
-            // Если наушники в сети, но сокет завис или отключился — возможность принудительного реконнекта
+            // Manual reconnect button when disconnected but OS-connected
             if (device != null && connectionState == BleConnectionState.DISCONNECTED && deviceStatus == SystemDeviceStatus.DEVICE_CONNECTED_OS) {
                 Button(
                     onClick = onRetryConnect,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Повторить подключение к наушникам", color = MaterialTheme.colorScheme.onPrimary)
+                    Text(stringResource(R.string.btn_reconnect), color = MaterialTheme.colorScheme.onPrimary)
                 }
             }
         }
@@ -479,7 +494,7 @@ fun BatteryCard(
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = if (battery.level >= 0) "${battery.level}%" else "—",
+                    text = if (battery.level >= 0) "${battery.level}%" else stringResource(R.string.dash),
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -536,7 +551,7 @@ fun AncModeSelector(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = mode.title,
+                        text = stringResource(mode.titleRes),
                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                         color = if (selected) MaterialTheme.colorScheme.onPrimary else if (enabled) Color.White else Color.Gray,
                         fontSize = 13.sp
@@ -589,7 +604,7 @@ fun EqPresetSelector(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = preset.title,
+                                text = stringResource(preset.titleRes),
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                                 color = if (selected) MaterialTheme.colorScheme.onPrimary else if (enabled) Color.White else Color.Gray,
                                 fontSize = 13.sp
@@ -617,7 +632,7 @@ fun EqPresetSelector(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Пользовательский: $activeCustomName (активен)",
+                            text = stringResource(R.string.eq_custom_active, activeCustomName),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary
@@ -648,7 +663,7 @@ fun ButtonSettingsCard(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Переключатель наушника (Левый / Правый)
+            // Earbud selector (Left / Right)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -669,7 +684,7 @@ fun ButtonSettingsCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "${side.title} наушник",
+                            text = stringResource(if (side == TouchSide.LEFT) R.string.touch_side_left_earbud else R.string.touch_side_right_earbud),
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                             color = if (isSelected) MaterialTheme.colorScheme.onPrimary else if (enabled) Color.White else Color.Gray,
                             fontSize = 13.sp
@@ -678,7 +693,7 @@ fun ButtonSettingsCard(
                 }
             }
 
-            // Список 3 жестов
+            // List of 3 gestures
             val gestures = listOf(
                 TouchGesture.DOUBLE_TAP,
                 TouchGesture.TRIPLE_TAP,
@@ -698,14 +713,14 @@ fun ButtonSettingsCard(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = gesture.title,
+                            text = stringResource(gesture.titleRes),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Medium,
                             color = if (enabled) Color.White else Color.Gray
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = action?.title ?: "—",
+                            text = if (action != null) stringResource(action.titleRes) else stringResource(R.string.dash),
                             fontSize = 12.sp,
                             color = when {
                                 !enabled -> Color.DarkGray
@@ -745,11 +760,14 @@ fun GestureActionSelectionDialog(
         list
     }
 
+    val sideName = stringResource(if (side == TouchSide.LEFT) R.string.touch_side_left_earbud else R.string.touch_side_right_earbud)
+    val gestureName = stringResource(gesture.titleRes)
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "${side.title} наушник: ${gesture.title}",
+                text = stringResource(R.string.dialog_gesture_title, sideName, gestureName),
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -781,7 +799,7 @@ fun GestureActionSelectionDialog(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = action.title,
+                            text = stringResource(action.titleRes),
                             fontSize = 14.sp,
                             color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
@@ -792,7 +810,7 @@ fun GestureActionSelectionDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Отмена", color = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.cancel), color = MaterialTheme.colorScheme.primary)
             }
         },
         containerColor = Color(0xFF242424)
@@ -820,19 +838,19 @@ fun SpatialAudioCard(
         ) {
             Column {
                 Text(
-                    text = "Пространственное аудио",
+                    text = stringResource(R.string.section_spatial_audio),
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Создаёт кинематографичный трёхмерный звук вокруг вас.",
+                    text = stringResource(R.string.spatial_audio_desc),
                     fontSize = 12.sp,
                     color = Color.Gray
                 )
             }
 
-            // Переключатель: [ Выкл. ] [ Включить ]
+            // Options: [ Off ] [ On ]
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -841,7 +859,10 @@ fun SpatialAudioCard(
                     .padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                val options = listOf(false to "Выкл.", true to "Включить")
+                val options = listOf(
+                    false to stringResource(R.string.spatial_audio_off),
+                    true to stringResource(R.string.spatial_audio_on)
+                )
                 options.forEach { (value, label) ->
                     val isSelected = (spatialAudio == value)
                     Box(
@@ -865,7 +886,7 @@ fun SpatialAudioCard(
 
             HorizontalDivider(color = Color(0xFF2C2C2C), thickness = 0.5.dp)
 
-            // Кнопка тестового звука из realme Link
+            // Demo sound button from realme Link
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -886,13 +907,13 @@ fun SpatialAudioCard(
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = if (isPlayingDemo) "Воспроизведение демо-звука..." else "Прослушать демо-звук (realme)",
+                            text = if (isPlayingDemo) stringResource(R.string.demo_audio_playing) else stringResource(R.string.demo_audio_play),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium,
                             color = if (isPlayingDemo) MaterialTheme.colorScheme.primary else Color.White
                         )
                         Text(
-                            text = if (spatialAudio == true) "Сэмпл: Пространственный 3D (fix)" else "Сэмпл: Обычный стерео (off)",
+                            text = if (spatialAudio == true) stringResource(R.string.demo_sample_spatial) else stringResource(R.string.demo_sample_stereo),
                             fontSize = 11.sp,
                             color = Color.Gray
                         )
@@ -901,7 +922,7 @@ fun SpatialAudioCard(
 
                 if (isPlayingDemo) {
                     Text(
-                        text = "Стоп",
+                        text = stringResource(R.string.demo_audio_stop),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -932,12 +953,12 @@ fun GameModeCard(
         ) {
             Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(
-                    text = "Игровой режим",
+                    text = stringResource(R.string.game_mode_title),
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp
                 )
                 Text(
-                    text = "Обеспечивает плавный игровой процесс с минимальной задержкой звука.",
+                    text = stringResource(R.string.game_mode_desc),
                     fontSize = 12.sp,
                     color = Color.Gray
                 )
@@ -968,7 +989,7 @@ fun LogsConsole(
     val context = LocalContext.current
     val listState = rememberLazyListState()
 
-    // Автоматическая прокрутка к последней строке логов
+    // Auto-scroll to the bottom of the log list
     LaunchedEffect(logs.size, isExpanded) {
         if (isExpanded && logs.isNotEmpty()) {
             listState.animateScrollToItem(logs.size - 1)
@@ -981,7 +1002,7 @@ fun LogsConsole(
         shape = RoundedCornerShape(14.dp)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            // Заголовок панели логов и кнопки управления
+            // Logs header and controls
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1000,7 +1021,7 @@ fun LogsConsole(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Протокольный лог",
+                        text = stringResource(R.string.logs_title),
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp,
                         color = Color.White
@@ -1015,46 +1036,50 @@ fun LogsConsole(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (isExpanded) {
-                        // Кнопка Скопировать
+                        // Copy button
                         IconButton(
                             onClick = {
                                 if (logs.isNotEmpty()) {
                                     clipboardManager.setText(AnnotatedString(logs.joinToString("\n")))
-                                    Toast.makeText(context, "Логи скопированы (${logs.size} строк)", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.logs_copied_toast, logs.size),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
                             },
                             modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ContentCopy,
-                                contentDescription = "Скопировать логи",
+                                contentDescription = stringResource(R.string.logs_copy_desc),
                                 tint = Color.LightGray,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
 
-                        // Кнопка Очистить
+                        // Clear button
                         IconButton(
                             onClick = onClearLogs,
                             modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.DeleteOutline,
-                                contentDescription = "Очистить логи",
+                                contentDescription = stringResource(R.string.logs_clear_desc),
                                 tint = Color.LightGray,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
                     }
 
-                    // Кнопка Свернуть / Развернуть
+                    // Collapse / Expand button
                     IconButton(
                         onClick = { isExpanded = !isExpanded },
                         modifier = Modifier.size(32.dp)
                     ) {
                         Icon(
                             imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = if (isExpanded) "Свернуть" else "Развернуть",
+                            contentDescription = if (isExpanded) stringResource(R.string.logs_collapse_desc) else stringResource(R.string.logs_expand_desc),
                             tint = Color.LightGray
                         )
                     }
@@ -1073,7 +1098,7 @@ fun LogsConsole(
                                 .height(80.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("Логи пусты", color = Color.DarkGray, fontSize = 12.sp)
+                            Text(stringResource(R.string.logs_empty), color = Color.DarkGray, fontSize = 12.sp)
                         }
                     } else {
                         Box(
@@ -1098,7 +1123,7 @@ fun LogsConsole(
                                             log.contains("RX") -> Color(0xFF81C784)
                                             log.contains("TX") -> Color(0xFF64B5F6)
                                             log.contains("✓") -> Color(0xFFFFD54F)
-                                            log.contains("Ошибка") || log.contains("недоступны") -> Color(0xFFE57373)
+                                            log.contains("Error") || log.contains("unavailable") || log.contains("Ошибка") || log.contains("недоступны") -> Color(0xFFE57373)
                                             else -> Color(0xFFB0BEC5)
                                         }
                                     )

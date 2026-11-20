@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App Name -->
+    <string name="app_name">realme Buds T300</string>
+
+    <!-- General / Symbols -->
+    <string name="dash">—</string>
+    <string name="cancel">Отмена</string>
+    <string name="refresh_state_desc">Обновить состояние</string>
+
+    <!-- Battery Section -->
+    <string name="section_battery">Уровень заряда</string>
+    <string name="battery_left">Левый</string>
+    <string name="battery_case">Кейс</string>
+    <string name="battery_right">Правый</string>
+
+    <!-- Status & Device Card -->
+    <string name="default_device_name">realme Buds T300</string>
+    <string name="status_searching_paired">Поиск сопряжённого устройства…</string>
+    <string name="status_connected">Подключено</string>
+    <string name="status_connecting">Подключение…</string>
+    <string name="status_online_connecting">В сети (подключение)</string>
+    <string name="status_not_paired">Не сопряжено</string>
+    <string name="status_no_permissions">Нет прав</string>
+    <string name="status_in_case_disconnected">В кейсе / отключено</string>
+
+    <string name="hint_link_active">✓ Канал прямого управления Buds T300 активен.</string>
+    <string name="hint_connecting">Установка соединения с наушниками через SPP/GATT…</string>
+    <string name="hint_disconnected">Наушники не подключены к телефону по Bluetooth. Откройте кейс или наденьте наушники.</string>
+    <string name="hint_not_paired">Buds T300 не найдены среди сопряжённых устройств в Android. Выполните сопряжение в настройках телефона.</string>
+    <string name="hint_no_permissions">Предоставьте доступ к Bluetooth выше.</string>
+    <string name="hint_waiting_activity">Ожидание активности устройства…</string>
+    <string name="btn_reconnect">Повторить подключение к наушникам</string>
+
+    <!-- Permissions Banner -->
+    <string name="perm_warning_title">Требуется доступ к Bluetooth</string>
+    <string name="perm_warning_message">Приложению необходимы разрешения «Устройства поблизости» (BLUETOOTH_CONNECT), чтобы автоматически управлять наушниками.</string>
+    <string name="btn_grant_permissions">Разрешить доступ</string>
+    <string name="btn_settings">Настройки</string>
+
+    <!-- Noise Cancellation (ANC) -->
+    <string name="section_anc">Шумоподавление</string>
+    <string name="anc_noise_reduction">Шумоподавление</string>
+    <string name="anc_off">Выкл.</string>
+    <string name="anc_transparency">Прозрачность</string>
+
+    <!-- Sound Effects (EQ) -->
+    <string name="section_eq">Звуковые эффекты</string>
+    <string name="eq_serenade">Серенада</string>
+    <string name="eq_original_sound">Оригинальный звук</string>
+    <string name="eq_pure_bass">Чистые басы</string>
+    <string name="eq_deep_bass">Глубокие басы</string>
+    <string name="eq_custom_active">Пользовательский: %s (активен)</string>
+
+    <!-- Button Settings (Gestures) -->
+    <string name="section_touch_settings">Настройка кнопок</string>
+    <string name="touch_side_left">Левый</string>
+    <string name="touch_side_right">Правый</string>
+    <string name="touch_side_left_earbud">Левый наушник</string>
+    <string name="touch_side_right_earbud">Правый наушник</string>
+    <string name="dialog_gesture_title">%1$s: %2$s</string>
+
+    <string name="gesture_double_tap">Двойное касание</string>
+    <string name="gesture_triple_tap">Тройное касание</string>
+    <string name="gesture_long_press">Касание и удержание</string>
+
+    <string name="action_play_pause">Воспроизведение / Пауза</string>
+    <string name="action_next_track">Следующая композиция</string>
+    <string name="action_prev_track">Предыдущая композиция</string>
+    <string name="action_voice_assistant">Голосовой помощник</string>
+    <string name="action_anc_toggle">Шумоподавление</string>
+    <string name="action_device_switch">Переключить устройства</string>
+    <string name="action_game_mode">Игровой режим</string>
+    <string name="action_volume_up">Увеличение громкости</string>
+    <string name="action_volume_down">Уменьшение громкости</string>
+    <string name="action_none">Нет действия</string>
+
+    <!-- Spatial Audio -->
+    <string name="section_spatial_audio">Пространственное аудио</string>
+    <string name="spatial_audio_desc">Создаёт кинематографичный трёхмерный звук вокруг вас.</string>
+    <string name="spatial_audio_off">Выкл.</string>
+    <string name="spatial_audio_on">Включить</string>
+    <string name="demo_audio_play">Прослушать демо-звук (realme)</string>
+    <string name="demo_audio_playing">Воспроизведение демо-звука…</string>
+    <string name="demo_audio_stop">Стоп</string>
+    <string name="demo_sample_spatial">Сэмпл: Пространственный 3D (fix)</string>
+    <string name="demo_sample_stereo">Сэмпл: Обычный стерео (off)</string>
+
+    <!-- Game Mode -->
+    <string name="section_other">Другое</string>
+    <string name="game_mode_title">Игровой режим</string>
+    <string name="game_mode_desc">Обеспечивает плавный игровой процесс с минимальной задержкой звука.</string>
+
+    <!-- Logs Console -->
+    <string name="logs_title">Протокольный лог</string>
+    <string name="logs_empty">Логи пусты</string>
+    <string name="logs_copy_desc">Скопировать логи</string>
+    <string name="logs_clear_desc">Очистить логи</string>
+    <string name="logs_collapse_desc">Свернуть</string>
+    <string name="logs_expand_desc">Развернуть</string>
+    <string name="logs_copied_toast">Логи скопированы (%d строк)</string>
+</resources>

@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App Name -->
+    <string name="app_name">realme Buds T300</string>
+
+    <!-- General / Symbols -->
+    <string name="dash">—</string>
+    <string name="cancel">Cancel</string>
+    <string name="refresh_state_desc">Refresh state</string>
+
+    <!-- Battery Section -->
+    <string name="section_battery">Battery level</string>
+    <string name="battery_left">Left</string>
+    <string name="battery_case">Case</string>
+    <string name="battery_right">Right</string>
+
+    <!-- Status & Device Card -->
+    <string name="default_device_name">realme Buds T300</string>
+    <string name="status_searching_paired">Searching for paired device…</string>
+    <string name="status_connected">Connected</string>
+    <string name="status_connecting">Connecting…</string>
+    <string name="status_online_connecting">Online (connecting)</string>
+    <string name="status_not_paired">Not paired</string>
+    <string name="status_no_permissions">No permissions</string>
+    <string name="status_in_case_disconnected">In case / disconnected</string>
+
+    <string name="hint_link_active">✓ Direct control link to Buds T300 is active.</string>
+    <string name="hint_connecting">Connecting to earbuds via SPP/GATT…</string>
+    <string name="hint_disconnected">Earbuds are not connected to phone via Bluetooth. Open the case or put on the earbuds.</string>
+    <string name="hint_not_paired">Buds T300 not found among paired devices in Android. Pair them in phone settings first.</string>
+    <string name="hint_no_permissions">Grant Bluetooth permissions above.</string>
+    <string name="hint_waiting_activity">Waiting for device activity…</string>
+    <string name="btn_reconnect">Reconnect to earbuds</string>
+
+    <!-- Permissions Banner -->
+    <string name="perm_warning_title">Bluetooth access required</string>
+    <string name="perm_warning_message">The app requires \"Nearby devices\" permissions (BLUETOOTH_CONNECT) to communicate with the earbuds.</string>
+    <string name="btn_grant_permissions">Allow access</string>
+    <string name="btn_settings">Settings</string>
+
+    <!-- Noise Cancellation (ANC) -->
+    <string name="section_anc">Noise cancellation</string>
+    <string name="anc_noise_reduction">Noise cancellation</string>
+    <string name="anc_off">Off</string>
+    <string name="anc_transparency">Transparency</string>
+
+    <!-- Sound Effects (EQ) -->
+    <string name="section_eq">Sound effects</string>
+    <string name="eq_serenade">Serenade</string>
+    <string name="eq_original_sound">Original sound</string>
+    <string name="eq_pure_bass">Pure bass</string>
+    <string name="eq_deep_bass">Deep bass</string>
+    <string name="eq_custom_active">Custom: %s (active)</string>
+
+    <!-- Button Settings (Gestures) -->
+    <string name="section_touch_settings">Button settings</string>
+    <string name="touch_side_left">Left</string>
+    <string name="touch_side_right">Right</string>
+    <string name="touch_side_left_earbud">Left earbud</string>
+    <string name="touch_side_right_earbud">Right earbud</string>
+    <string name="dialog_gesture_title">%1$s: %2$s</string>
+
+    <string name="gesture_double_tap">Double tap</string>
+    <string name="gesture_triple_tap">Triple tap</string>
+    <string name="gesture_long_press">Touch &amp; hold</string>
+
+    <string name="action_play_pause">Play / Pause</string>
+    <string name="action_next_track">Next track</string>
+    <string name="action_prev_track">Previous track</string>
+    <string name="action_voice_assistant">Voice assistant</string>
+    <string name="action_anc_toggle">Noise cancellation</string>
+    <string name="action_device_switch">Switch devices</string>
+    <string name="action_game_mode">Game mode</string>
+    <string name="action_volume_up">Volume up</string>
+    <string name="action_volume_down">Volume down</string>
+    <string name="action_none">None</string>
+
+    <!-- Spatial Audio -->
+    <string name="section_spatial_audio">Spatial audio</string>
+    <string name="spatial_audio_desc">Creates a cinematic 3D audio experience around you.</string>
+    <string name="spatial_audio_off">Off</string>
+    <string name="spatial_audio_on">On</string>
+    <string name="demo_audio_play">Play demo audio (realme)</string>
+    <string name="demo_audio_playing">Playing demo audio…</string>
+    <string name="demo_audio_stop">Stop</string>
+    <string name="demo_sample_spatial">Sample: Spatial 3D (fix)</string>
+    <string name="demo_sample_stereo">Sample: Standard stereo (off)</string>
+
+    <!-- Game Mode -->
+    <string name="section_other">Other</string>
+    <string name="game_mode_title">Game mode</string>
+    <string name="game_mode_desc">Provides smooth gameplay with ultra-low audio latency.</string>
+
+    <!-- Logs Console -->
+    <string name="logs_title">Protocol logs</string>
+    <string name="logs_empty">Logs are empty</string>
+    <string name="logs_copy_desc">Copy logs</string>
+    <string name="logs_clear_desc">Clear logs</string>
+    <string name="logs_collapse_desc">Collapse</string>
+    <string name="logs_expand_desc">Expand</string>
+    <string name="logs_copied_toast">Logs copied (%d lines)</string>
+</resources>
