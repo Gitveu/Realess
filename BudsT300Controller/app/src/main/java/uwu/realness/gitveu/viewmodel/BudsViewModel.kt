@@ -338,6 +338,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
             bleManager.refreshMultiConnectInfo()
             bleManager.refreshEq()
             bleManager.refreshKeySettings()
+            bleManager.refreshUseTime()
             bleManager.refreshBattery()
         }
     }

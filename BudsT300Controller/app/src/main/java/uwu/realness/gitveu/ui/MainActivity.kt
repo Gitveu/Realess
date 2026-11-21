@@ -41,6 +41,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -340,6 +342,14 @@ fun MainScreen(
                 )
             }
 
+            // Total Usage Time Statistics (L / R) from headset memory
+            if (t300State.leftUseTimeMinutes != null || t300State.rightUseTimeMinutes != null) {
+                UseTimeCard(
+                    leftMinutes = t300State.leftUseTimeMinutes,
+                    rightMinutes = t300State.rightUseTimeMinutes
+                )
+            }
+
             // Logs Console
             LogsConsole(
                 logs = logs,
@@ -468,9 +478,9 @@ fun StatusDeviceCard(
                 }
             }
 
-            // Status hint
+            // Status hint (hidden when connected)
             val hintText = when {
-                connectionState == BleConnectionState.CONNECTED -> stringResource(R.string.hint_link_active)
+                connectionState == BleConnectionState.CONNECTED -> null
                 connectionState == BleConnectionState.CONNECTING -> stringResource(R.string.hint_connecting)
                 deviceStatus == SystemDeviceStatus.DEVICE_DISCONNECTED -> stringResource(R.string.hint_disconnected)
                 deviceStatus == SystemDeviceStatus.NO_PAIRED_DEVICE -> stringResource(R.string.hint_not_paired)
@@ -478,7 +488,9 @@ fun StatusDeviceCard(
                 else -> stringResource(R.string.hint_waiting_activity)
             }
 
-            Text(text = hintText, fontSize = 12.sp, color = Color(0xFFAAAAAA))
+            if (hintText != null) {
+                Text(text = hintText, fontSize = 12.sp, color = Color(0xFFAAAAAA))
+            }
 
             // Manual reconnect button when disconnected but OS-connected
             if (device != null && connectionState == BleConnectionState.DISCONNECTED && deviceStatus == SystemDeviceStatus.DEVICE_CONNECTED_OS) {
@@ -567,20 +579,26 @@ fun AncModeSelector(
         ) {
             AncMode.entries.forEach { mode ->
                 val selected = mode == currentMode
+                val itemWeight = when (mode) {
+                    AncMode.NOISE_REDUCTION -> 1.3f
+                    AncMode.OFF -> 0.65f
+                    AncMode.TRANSPARENCY -> 1.05f
+                }
                 Box(
                     modifier = Modifier
-                        .weight(1f)
+                        .weight(itemWeight)
                         .clip(RoundedCornerShape(10.dp))
                         .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
                         .clickable(enabled = enabled) { onModeSelected(mode) }
-                        .padding(vertical = 12.dp),
+                        .padding(vertical = 12.dp, horizontal = 4.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
+                    AutoSizeSingleLineText(
                         text = stringResource(mode.titleRes),
                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                         color = if (selected) MaterialTheme.colorScheme.onPrimary else if (enabled) Color.White else Color.Gray,
-                        fontSize = 13.sp
+                        maxFontSize = 13.sp,
+                        minFontSize = 9.sp
                     )
                 }
             }
@@ -1121,6 +1139,122 @@ fun DualConnectionCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun AutoSizeSingleLineText(
+    text: String,
+    color: Color,
+    fontWeight: FontWeight = FontWeight.Normal,
+    maxFontSize: TextUnit = 13.sp,
+    minFontSize: TextUnit = 9.sp,
+    modifier: Modifier = Modifier
+) {
+    var fontSize by remember(text, maxFontSize) { mutableStateOf(maxFontSize) }
+    Text(
+        text = text,
+        color = color,
+        fontWeight = fontWeight,
+        fontSize = fontSize,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier,
+        onTextLayout = { result ->
+            if (result.hasVisualOverflow && fontSize.value > minFontSize.value) {
+                fontSize = (fontSize.value - 0.5f).coerceAtLeast(minFontSize.value).sp
+            }
+        }
+    )
+}
+
+@Composable
+fun UseTimeCard(
+    leftMinutes: Int?,
+    rightMinutes: Int?
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.use_time_total),
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp,
+                color = Color.LightGray
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (leftMinutes != null) {
+                    UseTimeSideItem(
+                        badge = "L",
+                        minutes = leftMinutes,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                if (rightMinutes != null) {
+                    UseTimeSideItem(
+                        badge = "R",
+                        minutes = rightMinutes,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UseTimeSideItem(
+    badge: String,
+    minutes: Int,
+    modifier: Modifier = Modifier
+) {
+    val hours = minutes / 60
+    val mins = minutes % 60
+    val formatted = if (hours > 0) {
+        stringResource(R.string.use_time_format_hm, hours, mins)
+    } else {
+        stringResource(R.string.use_time_format_m, mins)
+    }
+
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(24.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF2C2C2C)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = badge,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+        }
+        Text(
+            text = formatted,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = Color.White,
+            maxLines = 1
+        )
     }
 }
 

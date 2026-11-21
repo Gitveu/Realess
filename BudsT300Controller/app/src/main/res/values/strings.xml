@@ -104,6 +104,11 @@
     <string name="dual_connection_device_connected">Connected</string>
     <string name="dual_connection_device_disconnected">Disconnected</string>
 
+    <!-- Usage Time Statistics -->
+    <string name="use_time_total">Total usage</string>
+    <string name="use_time_format_hm">%1$dh %2$dm</string>
+    <string name="use_time_format_m">%1$dm</string>
+
     <!-- Logs Console -->
     <string name="logs_title">Protocol logs</string>
     <string name="logs_empty">Logs are empty</string>

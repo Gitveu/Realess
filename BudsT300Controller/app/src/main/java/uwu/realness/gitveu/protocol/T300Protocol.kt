@@ -37,6 +37,8 @@ object T300Protocol {
     const val CMD_MULTI_CONNECT_INFO_RSP: Int = 0x8112 // 33042 decimal
     const val CMD_ALL_EQ_REQ: Int = 0x0122       // 290 decimal (Запрос пользовательских кривых EQ)
     const val CMD_ALL_EQ_RSP: Int = 0x8122       // 33058 decimal
+    const val CMD_USE_TIME_REQ: Int = 0x0128     // 296 decimal (Запрос статистики использования L/R)
+    const val CMD_USE_TIME_RSP: Int = 0x8128     // 33064 decimal
     const val CMD_KEY_FUNCTION_REQ: Int = 0x0108     // 264 decimal (Запрос настроек кнопок)
     const val CMD_KEY_FUNCTION_RSP: Int = 0x8108     // 33032 decimal
     const val CMD_KEY_FUNCTION_SET: Int = 0x0401     // 1025 decimal (Установка настроек кнопок)
@@ -199,6 +201,8 @@ object T300Protocol {
         val dynamicAudio: Boolean? = null,
         val dualConnection: Boolean? = null,
         val connectedDevices: List<ConnectedDeviceInfo> = emptyList(),
+        val leftUseTimeMinutes: Int? = null,
+        val rightUseTimeMinutes: Int? = null,
         val eqPreset: EqPreset? = null,
         val activeCustomEqName: String? = null,
         val touchSettings: Map<Pair<TouchSide, TouchGesture>, TouchAction> = emptyMap()
@@ -738,6 +742,44 @@ object T300Protocol {
             result.add(ConnectedDeviceInfo(mac, name, connectState, flag))
             val extraSkip = (entryLen - nameLen - 3).coerceAtLeast(0)
             offset = nameEnd + extraSkip
+        }
+        return result
+    }
+
+    /**
+     * Запрос статистики общего времени использования наушников (Opcode 0x0128 / 296).
+     * Payload: пустой.
+     */
+    fun buildUseTimeRequestFrame(address: Byte = DEVICE_ADDRESS_DEFAULT): ByteArray =
+        Frame(CMD_USE_TIME_REQ, address, ByteArray(0)).toByteArray()
+
+    /**
+     * Парсинг ответа времени использования наушников (Opcode 0x8128 / 33064).
+     * Формат по CommandUtil.o(1, bArrE) и UseTimeInfo(offset, bArr):
+     *   [0] status (0x00 = Success)
+     *   [1] count (N)
+     *   Далее N записей по 5 байт:
+     *     [0] roleByte (1 = Left, 2 = Right, 3 = Case)
+     *     [1..4] totalMinutes (uint32 little-endian)
+     */
+    fun parseUseTimePayload(p: ByteArray): Map<ComponentRole, Int>? {
+        if (p.size < 2 || p[0].toInt() != 0) return null
+        val count = p[1].toInt() and 0xFF
+        if (count == 0 || p.size < 2 + count * 5) return null
+
+        val result = mutableMapOf<ComponentRole, Int>()
+        var offset = 2
+        for (i in 0 until count) {
+            val roleId = p[offset].toInt() and 0xFF
+            val minutes = (p[offset + 1].toInt() and 0xFF) or
+                ((p[offset + 2].toInt() and 0xFF) shl 8) or
+                ((p[offset + 3].toInt() and 0xFF) shl 16) or
+                ((p[offset + 4].toInt() and 0xFF) shl 24)
+            val role = ComponentRole.fromId(roleId)
+            if (role != null) {
+                result[role] = minutes
+            }
+            offset += 5
         }
         return result
     }

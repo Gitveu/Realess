@@ -428,6 +428,15 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
+     * Request total usage time for Left/Right earbuds (Opcode 0x0128)
+     */
+    fun refreshUseTime() {
+        val frame = T300Protocol.buildUseTimeRequestFrame()
+        log("TX UseTime Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+    }
+
+    /**
      * Request current EQ preset (Opcode 0x010F)
      */
     fun refreshEq() {
@@ -568,6 +577,8 @@ class T300BleManager(private val context: Context) {
             refreshBattery()
             delay(80)
             refreshKeySettings()
+            delay(80)
+            refreshUseTime()
             delay(80)
             registerNotifications()
             startPolling()
@@ -814,6 +825,19 @@ class T300BleManager(private val context: Context) {
                 if (devices != null) {
                     log("RX MultiConnect Devices: ${devices.map { "${it.name} (${it.mac}, state=${it.connectState})" }}")
                     _t300State.value = _t300State.value.copy(connectedDevices = devices)
+                }
+            }
+            T300Protocol.CMD_USE_TIME_RSP -> {
+                log("RX $hexCmd [$hexPayload]")
+                val useTimes = T300Protocol.parseUseTimePayload(frame.payload)
+                if (useTimes != null) {
+                    val leftMin = useTimes[ComponentRole.LEFT_EAR]
+                    val rightMin = useTimes[ComponentRole.RIGHT_EAR]
+                    log("RX UseTime: L=${leftMin ?: -1}m, R=${rightMin ?: -1}m")
+                    _t300State.value = _t300State.value.copy(
+                        leftUseTimeMinutes = leftMin ?: _t300State.value.leftUseTimeMinutes,
+                        rightUseTimeMinutes = rightMin ?: _t300State.value.rightUseTimeMinutes
+                    )
                 }
             }
             T300Protocol.CMD_NOTIFICATION_REGISTER_RSP -> {
