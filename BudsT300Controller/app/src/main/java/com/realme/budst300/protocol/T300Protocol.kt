@@ -33,6 +33,8 @@ object T300Protocol {
     const val CMD_SWITCH_FEATURE_RSP: Int = 0x810D // 33037 decimal
     const val CMD_EQ_REQ: Int = 0x010F           // 271 decimal (Запрос пресета эквалайзера)
     const val CMD_EQ_RSP: Int = 0x810F           // 33039 decimal
+    const val CMD_MULTI_CONNECT_INFO_REQ: Int = 0x0112 // 274 decimal (Запрос списка подключённых устройств)
+    const val CMD_MULTI_CONNECT_INFO_RSP: Int = 0x8112 // 33042 decimal
     const val CMD_ALL_EQ_REQ: Int = 0x0122       // 290 decimal (Запрос пользовательских кривых EQ)
     const val CMD_ALL_EQ_RSP: Int = 0x8122       // 33058 decimal
     const val CMD_KEY_FUNCTION_REQ: Int = 0x0108     // 264 decimal (Запрос настроек кнопок)
@@ -51,9 +53,13 @@ object T300Protocol {
     const val CMD_NOTIFICATION: Int = 0x8400     // Асинхронные уведомления от устройства
 
     // Идентификаторы переключателей (SwitchFeature)
-    const val FEATURE_ID_GAME_MODE: Byte = 0x06     // 6 decimal (Игровой режим)
-    const val FEATURE_ID_SPATIAL_AUDIO: Byte = 0x1B // 27 decimal (Пространственное аудио / 3D Sound)
+    const val FEATURE_ID_GAME_MODE: Byte = 0x06          // 6 decimal (Игровой режим)
+    const val FEATURE_ID_DUAL_CONNECTION: Byte = 0x11    // 17 decimal (Подключение к двум устройствам)
+    const val FEATURE_ID_HIGH_QUALITY_AUDIO: Byte = 0x18 // 24 decimal (Звук высокой четкости / LDAC)
+    const val FEATURE_ID_SPATIAL_AUDIO: Byte = 0x1B      // 27 decimal (Пространственное аудио / 3D Sound)
+    const val FEATURE_ID_DYNAMIC_AUDIO: Byte = 0x1D      // 29 decimal (Динамическое аудио)
     const val EVENT_TYPE_GAME_MODE: Byte = 0x05
+    const val EVENT_TYPE_MULTI_CONNECT: Byte = 0x06
 
     // CCCD UUID для включения notify/indicate
     const val CCCD_UUID_STRING = "00002902-0000-1000-8000-00805f9b34fb"
@@ -173,6 +179,15 @@ object T300Protocol {
         val isCharging: Boolean
     )
 
+    data class ConnectedDeviceInfo(
+        val mac: String,
+        val name: String,
+        val connectState: Int,
+        val flag: Int
+    ) {
+        val isConnected: Boolean get() = connectState != 0
+    }
+
     data class T300State(
         val leftBattery: BatteryInfo = BatteryInfo(ComponentRole.LEFT_EAR, -1, false),
         val rightBattery: BatteryInfo = BatteryInfo(ComponentRole.RIGHT_EAR, -1, false),
@@ -180,6 +195,10 @@ object T300Protocol {
         val ancMode: AncMode? = null,
         val gameMode: Boolean? = null,
         val spatialAudio: Boolean? = null,
+        val highQualityAudio: Boolean? = null,
+        val dynamicAudio: Boolean? = null,
+        val dualConnection: Boolean? = null,
+        val connectedDevices: List<ConnectedDeviceInfo> = emptyList(),
         val eqPreset: EqPreset? = null,
         val activeCustomEqName: String? = null,
         val touchSettings: Map<Pair<TouchSide, TouchGesture>, TouchAction> = emptyMap()
@@ -672,5 +691,54 @@ object T300Protocol {
     fun parseKeyFunctionSetResponse(p: ByteArray): Boolean {
         if (p.isEmpty()) return false
         return p[0].toInt() == 0
+    }
+
+    /**
+     * Запрос списка подключённых устройств при Dual Device Connection (Opcode 0x0112).
+     * Payload: пустой.
+     */
+    fun buildMultiConnectInfoRequestFrame(address: Byte = DEVICE_ADDRESS_DEFAULT): ByteArray =
+        Frame(CMD_MULTI_CONNECT_INFO_REQ, address, ByteArray(0)).toByteArray()
+
+    /**
+     * Парсинг ответа / события списка подключённых устройств (Opcode 0x8112 / Event 0x06).
+     * Формат по CommandUtil.h(String, int, byte[]):
+     *   [startOffset] count (N)
+     *   Для каждого устройства:
+     *     6 байт MAC
+     *     1 байт entryLen (длина остатка записи после entryLen)
+     *     1 байт connectState
+     *     1 байт flag
+     *     1 байт nameLen
+     *     nameLen байт UTF-8 имя устройства
+     *     (entryLen - nameLen - 3) байт резерв/пропуск
+     */
+    fun parseMultiConnectInfoPayload(p: ByteArray, hasStatusByte: Boolean = true): List<ConnectedDeviceInfo>? {
+        val countOffset = if (hasStatusByte) 1 else 0
+        if (hasStatusByte && (p.isEmpty() || p[0].toInt() != 0)) return null
+        if (p.size <= countOffset) return null
+
+        val count = p[countOffset].toInt() and 0xFF
+        if (count == 0) return emptyList()
+
+        val result = mutableListOf<ConnectedDeviceInfo>()
+        var offset = countOffset + 1
+        for (i in 0 until count) {
+            if (offset + 10 > p.size) break
+            val macBytes = p.copyOfRange(offset, offset + 6)
+            val mac = macBytes.reversedArray().joinToString(":") { "%02X".format(it) }
+            val entryLen = p[offset + 6].toInt() and 0xFF
+            val connectState = p[offset + 7].toInt() and 0xFF
+            val flag = p[offset + 8].toInt() and 0xFF
+            val nameLen = p[offset + 9].toInt() and 0xFF
+            val nameStart = offset + 10
+            val nameEnd = nameStart + nameLen
+            if (nameEnd > p.size) break
+            val name = String(p, nameStart, nameLen, Charsets.UTF_8).trimEnd('\u0000')
+            result.add(ConnectedDeviceInfo(mac, name, connectState, flag))
+            val extraSkip = (entryLen - nameLen - 3).coerceAtLeast(0)
+            offset = nameEnd + extraSkip
+        }
+        return result
     }
 }

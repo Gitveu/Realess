@@ -91,6 +91,19 @@
     <string name="game_mode_title">Game mode</string>
     <string name="game_mode_desc">Provides smooth gameplay with ultra-low audio latency.</string>
 
+    <!-- High-Definition Audio (LDAC) & Dynamic Audio (T200) -->
+    <string name="high_quality_audio_title">High-definition audio</string>
+    <string name="high_quality_audio_desc">LDAC codec for superior audio quality.</string>
+    <string name="dynamic_audio_title">Dynamic audio</string>
+    <string name="dynamic_audio_desc">Dynamically enhances bass and sound depth.</string>
+
+    <!-- Dual-Device Connection (T200) -->
+    <string name="dual_connection_title">Dual-device connection</string>
+    <string name="dual_connection_desc">Connect to 2 devices simultaneously and switch seamlessly between them.</string>
+    <string name="dual_connection_history">Connection history</string>
+    <string name="dual_connection_device_connected">Connected</string>
+    <string name="dual_connection_device_disconnected">Disconnected</string>
+
     <!-- Logs Console -->
     <string name="logs_title">Protocol logs</string>
     <string name="logs_empty">Logs are empty</string>

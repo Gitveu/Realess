@@ -91,6 +91,19 @@
     <string name="game_mode_title">Игровой режим</string>
     <string name="game_mode_desc">Обеспечивает плавный игровой процесс с минимальной задержкой звука.</string>
 
+    <!-- High-Definition Audio (LDAC) & Dynamic Audio (T200) -->
+    <string name="high_quality_audio_title">Звук высокой чёткости</string>
+    <string name="high_quality_audio_desc">Кодек LDAC, обеспечивающий превосходное качество звука.</string>
+    <string name="dynamic_audio_title">Динамическое аудио</string>
+    <string name="dynamic_audio_desc">Динамически усиливает басы и глубину звучания.</string>
+
+    <!-- Dual-Device Connection (T200) -->
+    <string name="dual_connection_title">Подключение к двум устройствам</string>
+    <string name="dual_connection_desc">Подключите одновременно 2 устройства и легко переключайтесь между ними.</string>
+    <string name="dual_connection_history">История подключений</string>
+    <string name="dual_connection_device_connected">Подключено</string>
+    <string name="dual_connection_device_disconnected">Отключено</string>
+
     <!-- Logs Console -->
     <string name="logs_title">Протокольный лог</string>
     <string name="logs_empty">Логи пусты</string>

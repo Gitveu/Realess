@@ -167,24 +167,18 @@ fun MainScreen(
 
     var selectedTouchSide by remember { mutableStateOf(TouchSide.LEFT) }
     var activeEditingGesture by remember { mutableStateOf<Pair<TouchSide, TouchGesture>?>(null) }
+    val isT200 = detectedDevice?.name?.contains("T200", ignoreCase = true) == true
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.app_name), fontWeight = FontWeight.Bold) },
+                title = { Text(detectedDevice?.name ?: stringResource(R.string.app_name), fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
                 actions = {
                     if (connectionState == BleConnectionState.CONNECTED) {
-                        IconButton(onClick = {
-                            viewModel.refreshAncState()
-                            viewModel.refreshGameMode()
-                            viewModel.refreshSpatialAudio()
-                            viewModel.refreshEq()
-                            viewModel.refreshKeySettings()
-                            viewModel.refreshBattery()
-                        }) {
+                        IconButton(onClick = { viewModel.refreshAll() }) {
                             Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh_state_desc))
                         }
                     }
@@ -302,7 +296,29 @@ fun MainScreen(
                 onToggleDemo = { viewModel.toggleDemoAudio() }
             )
 
-            // Other - Game Mode Section
+            // High-Definition Audio (LDAC) — shown when supported (e.g. Buds T200)
+            if (t300State.highQualityAudio != null || isT200) {
+                SwitchFeatureCard(
+                    title = stringResource(R.string.high_quality_audio_title),
+                    description = stringResource(R.string.high_quality_audio_desc),
+                    checked = t300State.highQualityAudio,
+                    enabled = connectionState == BleConnectionState.CONNECTED,
+                    onToggle = { viewModel.setHighQualityAudio(it) }
+                )
+            }
+
+            // Dynamic Audio — shown when supported (e.g. Buds T200)
+            if (t300State.dynamicAudio != null || isT200) {
+                SwitchFeatureCard(
+                    title = stringResource(R.string.dynamic_audio_title),
+                    description = stringResource(R.string.dynamic_audio_desc),
+                    checked = t300State.dynamicAudio,
+                    enabled = connectionState == BleConnectionState.CONNECTED,
+                    onToggle = { viewModel.setDynamicAudio(it) }
+                )
+            }
+
+            // Other - Game Mode & Dual-Device Connection Section
             Text(
                 text = stringResource(R.string.section_other),
                 style = MaterialTheme.typography.titleMedium,
@@ -313,6 +329,16 @@ fun MainScreen(
                 enabled = connectionState == BleConnectionState.CONNECTED,
                 onToggle = { viewModel.setGameMode(it) }
             )
+
+            // Dual-Device Connection — shown when supported (e.g. Buds T200)
+            if (t300State.dualConnection != null || isT200) {
+                DualConnectionCard(
+                    dualConnection = t300State.dualConnection,
+                    connectedDevices = t300State.connectedDevices,
+                    enabled = connectionState == BleConnectionState.CONNECTED,
+                    onToggle = { viewModel.setDualConnection(it) }
+                )
+            }
 
             // Logs Console
             LogsConsole(
@@ -939,6 +965,23 @@ fun GameModeCard(
     enabled: Boolean,
     onToggle: (Boolean) -> Unit
 ) {
+    SwitchFeatureCard(
+        title = stringResource(R.string.game_mode_title),
+        description = stringResource(R.string.game_mode_desc),
+        checked = gameMode,
+        enabled = enabled,
+        onToggle = onToggle
+    )
+}
+
+@Composable
+fun SwitchFeatureCard(
+    title: String,
+    description: String,
+    checked: Boolean?,
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -953,19 +996,19 @@ fun GameModeCard(
         ) {
             Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(
-                    text = stringResource(R.string.game_mode_title),
+                    text = title,
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp
                 )
                 Text(
-                    text = stringResource(R.string.game_mode_desc),
+                    text = description,
                     fontSize = 12.sp,
                     color = Color.Gray
                 )
             }
             Switch(
-                checked = gameMode ?: false,
-                enabled = enabled && gameMode != null,
+                checked = checked ?: false,
+                enabled = enabled && checked != null,
                 onCheckedChange = { onToggle(it) },
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Color.Black,
@@ -974,6 +1017,109 @@ fun GameModeCard(
                     uncheckedTrackColor = Color(0xFF2C2C2C)
                 )
             )
+        }
+    }
+}
+
+@Composable
+fun DualConnectionCard(
+    dualConnection: Boolean?,
+    connectedDevices: List<T300Protocol.ConnectedDeviceInfo>,
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text(
+                        text = stringResource(R.string.dual_connection_title),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                    Text(
+                        text = stringResource(R.string.dual_connection_desc),
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
+                }
+                Switch(
+                    checked = dualConnection ?: false,
+                    enabled = enabled && dualConnection != null,
+                    onCheckedChange = { onToggle(it) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.Black,
+                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                        uncheckedThumbColor = Color.Gray,
+                        uncheckedTrackColor = Color(0xFF2C2C2C)
+                    )
+                )
+            }
+
+            if (connectedDevices.isNotEmpty()) {
+                HorizontalDivider(color = Color(0xFF2C2C2C), thickness = 0.5.dp)
+                Text(
+                    text = stringResource(R.string.dual_connection_history),
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    connectedDevices.forEach { dev ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Smartphone,
+                                    contentDescription = null,
+                                    tint = if (dev.isConnected) MaterialTheme.colorScheme.primary else Color.Gray,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = dev.name.ifBlank { dev.mac },
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = dev.mac,
+                                        fontSize = 11.sp,
+                                        color = Color.Gray
+                                    )
+                                }
+                            }
+                            Text(
+                                text = stringResource(
+                                    if (dev.isConnected) R.string.dual_connection_device_connected
+                                    else R.string.dual_connection_device_disconnected
+                                ),
+                                fontSize = 12.sp,
+                                color = if (dev.isConnected) Color(0xFF4CAF50) else Color.Gray
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

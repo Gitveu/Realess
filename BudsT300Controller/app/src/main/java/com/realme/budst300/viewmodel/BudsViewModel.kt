@@ -204,6 +204,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         if (device == null) return false
         val name = device.name ?: ""
         return name.contains("T300", ignoreCase = true) ||
+               name.contains("T200", ignoreCase = true) ||
                name.contains("Buds", ignoreCase = true) ||
                name.contains("realme", ignoreCase = true)
     }
@@ -251,6 +252,34 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refreshSpatialAudio() {
         bleManager.refreshSpatialAudio()
+    }
+
+    fun setHighQualityAudio(enabled: Boolean) {
+        bleManager.setHighQualityAudio(enabled)
+    }
+
+    fun refreshHighQualityAudio() {
+        bleManager.refreshHighQualityAudio()
+    }
+
+    fun setDynamicAudio(enabled: Boolean) {
+        bleManager.setDynamicAudio(enabled)
+    }
+
+    fun refreshDynamicAudio() {
+        bleManager.refreshDynamicAudio()
+    }
+
+    fun setDualConnection(enabled: Boolean) {
+        bleManager.setDualConnection(enabled)
+    }
+
+    fun refreshDualConnection() {
+        bleManager.refreshDualConnection()
+    }
+
+    fun refreshMultiConnectInfo() {
+        bleManager.refreshMultiConnectInfo()
     }
 
     fun toggleDemoAudio() {
@@ -303,6 +332,10 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
             bleManager.refreshAncState()
             bleManager.refreshGameMode()
             bleManager.refreshSpatialAudio()
+            bleManager.refreshHighQualityAudio()
+            bleManager.refreshDynamicAudio()
+            bleManager.refreshDualConnection()
+            bleManager.refreshMultiConnectInfo()
             bleManager.refreshEq()
             bleManager.refreshKeySettings()
             bleManager.refreshBattery()

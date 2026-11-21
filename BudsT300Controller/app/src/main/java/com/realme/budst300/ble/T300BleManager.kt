@@ -100,6 +100,20 @@ class T300BleManager(private val context: Context) {
             delay(80)
             refreshSpatialAudio()
             delay(80)
+            if (_t300State.value.highQualityAudio != null) {
+                refreshHighQualityAudio()
+                delay(80)
+            }
+            if (_t300State.value.dynamicAudio != null) {
+                refreshDynamicAudio()
+                delay(80)
+            }
+            if (_t300State.value.dualConnection != null) {
+                refreshDualConnection()
+                delay(80)
+                refreshMultiConnectInfo()
+                delay(80)
+            }
             refreshEq()
             delay(80)
             refreshBattery()
@@ -277,6 +291,7 @@ class T300BleManager(private val context: Context) {
 
         activeTransport = ActiveTransport.NONE
         _connectionState.value = BleConnectionState.DISCONNECTED
+        _t300State.value = T300Protocol.T300State()
         log("Connection closed")
     }
 
@@ -344,6 +359,72 @@ class T300BleManager(private val context: Context) {
         log("TX SpatialAudio [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
         _t300State.value = _t300State.value.copy(spatialAudio = enabled)
+    }
+
+    /**
+     * Request High-Definition Audio / LDAC state (Feature 24 / 0x18)
+     */
+    fun refreshHighQualityAudio() {
+        val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_HIGH_QUALITY_AUDIO)
+        log("TX HighQualityAudio Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+    }
+
+    /**
+     * Set High-Definition Audio / LDAC (ON / OFF)
+     */
+    fun setHighQualityAudio(enabled: Boolean) {
+        val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_HIGH_QUALITY_AUDIO, enabled)
+        log("TX HighQualityAudio [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+        _t300State.value = _t300State.value.copy(highQualityAudio = enabled)
+    }
+
+    /**
+     * Request Dynamic Audio state (Feature 29 / 0x1D)
+     */
+    fun refreshDynamicAudio() {
+        val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_DYNAMIC_AUDIO)
+        log("TX DynamicAudio Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+    }
+
+    /**
+     * Set Dynamic Audio (ON / OFF)
+     */
+    fun setDynamicAudio(enabled: Boolean) {
+        val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_DYNAMIC_AUDIO, enabled)
+        log("TX DynamicAudio [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+        _t300State.value = _t300State.value.copy(dynamicAudio = enabled)
+    }
+
+    /**
+     * Request Dual-Device Connection state (Feature 17 / 0x11)
+     */
+    fun refreshDualConnection() {
+        val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_DUAL_CONNECTION)
+        log("TX DualConnection Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+    }
+
+    /**
+     * Set Dual-Device Connection (ON / OFF)
+     */
+    fun setDualConnection(enabled: Boolean) {
+        val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_DUAL_CONNECTION, enabled)
+        log("TX DualConnection [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+        _t300State.value = _t300State.value.copy(dualConnection = enabled)
+    }
+
+    /**
+     * Request Multi-Connect device list (Opcode 0x0112)
+     */
+    fun refreshMultiConnectInfo() {
+        val frame = T300Protocol.buildMultiConnectInfoRequestFrame()
+        log("TX MultiConnect Info Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
     }
 
     /**
@@ -472,6 +553,14 @@ class T300BleManager(private val context: Context) {
             delay(80)
             refreshSpatialAudio()
             delay(80)
+            refreshHighQualityAudio()
+            delay(80)
+            refreshDynamicAudio()
+            delay(80)
+            refreshDualConnection()
+            delay(80)
+            refreshMultiConnectInfo()
+            delay(80)
             refreshEq()
             delay(80)
             refreshAllEq()
@@ -486,8 +575,8 @@ class T300BleManager(private val context: Context) {
     }
 
     private fun registerNotifications() {
-        // Подписка на асинхронные события от наушников (3 = ANC, 5 = GameMode, 1 = батарея, 2 = статус)
-        for (eventId in byteArrayOf(0x03, 0x05, 0x01, 0x02)) {
+        // Subscribe to async device events (3 = ANC, 5 = GameMode, 1 = Battery, 2 = Status, 6 = MultiConnect)
+        for (eventId in byteArrayOf(0x03, 0x05, 0x01, 0x02, 0x06)) {
             val frame = T300Protocol.buildRegisterNotificationFrame(eventId)
             sendData(frame)
         }
@@ -504,6 +593,18 @@ class T300BleManager(private val context: Context) {
                 delay(60)
                 refreshSpatialAudio()
                 delay(60)
+                if (_t300State.value.highQualityAudio != null) {
+                    refreshHighQualityAudio()
+                    delay(60)
+                }
+                if (_t300State.value.dynamicAudio != null) {
+                    refreshDynamicAudio()
+                    delay(60)
+                }
+                if (_t300State.value.dualConnection != null) {
+                    refreshDualConnection()
+                    delay(60)
+                }
                 refreshEq()
                 delay(60)
                 refreshBattery()
@@ -677,6 +778,21 @@ class T300BleManager(private val context: Context) {
                     log("RX SpatialAudio State: ${if (sa) "ON" else "OFF"}")
                     _t300State.value = _t300State.value.copy(spatialAudio = sa)
                 }
+                val hq = T300Protocol.parseSwitchFeaturePayload(frame.payload, T300Protocol.FEATURE_ID_HIGH_QUALITY_AUDIO)
+                if (hq != null) {
+                    log("RX HighQualityAudio (LDAC) State: ${if (hq) "ON" else "OFF"}")
+                    _t300State.value = _t300State.value.copy(highQualityAudio = hq)
+                }
+                val da = T300Protocol.parseSwitchFeaturePayload(frame.payload, T300Protocol.FEATURE_ID_DYNAMIC_AUDIO)
+                if (da != null) {
+                    log("RX DynamicAudio State: ${if (da) "ON" else "OFF"}")
+                    _t300State.value = _t300State.value.copy(dynamicAudio = da)
+                }
+                val dc = T300Protocol.parseSwitchFeaturePayload(frame.payload, T300Protocol.FEATURE_ID_DUAL_CONNECTION)
+                if (dc != null) {
+                    log("RX DualConnection State: ${if (dc) "ON" else "OFF"}")
+                    _t300State.value = _t300State.value.copy(dualConnection = dc)
+                }
             }
             T300Protocol.CMD_SWITCH_FEATURE_SET_RSP -> {
                 val ok = T300Protocol.parseSwitchFeatureSetResponse(frame.payload)
@@ -684,6 +800,20 @@ class T300BleManager(private val context: Context) {
                 if (ok) {
                     refreshGameMode()
                     refreshSpatialAudio()
+                    if (_t300State.value.highQualityAudio != null) refreshHighQualityAudio()
+                    if (_t300State.value.dynamicAudio != null) refreshDynamicAudio()
+                    if (_t300State.value.dualConnection != null) {
+                        refreshDualConnection()
+                        refreshMultiConnectInfo()
+                    }
+                }
+            }
+            T300Protocol.CMD_MULTI_CONNECT_INFO_RSP -> {
+                log("RX $hexCmd [$hexPayload]")
+                val devices = T300Protocol.parseMultiConnectInfoPayload(frame.payload, hasStatusByte = true)
+                if (devices != null) {
+                    log("RX MultiConnect Devices: ${devices.map { "${it.name} (${it.mac}, state=${it.connectState})" }}")
+                    _t300State.value = _t300State.value.copy(connectedDevices = devices)
                 }
             }
             T300Protocol.CMD_NOTIFICATION_REGISTER_RSP -> {
@@ -765,6 +895,13 @@ class T300BleManager(private val context: Context) {
                     if (gm != null) {
                         log("RX Event: GameMode switched to ${if (gm) "ON" else "OFF"}")
                         _t300State.value = _t300State.value.copy(gameMode = gm)
+                    }
+                } else if (frame.payload.size > 1 && frame.payload[0] == T300Protocol.EVENT_TYPE_MULTI_CONNECT) {
+                    val subPayload = frame.payload.copyOfRange(1, frame.payload.size)
+                    val devices = T300Protocol.parseMultiConnectInfoPayload(subPayload, hasStatusByte = false)
+                    if (devices != null) {
+                        log("RX Event: MultiConnect devices updated: ${devices.map { "${it.name} (state=${it.connectState})" }}")
+                        _t300State.value = _t300State.value.copy(connectedDevices = devices)
                     }
                 } else {
                     val eventType = if (frame.payload.isNotEmpty()) {
