@@ -1,4 +1,4 @@
-package com.realme.budst300.ble
+package uwu.realness.gitveu.ble
 
 import java.util.UUID
 

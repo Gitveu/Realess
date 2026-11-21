@@ -1,4 +1,4 @@
-package com.realme.budst300.viewmodel
+package uwu.realness.gitveu.viewmodel
 
 import android.annotation.SuppressLint
 import android.app.Application
@@ -11,15 +11,15 @@ import android.media.MediaPlayer
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.realme.budst300.R
-import com.realme.budst300.ble.BleConnectionState
-import com.realme.budst300.ble.T300BleManager
-import com.realme.budst300.protocol.T300Protocol.AncMode
-import com.realme.budst300.protocol.T300Protocol.EqPreset
-import com.realme.budst300.protocol.T300Protocol.T300State
-import com.realme.budst300.protocol.T300Protocol.TouchSide
-import com.realme.budst300.protocol.T300Protocol.TouchGesture
-import com.realme.budst300.protocol.T300Protocol.TouchAction
+import uwu.realness.gitveu.R
+import uwu.realness.gitveu.ble.BleConnectionState
+import uwu.realness.gitveu.ble.T300BleManager
+import uwu.realness.gitveu.protocol.T300Protocol.AncMode
+import uwu.realness.gitveu.protocol.T300Protocol.EqPreset
+import uwu.realness.gitveu.protocol.T300Protocol.T300State
+import uwu.realness.gitveu.protocol.T300Protocol.TouchSide
+import uwu.realness.gitveu.protocol.T300Protocol.TouchGesture
+import uwu.realness.gitveu.protocol.T300Protocol.TouchAction
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 

@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.realme.budst300"
+    namespace = "uwu.realness.gitveu"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.realme.budst300"
+        applicationId = "uwu.realness.gitveu"
         minSdk = 26
         targetSdk = 34
         versionCode = 2

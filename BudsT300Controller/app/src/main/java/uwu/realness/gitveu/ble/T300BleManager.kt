@@ -1,17 +1,17 @@
-package com.realme.budst300.ble
+package uwu.realness.gitveu.ble
 
 import android.annotation.SuppressLint
 import android.bluetooth.*
 import android.content.Context
 import android.os.Build
 import android.util.Log
-import com.realme.budst300.protocol.T300Protocol
-import com.realme.budst300.protocol.T300Protocol.AncMode
-import com.realme.budst300.protocol.T300Protocol.ComponentRole
-import com.realme.budst300.protocol.T300Protocol.EqPreset
-import com.realme.budst300.protocol.T300Protocol.TouchSide
-import com.realme.budst300.protocol.T300Protocol.TouchGesture
-import com.realme.budst300.protocol.T300Protocol.TouchAction
+import uwu.realness.gitveu.protocol.T300Protocol
+import uwu.realness.gitveu.protocol.T300Protocol.AncMode
+import uwu.realness.gitveu.protocol.T300Protocol.ComponentRole
+import uwu.realness.gitveu.protocol.T300Protocol.EqPreset
+import uwu.realness.gitveu.protocol.T300Protocol.TouchSide
+import uwu.realness.gitveu.protocol.T300Protocol.TouchGesture
+import uwu.realness.gitveu.protocol.T300Protocol.TouchAction
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow

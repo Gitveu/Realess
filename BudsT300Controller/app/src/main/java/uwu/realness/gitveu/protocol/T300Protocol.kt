@@ -1,7 +1,7 @@
-package com.realme.budst300.protocol
+package uwu.realness.gitveu.protocol
 
 import androidx.annotation.StringRes
-import com.realme.budst300.R
+import uwu.realness.gitveu.R
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 

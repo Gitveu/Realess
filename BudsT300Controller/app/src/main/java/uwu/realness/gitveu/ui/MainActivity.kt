@@ -1,4 +1,4 @@
-package com.realme.budst300.ui
+package uwu.realness.gitveu.ui
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -44,17 +44,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.realme.budst300.BuildConfig
-import com.realme.budst300.R
-import com.realme.budst300.ble.BleConnectionState
-import com.realme.budst300.protocol.T300Protocol
-import com.realme.budst300.protocol.T300Protocol.AncMode
-import com.realme.budst300.protocol.T300Protocol.TouchSide
-import com.realme.budst300.protocol.T300Protocol.TouchGesture
-import com.realme.budst300.protocol.T300Protocol.TouchAction
-import com.realme.budst300.protocol.T300Protocol.getAvailableActions
-import com.realme.budst300.viewmodel.BudsViewModel
-import com.realme.budst300.viewmodel.SystemDeviceStatus
+import uwu.realness.gitveu.BuildConfig
+import uwu.realness.gitveu.R
+import uwu.realness.gitveu.ble.BleConnectionState
+import uwu.realness.gitveu.protocol.T300Protocol
+import uwu.realness.gitveu.protocol.T300Protocol.AncMode
+import uwu.realness.gitveu.protocol.T300Protocol.TouchSide
+import uwu.realness.gitveu.protocol.T300Protocol.TouchGesture
+import uwu.realness.gitveu.protocol.T300Protocol.TouchAction
+import uwu.realness.gitveu.protocol.T300Protocol.getAvailableActions
+import uwu.realness.gitveu.viewmodel.BudsViewModel
+import uwu.realness.gitveu.viewmodel.SystemDeviceStatus
 
 class MainActivity : ComponentActivity() {
 
