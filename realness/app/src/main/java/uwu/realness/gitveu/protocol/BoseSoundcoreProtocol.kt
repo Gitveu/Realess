@@ -1,0 +1,222 @@
+package uwu.realness.gitveu.protocol
+
+import java.io.ByteArrayOutputStream
+
+/**
+ * Протокол Bose BMAP RFCOMM SPP (по базе kde-headphones/BoseBackend.cpp).
+ * Формат пакета: [block, function, op & 0x0F, payloadLen, payload...]
+ */
+object BoseProtocol {
+    const val OP_GET: Byte = 1
+    const val OP_SET_GET: Byte = 2
+    const val OP_STATUS: Byte = 3
+    const val OP_START: Byte = 5
+    const val OP_RESULT: Byte = 6
+
+    const val BLOCK_INFO: Byte = 0
+    const val BLOCK_SETTINGS: Byte = 1
+    const val BLOCK_STATUS: Byte = 2
+    const val BLOCK_NOTIFY: Byte = 9
+    const val BLOCK_AUDIO_MODES: Byte = 31
+
+    const val FUNC_BATTERY: Byte = 2
+    const val FUNC_CNC: Byte = 5
+    const val FUNC_ANR: Byte = 6
+    const val FUNC_MULTIPOINT: Byte = 10
+    const val FUNC_AUTO_PAUSE: Byte = 24
+    const val FUNC_AUTO_ANSWER: Byte = 27
+    const val FUNC_CURRENT_MODE: Byte = 3
+
+    data class Packet(val block: Int, val function: Int, val op: Int, val payload: ByteArray)
+
+    fun buildPacket(block: Byte, function: Byte, op: Byte, payload: ByteArray = ByteArray(0)): ByteArray {
+        val len = payload.size.coerceAtMost(255)
+        val out = ByteArray(4 + len)
+        out[0] = block
+        out[1] = function
+        out[2] = (op.toInt() and 0x0F).toByte()
+        out[3] = len.toByte()
+        if (len > 0) System.arraycopy(payload, 0, out, 4, len)
+        return out
+    }
+
+    fun buildNotifyEnable(): ByteArray = buildPacket(BLOCK_NOTIFY, 2, OP_SET_GET, byteArrayOf(0x01, 0x37))
+    fun buildBatteryReq(): ByteArray = buildPacket(BLOCK_STATUS, FUNC_BATTERY, OP_GET)
+    fun buildCncReq(): ByteArray = buildPacket(BLOCK_SETTINGS, FUNC_CNC, OP_GET)
+    fun buildAnrReq(): ByteArray = buildPacket(BLOCK_SETTINGS, FUNC_ANR, OP_GET)
+    fun buildMultipointReq(): ByteArray = buildPacket(BLOCK_SETTINGS, FUNC_MULTIPOINT, OP_GET)
+    fun buildAutoPauseReq(): ByteArray = buildPacket(BLOCK_SETTINGS, FUNC_AUTO_PAUSE, OP_GET)
+    fun buildAutoAnswerReq(): ByteArray = buildPacket(BLOCK_SETTINGS, FUNC_AUTO_ANSWER, OP_GET)
+
+    fun buildCncSet(mode: T300Protocol.AncMode): ByteArray {
+        // CNC: 0 = max ANC (10), 10 = transparency/aware (0 ANC)
+        val raw: Byte = when (mode) {
+            T300Protocol.AncMode.NOISE_REDUCTION -> 0x00
+            T300Protocol.AncMode.TRANSPARENCY -> 0x0A
+            T300Protocol.AncMode.OFF -> 0x0B // CNC disabled
+        }
+        val enabled: Byte = if (mode == T300Protocol.AncMode.OFF) 0x00 else 0x01
+        return buildPacket(BLOCK_SETTINGS, FUNC_CNC, OP_SET_GET, byteArrayOf(raw, enabled))
+    }
+
+    fun buildAnrSet(mode: T300Protocol.AncMode): ByteArray {
+        val v: Byte = when (mode) {
+            T300Protocol.AncMode.NOISE_REDUCTION -> 0x01 // High
+            T300Protocol.AncMode.TRANSPARENCY -> 0x03    // Low
+            T300Protocol.AncMode.OFF -> 0x00
+        }
+        return buildPacket(BLOCK_SETTINGS, FUNC_ANR, OP_SET_GET, byteArrayOf(v))
+    }
+
+    fun buildMultipointSet(on: Boolean): ByteArray =
+        buildPacket(BLOCK_SETTINGS, FUNC_MULTIPOINT, OP_SET_GET, byteArrayOf(if (on) 0x07 else 0x00))
+
+    fun buildAutoPauseSet(on: Boolean): ByteArray =
+        buildPacket(BLOCK_SETTINGS, FUNC_AUTO_PAUSE, OP_SET_GET, byteArrayOf(if (on) 0x01 else 0x00))
+
+    fun buildAutoAnswerSet(on: Boolean): ByteArray =
+        buildPacket(BLOCK_SETTINGS, FUNC_AUTO_ANSWER, OP_SET_GET, byteArrayOf(if (on) 0x01 else 0x00))
+
+    fun parsePacketsFromStreamBuffer(buf: ByteArray): Pair<List<Packet>, ByteArray> {
+        val packets = mutableListOf<Packet>()
+        var off = 0
+        val total = buf.size
+        while (off + 4 <= total) {
+            val block = buf[off].toInt() and 0xFF
+            val func = buf[off + 1].toInt() and 0xFF
+            val op = buf[off + 2].toInt() and 0x0F
+            val len = buf[off + 3].toInt() and 0xFF
+            if (off + 4 + len > total) break
+            val payload = if (len > 0) buf.copyOfRange(off + 4, off + 4 + len) else ByteArray(0)
+            packets.add(Packet(block, func, op, payload))
+            off += 4 + len
+        }
+        return packets to (if (off < total) buf.copyOfRange(off, total) else ByteArray(0))
+    }
+
+    fun parseBattery(p: ByteArray): List<T300Protocol.BatteryInfo> {
+        if (p.isEmpty()) return emptyList()
+        val out = mutableListOf<T300Protocol.BatteryInfo>()
+        if (p.size >= 4 && p.size % 4 == 0) {
+            var i = 0
+            while (i + 3 < p.size) {
+                val lvl = p[i].toInt() and 0xFF
+                val id = p[i + 3].toInt() and 0xFF
+                if (lvl in 0..100) {
+                    when (id) {
+                        2 -> out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.LEFT_EAR, lvl, false))
+                        1 -> out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.RIGHT_EAR, lvl, false))
+                        3 -> out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.CASE, lvl, false))
+                        0, 4 -> {
+                            out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.LEFT_EAR, lvl, false))
+                            out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.RIGHT_EAR, lvl, false))
+                        }
+                    }
+                }
+                i += 4
+            }
+        } else {
+            val lvl = p[0].toInt() and 0xFF
+            if (lvl in 0..100) {
+                out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.LEFT_EAR, lvl, false))
+                out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.RIGHT_EAR, lvl, false))
+            }
+        }
+        return out
+    }
+}
+
+/**
+ * Протокол Anker Soundcore RFCOMM SPP (по базе kde-headphones/SoundcoreBackend.cpp).
+ * TX: [08 EE 00 00 00, cmdHi, cmdLo, totalLenLo, totalLenHi, body..., sum8]
+ * RX: [09 FF 00 00 01, cmdHi, cmdLo, totalLenLo, totalLenHi, body..., sum8]
+ */
+object SoundcoreProtocol {
+    private val TX_PREFIX = byteArrayOf(0x08, 0xEE.toByte(), 0x00, 0x00, 0x00)
+    private val RX_PREFIX = byteArrayOf(0x09, 0xFF.toByte(), 0x00, 0x00, 0x01)
+
+    const val CMD_STATE: Int = 0x0101
+    const val CMD_BATTERY_LEVEL: Int = 0x0103
+    const val CMD_BATTERY_CHARGING: Int = 0x0104
+    const val CMD_GAMING_UPDATE: Int = 0x0111
+    const val CMD_AUTO_PAUSE: Int = 0x0181
+    const val CMD_GAMING_SET: Int = 0x0187
+    const val CMD_SURROUND_SET: Int = 0x0286
+    const val CMD_SOUND_UPDATE: Int = 0x0601
+    const val CMD_SOUND_SET: Int = 0x0681
+    const val CMD_DUAL_CONN: Int = 0x0B84
+    const val CMD_GAMING_LIBERTY: Int = 0x1085
+
+    data class Packet(val command: Int, val body: ByteArray)
+
+    fun buildPacket(cmd: Int, body: ByteArray = ByteArray(0)): ByteArray {
+        val totalLen = 5 + 4 + body.size + 1
+        val out = ByteArray(totalLen)
+        System.arraycopy(TX_PREFIX, 0, out, 0, 5)
+        out[5] = ((cmd ushr 8) and 0xFF).toByte()
+        out[6] = (cmd and 0xFF).toByte()
+        out[7] = (totalLen and 0xFF).toByte()
+        out[8] = ((totalLen ushr 8) and 0xFF).toByte()
+        if (body.isNotEmpty()) System.arraycopy(body, 0, out, 9, body.size)
+        var sum = 0
+        for (i in 0 until totalLen - 1) sum = (sum + (out[i].toInt() and 0xFF)) and 0xFF
+        out[totalLen - 1] = sum.toByte()
+        return out
+    }
+
+    fun buildStateReq(): ByteArray = buildPacket(CMD_STATE)
+
+    fun buildAncSet(mode: T300Protocol.AncMode, lastSoundBody: ByteArray?): ByteArray {
+        val ambient: Byte = when (mode) {
+            T300Protocol.AncMode.NOISE_REDUCTION -> 0x00
+            T300Protocol.AncMode.TRANSPARENCY -> 0x01
+            T300Protocol.AncMode.OFF -> 0x02
+        }
+        val body = if (lastSoundBody != null && lastSoundBody.size >= 4) {
+            lastSoundBody.copyOf().also { it[0] = ambient }
+        } else {
+            byteArrayOf(ambient, 0x00, 0x01, 0x00)
+        }
+        return buildPacket(CMD_SOUND_SET, body)
+    }
+
+    fun buildGameModeSet(on: Boolean): ByteArray =
+        buildPacket(CMD_GAMING_SET, byteArrayOf(if (on) 0x01 else 0x00))
+
+    fun buildDualConnSet(on: Boolean): ByteArray =
+        buildPacket(CMD_DUAL_CONN, byteArrayOf(if (on) 0x01 else 0x00))
+
+    fun buildAutoPauseSet(on: Boolean): ByteArray =
+        buildPacket(CMD_AUTO_PAUSE, byteArrayOf(if (on) 0x01 else 0x00))
+
+    fun parsePacketsFromStreamBuffer(buf: ByteArray): Pair<List<Packet>, ByteArray> {
+        val packets = mutableListOf<Packet>()
+        var off = 0
+        val total = buf.size
+        while (off < total) {
+            if (off + 5 > total) break
+            var match = true
+            for (k in 0..4) {
+                if (buf[off + k] != RX_PREFIX[k]) { match = false; break }
+            }
+            if (!match) { off++; continue }
+            if (off + 10 > total) break
+            val cmd = ((buf[off + 5].toInt() and 0xFF) shl 8) or (buf[off + 6].toInt() and 0xFF)
+            val pktLen = (buf[off + 7].toInt() and 0xFF) or ((buf[off + 8].toInt() and 0xFF) shl 8)
+            if (pktLen < 10 || pktLen > 4096) { off++; continue }
+            if (off + pktLen > total) break
+            val bodyLen = pktLen - 10
+            val body = if (bodyLen > 0) buf.copyOfRange(off + 9, off + 9 + bodyLen) else ByteArray(0)
+            packets.add(Packet(cmd, body))
+            off += pktLen
+        }
+        return packets to (if (off < total) buf.copyOfRange(off, total) else ByteArray(0))
+    }
+
+    fun scaleBat(raw: Int, maxSteps: Int = 5): Int {
+        if (raw < 0) return -1
+        if (raw > maxSteps && raw <= 100) return raw
+        if (raw > 100) return -1
+        return ((raw * 100) / maxSteps).coerceIn(0, 100)
+    }
+}

@@ -305,7 +305,7 @@ fun MainScreen(
                     currentLevel = t300State.ancLevel,
                     supportsAncLevel = detectedModel.supportsAncLevel,
                     supportsAncDynamic = detectedModel.supportsAncDynamic,
-                    isNothing = detectedModel.isNothing,
+                    useLowMidHighLabels = detectedModel.isNothing || detectedModel.isXiaomi,
                     enabled = connectionState == BleConnectionState.CONNECTED,
                     onModeSelected = { viewModel.setAncMode(it) },
                     onLevelSelected = { viewModel.setAncLevel(it) }
@@ -362,6 +362,7 @@ fun MainScreen(
                 SpatialAudioCard(
                     spatialAudio = t300State.spatialAudio,
                     isPlayingDemo = isPlayingDemo,
+                    showRealmeDemo = !detectedModel.isSupported || detectedModel.isRealme,
                     enabled = connectionState == BleConnectionState.CONNECTED,
                     onToggle = { viewModel.setSpatialAudio(it) },
                     onToggleDemo = { viewModel.toggleDemoAudio() }
@@ -876,7 +877,7 @@ fun AncModeSelector(
     currentLevel: HuaweiProtocol.AncLevel?,
     supportsAncLevel: Boolean,
     supportsAncDynamic: Boolean,
-    isNothing: Boolean,
+    useLowMidHighLabels: Boolean,
     enabled: Boolean,
     onModeSelected: (AncMode) -> Unit,
     onLevelSelected: (HuaweiProtocol.AncLevel) -> Unit
@@ -940,7 +941,7 @@ fun AncModeSelector(
                 ) {
                     levels.forEach { lvl ->
                         val selected = lvl == currentLevel
-                        val lvlTitleRes = if (isNothing) {
+                        val lvlTitleRes = if (useLowMidHighLabels) {
                             when (lvl) {
                                 HuaweiProtocol.AncLevel.COMFORT -> R.string.anc_level_nothing_low
                                 HuaweiProtocol.AncLevel.GENERAL -> R.string.anc_level_nothing_mid
@@ -1045,6 +1046,24 @@ fun EqPresetSelector(
                                 T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_galaxy_normal
                                 T300Protocol.EqPreset.PURE_BASS -> R.string.eq_galaxy_dynamic
                                 T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_galaxy_bass
+                            }
+                            model.isSony -> when (preset) {
+                                T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
+                                T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.anc_off
+                                T300Protocol.EqPreset.PURE_BASS -> R.string.eq_sony_bright
+                                T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
+                            }
+                            model.isXiaomi -> when (preset) {
+                                T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
+                                T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_huawei_default
+                                T300Protocol.EqPreset.PURE_BASS -> R.string.eq_huawei_treble
+                                T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
+                            }
+                            model.isJbl -> when (preset) {
+                                T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
+                                T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_jbl_studio
+                                T300Protocol.EqPreset.PURE_BASS -> R.string.eq_jbl_club
+                                T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
                             }
                             else -> preset.titleRes
                         }
@@ -1276,6 +1295,7 @@ fun GestureActionSelectionDialog(
 fun SpatialAudioCard(
     spatialAudio: Boolean?,
     isPlayingDemo: Boolean,
+    showRealmeDemo: Boolean,
     enabled: Boolean,
     onToggle: (Boolean) -> Unit,
     onToggleDemo: () -> Unit
@@ -1339,49 +1359,51 @@ fun SpatialAudioCard(
                 }
             }
 
-            HorizontalDivider(color = Color(0xFF2C2C2C), thickness = 0.5.dp)
+            if (showRealmeDemo) {
+                HorizontalDivider(color = Color(0xFF2C2C2C), thickness = 0.5.dp)
 
-            // Demo sound button from realme Link
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (isPlayingDemo) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color(0xFF222222))
-                    .clickable { onToggleDemo() }
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = if (isPlayingDemo) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        tint = if (isPlayingDemo) MaterialTheme.colorScheme.primary else Color.White,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = if (isPlayingDemo) stringResource(R.string.demo_audio_playing) else stringResource(R.string.demo_audio_play),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = if (isPlayingDemo) MaterialTheme.colorScheme.primary else Color.White
+                // Demo sound button from realme Link
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (isPlayingDemo) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color(0xFF222222))
+                        .clickable { onToggleDemo() }
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (isPlayingDemo) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = if (isPlayingDemo) MaterialTheme.colorScheme.primary else Color.White,
+                            modifier = Modifier.size(20.dp)
                         )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = if (isPlayingDemo) stringResource(R.string.demo_audio_playing) else stringResource(R.string.demo_audio_play),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = if (isPlayingDemo) MaterialTheme.colorScheme.primary else Color.White
+                            )
+                            Text(
+                                text = if (spatialAudio == true) stringResource(R.string.demo_sample_spatial) else stringResource(R.string.demo_sample_stereo),
+                                fontSize = 11.sp,
+                                color = Color.Gray
+                            )
+                        }
+                    }
+
+                    if (isPlayingDemo) {
                         Text(
-                            text = if (spatialAudio == true) stringResource(R.string.demo_sample_spatial) else stringResource(R.string.demo_sample_stereo),
-                            fontSize = 11.sp,
-                            color = Color.Gray
+                            text = stringResource(R.string.demo_audio_stop),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
-                }
-
-                if (isPlayingDemo) {
-                    Text(
-                        text = stringResource(R.string.demo_audio_stop),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
                 }
             }
         }

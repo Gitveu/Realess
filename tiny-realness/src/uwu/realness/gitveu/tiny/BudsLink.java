@@ -56,11 +56,33 @@ final class BudsLink {
         UUID.fromString("00001102-0000-1000-8000-00805F9B34FD"),
         UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
     };
+    private static final UUID[] SONY_UUIDS = {
+        UUID.fromString("956C7B26-D49A-4BA8-B03F-B17D393CB6E2"),
+        UUID.fromString("96CC203E-5068-46AD-B32D-E316F5E069BA"),
+        UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+    };
+    private static final UUID[] STD_SPP_UUIDS = {
+        UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+    };
+    private static final UUID[] XIAOMI_UUIDS = {
+        UUID.fromString("0000FD2D-0000-1000-8000-00805F9B34FB"),
+        UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+    };
+    private static final UUID[] SENNHEISER_UUIDS = {
+        UUID.fromString("A2129FF3-081B-4C45-8AFE-469D9C4842EC"),
+        UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+    };
+    private static final UUID[] PIXEL_BUDS_UUIDS = {
+        UUID.fromString("25E97FF7-24CE-4C4C-8951-F764A708F7B5"),
+        UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+    };
+    private static final String JBL_SERVICE_UUID = "65786365-6c70-6f69-6e74-2e636f6d0000";
     private static final UUID CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
 
     interface Listener {
         void onStateChanged(int connState, Protocol.State state);
         void onLog(String line);
+        void onUnexpectedDisconnect();
     }
 
     private final Context ctx;
@@ -71,6 +93,7 @@ final class BudsLink {
 
     private volatile int connState = CONN_DISCONNECTED;
     private volatile int activeModel = Protocol.MODEL_UNKNOWN;
+    private volatile String activeMac = null;
     private volatile int sessionGen = 0;
 
     private BluetoothSocket socket;
@@ -86,6 +109,10 @@ final class BudsLink {
     private final java.util.TreeMap<Integer, Protocol.MultiDevice> hwMultiMap = new java.util.TreeMap<>();
     private boolean galaxyMgrSent = false;
     private int nothingBassLvl = 3;
+    private int sonyTxSeq = 0;
+    private boolean xiaomiAuthed = false;
+    private int pbChannel = 1;
+    private byte[] jblGattAcc = new byte[0];
     private final Runnable pollTask;
     private final Runnable refreshTask;
 
@@ -110,14 +137,26 @@ final class BudsLink {
 
     int getConnState() { return connState; }
 
+    boolean isConnectedOrConnectingTo(String mac, int model) {
+        return connState != CONN_DISCONNECTED
+            && mac != null && mac.equals(activeMac)
+            && model == activeModel;
+    }
+
     void connect(final BluetoothDevice device) {
         connect(device, Protocol.MODEL_UNKNOWN);
     }
 
     void connect(final BluetoothDevice device, final int overrideModel) {
-        disconnect();
+        final int effModel = overrideModel != Protocol.MODEL_UNKNOWN ? overrideModel : Protocol.detectModel(device.getName());
+        if (isConnectedOrConnectingTo(device.getAddress(), effModel)) {
+            log("Already connected/connecting to " + device.getName() + ", skipping duplicate connect");
+            return;
+        }
         final int gen = ++sessionGen;
-        activeModel = overrideModel != Protocol.MODEL_UNKNOWN ? overrideModel : Protocol.detectModel(device.getName());
+        closeResourcesOnly();
+        activeModel = effModel;
+        activeMac = device.getAddress();
         connState = CONN_CONNECTING;
         notifyState();
         log("Connecting to " + device.getName() + " (" + device.getAddress() + ", m=" + activeModel + ")...");
@@ -129,6 +168,11 @@ final class BudsLink {
                 if (bm != null && bm.getAdapter() != null) {
                     try { bm.getAdapter().cancelDiscovery(); } catch (Exception ignored) {}
                 }
+                if (Protocol.isJbl(activeModel)) {
+                    log("JBL uses BLE GATT, connecting...");
+                    connectGatt(device, gen);
+                    return;
+                }
                 UUID[] uuids;
                 if (Protocol.isHuawei(activeModel)) {
                     uuids = Protocol.prefersHwPrivateUuid(activeModel) ? HW_UUIDS_P16 : HW_UUIDS_P1;
@@ -139,6 +183,16 @@ final class BudsLink {
                 } else if (Protocol.isGalaxy(activeModel)) {
                     uuids = activeModel == Protocol.MODEL_GALAXY_BUDS ? GALAXY_LEG_UUIDS
                         : (activeModel == Protocol.MODEL_GALAXY_PLUS ? HW_UUIDS_P1 : GALAXY_MOD_UUIDS);
+                } else if (Protocol.isSony(activeModel)) {
+                    uuids = SONY_UUIDS;
+                } else if (Protocol.isBose(activeModel) || Protocol.isSoundcore(activeModel) || Protocol.isJabra(activeModel)) {
+                    uuids = STD_SPP_UUIDS;
+                } else if (Protocol.isXiaomi(activeModel)) {
+                    uuids = XIAOMI_UUIDS;
+                } else if (Protocol.isSennheiser(activeModel)) {
+                    uuids = SENNHEISER_UUIDS;
+                } else if (Protocol.isPixelBuds(activeModel)) {
+                    uuids = PIXEL_BUDS_UUIDS;
                 } else if (Protocol.isOppoOrOnePlus(activeModel)) {
                     uuids = OPPO_UUIDS;
                 } else {
@@ -146,8 +200,8 @@ final class BudsLink {
                 }
                 for (UUID uuid : uuids) {
                     if (gen != sessionGen) return;
-                    if (trySpp(device, uuid, false) || trySpp(device, uuid, true)) {
-                        if (gen != sessionGen) { disconnect(); return; }
+                    if (trySpp(device, uuid, false, gen) || trySpp(device, uuid, true, gen)) {
+                        if (gen != sessionGen) { closeResourcesOnly(); return; }
                         useGatt = false;
                         connState = CONN_CONNECTED;
                         log("SPP connected (" + uuid.toString().substring(0, 8) + ")");
@@ -160,22 +214,31 @@ final class BudsLink {
                 if (gen != sessionGen) return;
                 if (!Protocol.isRealme(activeModel)) {
                     log("SPP unavailable");
-                    main.post(new Runnable() { @Override public void run() { disconnect(); } });
+                    main.post(new Runnable() {
+                        @Override public void run() {
+                            if (gen == sessionGen) disconnectInternal(true);
+                        }
+                    });
                     return;
                 }
                 log("SPP unavailable, falling back to GATT...");
-                connectGatt(device);
+                connectGatt(device, gen);
             }
         });
     }
 
-    private boolean trySpp(BluetoothDevice dev, UUID uuid, boolean insecure) {
+    private boolean trySpp(BluetoothDevice dev, UUID uuid, boolean insecure, int gen) {
         BluetoothSocket s = null;
         try {
+            if (gen != sessionGen) return false;
             s = insecure
                 ? dev.createInsecureRfcommSocketToServiceRecord(uuid)
                 : dev.createRfcommSocketToServiceRecord(uuid);
             s.connect();
+            if (gen != sessionGen) {
+                try { s.close(); } catch (Exception ignored) {}
+                return false;
+            }
             if (s.isConnected()) {
                 socket = s;
                 inStream = s.getInputStream();
@@ -215,6 +278,34 @@ final class BudsLink {
                             List<GalaxyProto.Pkt> pkts = new ArrayList<>();
                             acc = GalaxyProto.parseStream(merged, pkts);
                             for (GalaxyProto.Pkt pkt : pkts) handleGalaxyPacket(pkt);
+                        } else if (Protocol.isSony(activeModel)) {
+                            List<ExtraProtos.SonyPkt> pkts = new ArrayList<>();
+                            acc = ExtraProtos.sonyParseStream(merged, pkts);
+                            for (ExtraProtos.SonyPkt pkt : pkts) handleSonyPacket(pkt);
+                        } else if (Protocol.isBose(activeModel)) {
+                            List<ExtraProtos.BosePkt> pkts = new ArrayList<>();
+                            acc = ExtraProtos.boseParseStream(merged, pkts);
+                            for (ExtraProtos.BosePkt pkt : pkts) handleBosePacket(pkt);
+                        } else if (Protocol.isSoundcore(activeModel)) {
+                            List<ExtraProtos.ScPkt> pkts = new ArrayList<>();
+                            acc = ExtraProtos.scParseStream(merged, pkts);
+                            for (ExtraProtos.ScPkt pkt : pkts) handleSoundcorePacket(pkt);
+                        } else if (Protocol.isXiaomi(activeModel)) {
+                            List<ExtraProtos.XiaomiPkt> pkts = new ArrayList<>();
+                            acc = ExtraProtos.xiaomiParseStream(merged, pkts);
+                            for (ExtraProtos.XiaomiPkt pkt : pkts) handleXiaomiPacket(pkt);
+                        } else if (Protocol.isSennheiser(activeModel)) {
+                            List<ExtraProtos.GaiaPkt> pkts = new ArrayList<>();
+                            acc = ExtraProtos.gaiaParseStream(merged, pkts);
+                            for (ExtraProtos.GaiaPkt pkt : pkts) handleSennheiserPacket(pkt);
+                        } else if (Protocol.isJabra(activeModel)) {
+                            List<ExtraProtos.JabraPkt> pkts = new ArrayList<>();
+                            acc = ExtraProtos.jabraParseStream(merged, pkts);
+                            for (ExtraProtos.JabraPkt pkt : pkts) handleJabraPacket(pkt);
+                        } else if (Protocol.isPixelBuds(activeModel)) {
+                            List<ExtraProtos.PbPkt> pkts = new ArrayList<>();
+                            acc = ExtraProtos.pbParseStream(merged, pkts);
+                            for (ExtraProtos.PbPkt pkt : pkts) handlePixelBudsPacket(pkt);
                         } else {
                             List<Protocol.Frame> frames = new ArrayList<>();
                             acc = Protocol.parseStream(merged, frames);
@@ -225,7 +316,11 @@ final class BudsLink {
                     if (gen == sessionGen) log("SPP closed: " + e.getMessage());
                 } finally {
                     if (gen == sessionGen && connState == CONN_CONNECTED) {
-                        main.post(new Runnable() { @Override public void run() { disconnect(); } });
+                        main.post(new Runnable() {
+                            @Override public void run() {
+                                if (gen == sessionGen) disconnectInternal(true);
+                            }
+                        });
                     }
                 }
             }
@@ -234,33 +329,52 @@ final class BudsLink {
         readerThread.start();
     }
 
-    private void connectGatt(BluetoothDevice dev) {
+    private void connectGatt(BluetoothDevice dev, final int gen) {
+        if (gen != sessionGen) return;
         useGatt = true;
+        jblGattAcc = new byte[0];
         gatt = dev.connectGatt(ctx, false, new BluetoothGattCallback() {
             @Override public void onConnectionStateChange(BluetoothGatt g, int status, int newState) {
+                if (gen != sessionGen) { try { g.close(); } catch (Exception ignored) {} return; }
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     log("GATT connected, discovering services...");
                     g.discoverServices();
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     log("GATT disconnected");
-                    main.post(new Runnable() { @Override public void run() { disconnect(); } });
+                    main.post(new Runnable() {
+                        @Override public void run() {
+                            if (gen == sessionGen) disconnectInternal(true);
+                        }
+                    });
                 }
             }
             @Override public void onServicesDiscovered(BluetoothGatt g, int status) {
-                if (status != BluetoothGatt.GATT_SUCCESS) { disconnect(); return; }
-                BluetoothGattCharacteristic w = null, n = null;
-                for (BluetoothGattService svc : g.getServices()) {
-                    String u = svc.getUuid().toString().toLowerCase();
-                    if (u.startsWith("00001800") || u.startsWith("00001801")) continue;
-                    BluetoothGattCharacteristic cw = null, cn = null;
-                    for (BluetoothGattCharacteristic c : svc.getCharacteristics()) {
-                        int p = c.getProperties();
-                        if (cw == null && ((p & 8) != 0 || (p & 4) != 0)) cw = c;
-                        if (cn == null && ((p & 16) != 0 || (p & 32) != 0)) cn = c;
-                    }
-                    if (cw != null && cn != null) { w = cw; n = cn; break; }
+                if (gen != sessionGen) return;
+                if (status != BluetoothGatt.GATT_SUCCESS) {
+                    main.post(new Runnable() { @Override public void run() { if (gen == sessionGen) disconnectInternal(true); } });
+                    return;
                 }
-                if (w == null || n == null) { disconnect(); return; }
+                BluetoothGattCharacteristic w = null, n = null;
+                boolean wantJbl = Protocol.isJbl(activeModel);
+                for (int pass = 0; pass < 2 && (w == null || n == null); pass++) {
+                    for (BluetoothGattService svc : g.getServices()) {
+                        String u = svc.getUuid().toString().toLowerCase();
+                        if (u.startsWith("00001800") || u.startsWith("00001801")) continue;
+                        if (wantJbl && pass == 0 && !u.equals(JBL_SERVICE_UUID)) continue;
+                        BluetoothGattCharacteristic cw = null, cn = null;
+                        for (BluetoothGattCharacteristic c : svc.getCharacteristics()) {
+                            int p = c.getProperties();
+                            if (cw == null && ((p & 8) != 0 || (p & 4) != 0)) cw = c;
+                            if (cn == null && ((p & 16) != 0 || (p & 32) != 0)) cn = c;
+                        }
+                        if (cw != null && cn != null) { w = cw; n = cn; break; }
+                    }
+                    if (!wantJbl) break;
+                }
+                if (w == null || n == null) {
+                    main.post(new Runnable() { @Override public void run() { if (gen == sessionGen) disconnectInternal(true); } });
+                    return;
+                }
                 writeChar = w;
                 g.setCharacteristicNotification(n, true);
                 BluetoothGattDescriptor d = n.getDescriptor(CCCD_UUID);
@@ -277,31 +391,43 @@ final class BudsLink {
                 } else {
                     connState = CONN_CONNECTED;
                     notifyState();
-                    onReady(sessionGen);
+                    onReady(gen);
                 }
             }
             @Override public void onDescriptorWrite(BluetoothGatt g, BluetoothGattDescriptor d, int s) {
+                if (gen != sessionGen) return;
                 connState = CONN_CONNECTED;
                 notifyState();
-                onReady(sessionGen);
+                onReady(gen);
             }
             @Override public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic c, byte[] value) {
-                Protocol.Frame f = Protocol.parseSingleFrame(value);
-                if (f != null) handleFrame(f);
+                if (gen != sessionGen) return;
+                handleGattBytes(value);
             }
             @SuppressWarnings("deprecation")
             @Override public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic c) {
+                if (gen != sessionGen) return;
                 byte[] v = c.getValue();
-                if (v != null) {
-                    Protocol.Frame f = Protocol.parseSingleFrame(v);
-                    if (f != null) handleFrame(f);
-                }
+                if (v != null) handleGattBytes(v);
             }
-        }, BluetoothDevice.TRANSPORT_AUTO);
+        }, Protocol.isJbl(activeModel) ? BluetoothDevice.TRANSPORT_LE : BluetoothDevice.TRANSPORT_AUTO);
     }
 
-    void disconnect() {
-        sessionGen++;
+    private void handleGattBytes(byte[] value) {
+        if (Protocol.isJbl(activeModel)) {
+            byte[] merged = new byte[jblGattAcc.length + value.length];
+            System.arraycopy(jblGattAcc, 0, merged, 0, jblGattAcc.length);
+            System.arraycopy(value, 0, merged, jblGattAcc.length, value.length);
+            List<ExtraProtos.JblPkt> pkts = new ArrayList<>();
+            jblGattAcc = ExtraProtos.jblParseStream(merged, pkts);
+            for (ExtraProtos.JblPkt pkt : pkts) handleJblPacket(pkt);
+        } else {
+            Protocol.Frame f = Protocol.parseSingleFrame(value);
+            if (f != null) handleFrame(f);
+        }
+    }
+
+    private void closeResourcesOnly() {
         main.removeCallbacks(pollTask);
         main.removeCallbacks(refreshTask);
         try { if (inStream != null) inStream.close(); } catch (Exception ignored) {}
@@ -313,10 +439,25 @@ final class BudsLink {
             gatt = null;
         }
         writeChar = null;
-        activeModel = Protocol.MODEL_UNKNOWN;
-        connState = CONN_DISCONNECTED;
         resetState();
+    }
+
+    void disconnect() {
+        disconnectInternal(false);
+    }
+
+    private void disconnectInternal(boolean emitUnexpected) {
+        sessionGen++;
+        closeResourcesOnly();
+        activeModel = Protocol.MODEL_UNKNOWN;
+        activeMac = null;
+        connState = CONN_DISCONNECTED;
         notifyState();
+        if (emitUnexpected) {
+            main.post(new Runnable() {
+                @Override public void run() { listener.onUnexpectedDisconnect(); }
+            });
+        }
     }
 
     private void resetState() {
@@ -334,8 +475,14 @@ final class BudsLink {
             state.multiDevices.clear();
             hwMultiMap.clear();
             galaxyMgrSent = false;
+            sonyTxSeq = 0;
+            xiaomiAuthed = false;
+            pbChannel = 1;
+            jblGattAcc = new byte[0];
         }
     }
+
+    private int nextSonySeq() { int s = sonyTxSeq; sonyTxSeq ^= 1; return s; }
 
     private void onReady(final int gen) {
         io.execute(new Runnable() {
@@ -347,6 +494,12 @@ final class BudsLink {
                 if (Protocol.isNothing(activeModel)) {
                     sendRaw(NothingProto.build(NothingProto.CMD_HANDSHAKE_REQ, null));
                     sleep(100);
+                } else if (Protocol.isXiaomi(activeModel)) {
+                    sendRaw(ExtraProtos.xiaomiAuthChallenge());
+                    sleep(150);
+                } else if (Protocol.isPixelBuds(activeModel)) {
+                    sendRaw(ExtraProtos.pbRpc(pbChannel, ExtraProtos.PB_M_SUB_BAT, null)); sleep(80);
+                    sendRaw(ExtraProtos.pbRpc(pbChannel, ExtraProtos.PB_M_SUB_SET, null)); sleep(80);
                 }
                 requestFullState(true);
                 if (Protocol.isRealme(activeModel)) {
@@ -391,11 +544,67 @@ final class BudsLink {
                 }
                 if (Protocol.isNothing(activeModel)) {
                     if (Protocol.supportsAnc(activeModel)) { sendRaw(NothingProto.build(NothingProto.CMD_ANC_REQ, null)); sleep(70); }
-                    sendRaw(NothingProto.build(activeModel == Protocol.MODEL_CMF_LISTENING ? NothingProto.CMD_EQ_L_REQ : NothingProto.CMD_EQ_C_REQ, null)); sleep(70);
+                    sendRaw(NothingProto.build(Protocol.isNothingListeningEq(activeModel) ? NothingProto.CMD_EQ_L_REQ : NothingProto.CMD_EQ_C_REQ, null)); sleep(70);
                     sendRaw(NothingProto.build(NothingProto.CMD_INEAR_REQ, null)); sleep(70);
                     sendRaw(NothingProto.build(NothingProto.CMD_LAT_REQ, null)); sleep(70);
                     sendRaw(NothingProto.build(NothingProto.CMD_BASS_REQ, null)); sleep(70);
                     sendRaw(NothingProto.build(NothingProto.CMD_BAT_REQ, null));
+                    return;
+                }
+                if (Protocol.isSony(activeModel)) {
+                    sendRaw(ExtraProtos.sonyBatReq(nextSonySeq(), (byte) 0x00)); sleep(90);
+                    sendRaw(ExtraProtos.sonyBatReq(nextSonySeq(), (byte) 0x01)); sleep(90);
+                    sendRaw(ExtraProtos.sonyBatReq(nextSonySeq(), (byte) 0x02)); sleep(90);
+                    sendRaw(ExtraProtos.sonyAncReq(nextSonySeq())); sleep(90);
+                    sendRaw(ExtraProtos.sonyEqReq(nextSonySeq()));
+                    return;
+                }
+                if (Protocol.isBose(activeModel)) {
+                    sendRaw(ExtraProtos.boseBuild(0x02, 0x02, 0x01, null)); sleep(70);
+                    sendRaw(ExtraProtos.boseBuild(0x01, 0x06, 0x01, null)); sleep(70);
+                    sendRaw(ExtraProtos.boseBuild(0x01, 0x07, 0x01, null));
+                    return;
+                }
+                if (Protocol.isSoundcore(activeModel)) {
+                    sendRaw(ExtraProtos.scBuild(0x01, 0x01, null)); sleep(70);
+                    sendRaw(ExtraProtos.scBuild(0x06, 0x01, null)); sleep(70);
+                    sendRaw(ExtraProtos.scBuild(0x01, 0x03, null));
+                    return;
+                }
+                if (Protocol.isXiaomi(activeModel)) {
+                    if (!xiaomiAuthed) { sendRaw(ExtraProtos.xiaomiAuthChallenge()); return; }
+                    sendRaw(ExtraProtos.xiaomiReq(0x09, null)); sleep(70);
+                    sendRaw(ExtraProtos.xiaomiReq(0x0E, null)); sleep(70);
+                    sendRaw(ExtraProtos.xiaomiReq(0xF3, new byte[]{0x04})); sleep(70);
+                    sendRaw(ExtraProtos.xiaomiReq(0xF3, new byte[]{0x07})); sleep(70);
+                    sendRaw(ExtraProtos.xiaomiReq(0xF3, new byte[]{0x0B})); sleep(70);
+                    sendRaw(ExtraProtos.xiaomiReq(0xF3, new byte[]{0x03}));
+                    return;
+                }
+                if (Protocol.isSennheiser(activeModel)) {
+                    sendRaw(ExtraProtos.gaiaBuild(0x0495, 0x06, 0, 0x02, null)); sleep(70);
+                    sendRaw(ExtraProtos.gaiaBuild(0x0495, 0x05, 0, 0x01, null)); sleep(70);
+                    sendRaw(ExtraProtos.gaiaBuild(0x0495, 0x06, 0, 0x06, null));
+                    return;
+                }
+                if (Protocol.isJabra(activeModel)) {
+                    sendRaw(ExtraProtos.jabraBuild(0x10, 0x0101, null)); sleep(70);
+                    sendRaw(ExtraProtos.jabraBuild(0x10, 0x0104, null)); sleep(70);
+                    sendRaw(ExtraProtos.jabraBuild(0x10, 0x0107, null));
+                    return;
+                }
+                if (Protocol.isPixelBuds(activeModel)) {
+                    sendRaw(ExtraProtos.pbReadSetting(pbChannel, 11)); sleep(70);
+                    sendRaw(ExtraProtos.pbReadSetting(pbChannel, 5)); sleep(70);
+                    sendRaw(ExtraProtos.pbReadSetting(pbChannel, 21));
+                    return;
+                }
+                if (Protocol.isJbl(activeModel)) {
+                    sendRaw(ExtraProtos.jblBuild(0x25, null)); sleep(70);
+                    sendRaw(ExtraProtos.jblBuild(0x91, new byte[]{0x11})); sleep(70);
+                    sendRaw(ExtraProtos.jblBuild(0x21, new byte[]{0x35})); sleep(70);
+                    sendRaw(ExtraProtos.jblBuild(0x21, new byte[]{0x40})); sleep(70);
+                    sendRaw(ExtraProtos.jblBuild(0x21, new byte[]{(byte) 0x9D}));
                     return;
                 }
                 sendTl(Protocol.CMD_ANC_STATE_REQ, new byte[]{0x01, 0x01}); sleep(70);
@@ -429,7 +638,7 @@ final class BudsLink {
     private void pollCycle() {
         io.execute(new Runnable() {
             @Override public void run() {
-                if (connState != CONN_CONNECTED || Protocol.isGalaxy(activeModel)) return;
+                if (connState != CONN_CONNECTED || Protocol.isGalaxy(activeModel) || Protocol.isPixelBuds(activeModel)) return;
                 if (Protocol.isHuawei(activeModel) || Protocol.isHonorChoice(activeModel)) {
                     if (Protocol.supportsAnc(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_ANC_R, 1, 2)); sleep(55); }
                     if (Protocol.isHuawei(activeModel)) {
@@ -445,6 +654,35 @@ final class BudsLink {
                 if (Protocol.isNothing(activeModel)) {
                     if (Protocol.supportsAnc(activeModel)) { sendRaw(NothingProto.build(NothingProto.CMD_ANC_REQ, null)); sleep(55); }
                     sendRaw(NothingProto.build(NothingProto.CMD_BAT_REQ, null));
+                    return;
+                }
+                if (Protocol.isSony(activeModel)) {
+                    sendRaw(ExtraProtos.sonyBatReq(nextSonySeq(), (byte) 0x01)); sleep(80);
+                    sendRaw(ExtraProtos.sonyBatReq(nextSonySeq(), (byte) 0x02));
+                    return;
+                }
+                if (Protocol.isBose(activeModel)) {
+                    sendRaw(ExtraProtos.boseBuild(0x02, 0x02, 0x01, null));
+                    return;
+                }
+                if (Protocol.isSoundcore(activeModel)) {
+                    sendRaw(ExtraProtos.scBuild(0x01, 0x03, null));
+                    return;
+                }
+                if (Protocol.isXiaomi(activeModel)) {
+                    if (xiaomiAuthed) sendRaw(ExtraProtos.xiaomiReq(0x09, null));
+                    return;
+                }
+                if (Protocol.isSennheiser(activeModel)) {
+                    sendRaw(ExtraProtos.gaiaBuild(0x0495, 0x06, 0, 0x02, null));
+                    return;
+                }
+                if (Protocol.isJabra(activeModel)) {
+                    sendRaw(ExtraProtos.jabraBuild(0x10, 0x0101, null));
+                    return;
+                }
+                if (Protocol.isJbl(activeModel)) {
+                    sendRaw(ExtraProtos.jblBuild(0x25, null));
                     return;
                 }
                 sendTl(Protocol.CMD_ANC_STATE_REQ, new byte[]{0x01, 0x01}); sleep(55);
@@ -502,6 +740,47 @@ final class BudsLink {
                     sendRaw(GalaxyProto.writeAnc(mode, activeModel));
                     return;
                 }
+                if (Protocol.isSony(activeModel)) {
+                    sendRaw(ExtraProtos.sonyAncSet(nextSonySeq(), mode));
+                    return;
+                }
+                if (Protocol.isBose(activeModel)) {
+                    sendRaw(ExtraProtos.boseAncSet(mode));
+                    return;
+                }
+                if (Protocol.isSoundcore(activeModel)) {
+                    sendRaw(ExtraProtos.scAncSet(mode));
+                    return;
+                }
+                if (Protocol.isXiaomi(activeModel)) {
+                    sendRaw(ExtraProtos.xiaomiAncSet(mode));
+                    return;
+                }
+                if (Protocol.isSennheiser(activeModel)) {
+                    if (mode == Protocol.ANC_OFF) {
+                        sendRaw(ExtraProtos.gaiaBuild(0x0495, 0x05, 0, 0x02, new byte[]{0}));
+                    } else if (mode == Protocol.ANC_ON) {
+                        sendRaw(ExtraProtos.gaiaBuild(0x0495, 0x05, 0, 0x02, new byte[]{1})); sleep(60);
+                        sendRaw(ExtraProtos.gaiaBuild(0x0495, 0x05, 0, 0x04, new byte[]{0}));
+                    } else {
+                        sendRaw(ExtraProtos.gaiaBuild(0x0495, 0x05, 0, 0x02, new byte[]{1})); sleep(60);
+                        sendRaw(ExtraProtos.gaiaBuild(0x0495, 0x05, 0, 0x04, new byte[]{1}));
+                    }
+                    return;
+                }
+                if (Protocol.isJabra(activeModel)) {
+                    sendRaw(ExtraProtos.jabraAncSet(mode));
+                    return;
+                }
+                if (Protocol.isPixelBuds(activeModel)) {
+                    long v = mode == Protocol.ANC_ON ? 2L : (mode == Protocol.ANC_TRANSPARENCY ? 3L : 1L);
+                    sendRaw(ExtraProtos.pbWriteSetting(pbChannel, 11, v));
+                    return;
+                }
+                if (Protocol.isJbl(activeModel)) {
+                    sendRaw(ExtraProtos.jblAncSet(mode));
+                    return;
+                }
                 log("TX ANC [" + Protocol.ancName(mode & 0xFF) + "]");
                 sendTl(Protocol.CMD_ANC_SET, new byte[]{0x01, 0x01, mode});
             }
@@ -519,6 +798,10 @@ final class BudsLink {
                     sendRaw(NothingProto.writeAncLevel(lvl));
                     sleep(180);
                     sendRaw(NothingProto.build(NothingProto.CMD_ANC_REQ, null));
+                    return;
+                }
+                if (Protocol.isXiaomi(activeModel)) {
+                    sendRaw(ExtraProtos.xiaomiAncLevelSet(lvl));
                     return;
                 }
                 log("TX Huawei ANC Level [" + (lvl & 0xFF) + "]");
@@ -548,7 +831,7 @@ final class BudsLink {
                     return;
                 }
                 if (Protocol.isNothing(activeModel)) {
-                    boolean listening = activeModel == Protocol.MODEL_CMF_LISTENING;
+                    boolean listening = Protocol.isNothingListeningEq(activeModel);
                     log("TX Nothing EQ [id=" + (eqId & 0xFF) + "]");
                     sendRaw(NothingProto.writeEq(eqId, listening));
                     sleep(180);
@@ -558,6 +841,18 @@ final class BudsLink {
                 if (Protocol.isGalaxy(activeModel)) {
                     log("TX Galaxy EQ [id=" + (eqId & 0xFF) + "]");
                     sendRaw(GalaxyProto.writeEq(eqId, activeModel == Protocol.MODEL_GALAXY_BUDS));
+                    return;
+                }
+                if (Protocol.isSony(activeModel)) {
+                    sendRaw(ExtraProtos.sonyEqSet(nextSonySeq(), eqId));
+                    return;
+                }
+                if (Protocol.isXiaomi(activeModel)) {
+                    sendRaw(ExtraProtos.xiaomiEqSet(eqId));
+                    return;
+                }
+                if (Protocol.isJbl(activeModel)) {
+                    sendRaw(ExtraProtos.jblEqSet(eqId));
                     return;
                 }
                 log("TX EQ [id=" + (eqId & 0xFF) + "]");
@@ -579,8 +874,8 @@ final class BudsLink {
         notifyState();
         io.execute(new Runnable() {
             @Override public void run() {
+                byte v = (byte) (on ? 1 : 0);
                 if (Protocol.isHuawei(activeModel)) {
-                    byte v = (byte) (on ? 1 : 0);
                     if (featId == Protocol.FEAT_GAME_MODE) {
                         sendRaw(HuaweiProto.writeByte(HuaweiProto.CMD_LOW_LAT, 1, v));
                         sleep(400);
@@ -606,11 +901,11 @@ final class BudsLink {
                         sleep(200);
                         sendRaw(NothingProto.build(NothingProto.CMD_LAT_REQ, null));
                     } else if (featId == Protocol.FEAT_AUTO_PLAY_PAUSE) {
-                        sendRaw(NothingProto.build(NothingProto.CMD_INEAR_SET, new byte[]{1, 1, (byte) (on ? 1 : 0)}));
+                        sendRaw(NothingProto.build(NothingProto.CMD_INEAR_SET, new byte[]{1, 1, v}));
                         sleep(200);
                         sendRaw(NothingProto.build(NothingProto.CMD_INEAR_REQ, null));
                     } else if (featId == Protocol.FEAT_DYNAMIC) {
-                        sendRaw(NothingProto.build(NothingProto.CMD_BASS_SET, new byte[]{(byte) (on ? 1 : 0), (byte) nothingBassLvl}));
+                        sendRaw(NothingProto.build(NothingProto.CMD_BASS_SET, new byte[]{v, (byte) nothingBassLvl}));
                         sleep(200);
                         sendRaw(NothingProto.build(NothingProto.CMD_BASS_REQ, null));
                     }
@@ -622,8 +917,40 @@ final class BudsLink {
                     }
                     return;
                 }
+                if (Protocol.isBose(activeModel)) {
+                    if (featId == Protocol.FEAT_DUAL_CONN) sendRaw(ExtraProtos.boseBuild(0x01, 0x07, 0x02, new byte[]{v}));
+                    return;
+                }
+                if (Protocol.isSoundcore(activeModel)) {
+                    if (featId == Protocol.FEAT_GAME_MODE) sendRaw(ExtraProtos.scBuild(0x01, 0x11, new byte[]{v}));
+                    return;
+                }
+                if (Protocol.isXiaomi(activeModel)) {
+                    if (featId == Protocol.FEAT_DUAL_CONN) sendRaw(ExtraProtos.xiaomiReq(0xF2, new byte[]{0x04, 0x01, v}));
+                    else if (featId == Protocol.FEAT_AUTO_ANSWER) sendRaw(ExtraProtos.xiaomiReq(0xF2, new byte[]{0x03, 0x01, v}));
+                    else if (featId == Protocol.FEAT_AUTO_PLAY_PAUSE) sendRaw(ExtraProtos.xiaomiReq(0x0E, new byte[]{0x02, v}));
+                    return;
+                }
+                if (Protocol.isSennheiser(activeModel)) {
+                    if (featId == Protocol.FEAT_SPATIAL) sendRaw(ExtraProtos.gaiaBuild(0x0495, 0x06, 0, 0x06, new byte[]{v}));
+                    return;
+                }
+                if (Protocol.isJabra(activeModel)) {
+                    if (featId == Protocol.FEAT_DUAL_CONN) sendRaw(ExtraProtos.jabraBuild(0x20, 0x0107, new byte[]{v}));
+                    return;
+                }
+                if (Protocol.isPixelBuds(activeModel)) {
+                    if (featId == Protocol.FEAT_AUTO_PLAY_PAUSE) sendRaw(ExtraProtos.pbWriteSetting(pbChannel, 5, on ? 1L : 0L));
+                    else if (featId == Protocol.FEAT_DUAL_CONN) sendRaw(ExtraProtos.pbWriteSetting(pbChannel, 21, on ? 1L : 0L));
+                    return;
+                }
+                if (Protocol.isJbl(activeModel)) {
+                    if (featId == Protocol.FEAT_AUTO_PLAY_PAUSE) sendRaw(ExtraProtos.jblBuild(0x35, new byte[]{v}));
+                    else if (featId == Protocol.FEAT_SPATIAL) sendRaw(ExtraProtos.jblBuild(0x9D, new byte[]{0x01, v, 0x01}));
+                    return;
+                }
                 log(String.format("TX Switch 0x%02X -> %s", featId & 0xFF, on ? "ON" : "OFF"));
-                sendTl(Protocol.CMD_SWITCH_SET, new byte[]{featId, (byte) (on ? 1 : 0)});
+                sendTl(Protocol.CMD_SWITCH_SET, new byte[]{featId, v});
             }
         });
     }
@@ -1236,6 +1563,274 @@ final class BudsLink {
                 }
                 break;
             }
+        }
+    }
+
+    private void handleSonyPacket(ExtraProtos.SonyPkt pkt) {
+        if (pkt.type != 0x01) {
+            final int rxSeq = pkt.seq;
+            io.execute(new Runnable() { @Override public void run() { sendRaw(ExtraProtos.sonyAck(rxSeq)); } });
+        }
+        if (pkt.type != 0x0C || pkt.payload.length < 2) return;
+        byte[] p = pkt.payload;
+        int cmd = p[0] & 0xFF, inq = p[1] & 0xFF;
+        if (cmd == 0x23 || cmd == 0x25) {
+            synchronized (state) {
+                if (inq == 0x00 && p.length >= 4) {
+                    int lvl = p[2] & 0xFF; boolean chg = (p[3] & 0xFF) == 1;
+                    state.leftBat = state.rightBat = lvl <= 100 ? lvl : -1;
+                    state.leftChg = state.rightChg = chg;
+                } else if (inq == 0x01 && p.length >= 6) {
+                    int l = p[2] & 0xFF, r = p[4] & 0xFF;
+                    state.leftBat = l <= 100 ? l : -1; state.leftChg = (p[3] & 0xFF) == 1;
+                    state.rightBat = r <= 100 ? r : -1; state.rightChg = (p[5] & 0xFF) == 1;
+                } else if (inq == 0x02 && p.length >= 4) {
+                    int c = p[2] & 0xFF; boolean chg = (p[3] & 0xFF) == 1;
+                    state.caseBat = (c <= 100 && !(c == 0 && !chg)) ? c : -1; state.caseChg = chg;
+                }
+            }
+            notifyState();
+        } else if ((cmd == 0x67 || cmd == 0x69) && p.length >= 5) {
+            int total = p[3] & 0xFF, mode = p[4] & 0xFF;
+            synchronized (state) {
+                state.ancMode = total == 0 ? Protocol.ANC_OFF : (mode == 0 ? Protocol.ANC_ON : Protocol.ANC_TRANSPARENCY);
+            }
+            notifyState();
+        } else if ((cmd == 0x57 || cmd == 0x59) && p.length >= 3) {
+            int id = p[2] & 0xFF;
+            synchronized (state) {
+                state.eqId = -1; state.customEqName = null;
+                if (id == 0) state.eqId = 0;
+                else if (id == 4) state.eqId = 2;
+                else if (id == 1 || id == 2) state.eqId = 3;
+                else if (id == 5) state.eqId = 1;
+                else state.customEqName = "Sony EQ #" + id;
+            }
+            notifyState();
+        }
+    }
+
+    private void handleBosePacket(ExtraProtos.BosePkt pkt) {
+        byte[] p = pkt.payload;
+        if (pkt.block == 0x02 && pkt.func == 0x02 && p.length >= 1) {
+            int lvl = p[0] & 0xFF;
+            synchronized (state) {
+                state.leftBat = state.rightBat = lvl <= 100 ? lvl : -1;
+            }
+            notifyState();
+        } else if (pkt.block == 0x01 && pkt.func == 0x06 && p.length >= 1) {
+            int v = p[0] & 0xFF;
+            synchronized (state) {
+                state.ancMode = v == 0 ? Protocol.ANC_OFF : (v == 3 ? Protocol.ANC_TRANSPARENCY : Protocol.ANC_ON);
+            }
+            notifyState();
+        } else if (pkt.block == 0x01 && pkt.func == 0x07 && p.length >= 1) {
+            synchronized (state) { state.dualConn = (p[0] & 0xFF) != 0; }
+            notifyState();
+        }
+    }
+
+    private void handleSoundcorePacket(ExtraProtos.ScPkt pkt) {
+        byte[] p = pkt.payload;
+        if (pkt.group == 0x01 && pkt.cmd == 0x03 && p.length >= 2) {
+            synchronized (state) {
+                if (p.length >= 4) {
+                    int l = p[0] & 0xFF, r = p[1] & 0xFF;
+                    state.leftBat = l <= 100 ? l : -1; state.rightBat = r <= 100 ? r : -1;
+                    state.leftChg = (p[2] & 0xFF) == 1; state.rightChg = (p[3] & 0xFF) == 1;
+                } else {
+                    int b = p[0] & 0xFF;
+                    state.leftBat = state.rightBat = b <= 100 ? b : -1;
+                    state.leftChg = state.rightChg = (p[1] & 0xFF) == 1;
+                }
+            }
+            notifyState();
+        } else if (pkt.group == 0x06 && (pkt.cmd == 0x01 || pkt.cmd == 0x81) && p.length >= 1) {
+            int m = p[0] & 0xFF;
+            synchronized (state) {
+                state.ancMode = m == 0 ? Protocol.ANC_ON : (m == 1 ? Protocol.ANC_TRANSPARENCY : Protocol.ANC_OFF);
+            }
+            notifyState();
+        } else if (pkt.group == 0x01 && pkt.cmd == 0x11 && p.length >= 1) {
+            synchronized (state) { state.gameMode = (p[0] & 0xFF) == 1; }
+            notifyState();
+        }
+    }
+
+    private void handleXiaomiPacket(ExtraProtos.XiaomiPkt pkt) {
+        byte[] p = pkt.payload;
+        if (!pkt.isResp()) {
+            final int op = pkt.opcode, seq = pkt.seq;
+            io.execute(new Runnable() { @Override public void run() { sendRaw(ExtraProtos.xiaomiBuild(0x04, op, seq, null)); } });
+        }
+        if (pkt.opcode == 0x50 && p.length >= 18) {
+            final byte[] resp = ExtraProtos.xiaomiChallengeResponse(Arrays.copyOfRange(p, 2, 18));
+            io.execute(new Runnable() { @Override public void run() { sendRaw(ExtraProtos.xiaomiReq(0x51, resp)); } });
+            return;
+        }
+        if (pkt.opcode == 0x51) {
+            xiaomiAuthed = true;
+            requestFullState(false);
+            return;
+        }
+        if (pkt.opcode == 0x09 && p.length >= 3) {
+            synchronized (state) {
+                int l = p[0] & 0x7F; boolean lc = (p[0] & 0x80) != 0;
+                int r = p[1] & 0x7F; boolean rc = (p[1] & 0x80) != 0;
+                int c = p[2] & 0x7F; boolean cc = (p[2] & 0x80) != 0;
+                state.leftBat = l <= 100 ? l : -1; state.leftChg = lc;
+                state.rightBat = r <= 100 ? r : -1; state.rightChg = rc;
+                state.caseBat = (c <= 100 && !(c == 0 && !cc)) ? c : -1; state.caseChg = cc;
+            }
+            notifyState();
+        } else if (pkt.opcode == 0x08 && p.length >= 2) {
+            int m = p[1] & 0xFF;
+            synchronized (state) {
+                state.ancMode = m == 1 ? Protocol.ANC_ON : (m == 2 ? Protocol.ANC_TRANSPARENCY : Protocol.ANC_OFF);
+            }
+            notifyState();
+        } else if (pkt.opcode == 0x0E && p.length >= 2) {
+            synchronized (state) { state.autoPlayPause = (p[1] & 0xFF) == 1; }
+            notifyState();
+        } else if ((pkt.opcode == 0xF3 || pkt.opcode == 0xF4) && p.length >= 3) {
+            int cfg = p[0] & 0xFF, v = p[2] & 0xFF;
+            synchronized (state) {
+                if (cfg == 0x03) state.autoAnswer = v == 1;
+                else if (cfg == 0x04) state.dualConn = v == 1;
+                else if (cfg == 0x07) {
+                    state.eqId = v == 0 ? 0 : (v == 1 ? 2 : (v == 2 ? 3 : (v == 3 ? 1 : -1)));
+                    state.customEqName = state.eqId < 0 ? ("EQ #" + v) : null;
+                } else if (cfg == 0x0B) {
+                    state.ancLevel = v == 1 ? 1 : (v == 2 ? 0 : (v == 3 ? 2 : 3));
+                }
+            }
+            notifyState();
+        }
+    }
+
+    private void handleSennheiserPacket(ExtraProtos.GaiaPkt pkt) {
+        if (pkt.vendor != 0x0495) return;
+        byte[] p = pkt.payload;
+        if (pkt.feature == 0x06 && pkt.command == 0x02 && p.length >= 1) {
+            synchronized (state) {
+                if (p.length >= 3) {
+                    int l = p[0] & 0xFF, r = p[1] & 0xFF, c = p[2] & 0xFF;
+                    state.leftBat = l <= 100 ? l : -1; state.rightBat = r <= 100 ? r : -1; state.caseBat = c <= 100 ? c : -1;
+                } else {
+                    int b = p[0] & 0xFF; state.leftBat = state.rightBat = b <= 100 ? b : -1;
+                }
+            }
+            notifyState();
+        } else if (pkt.feature == 0x05 && (pkt.command == 0x01 || pkt.command == 0x02 || pkt.command == 0x04) && p.length >= 1) {
+            synchronized (state) {
+                if (pkt.command == 0x02) { if ((p[0] & 0xFF) == 0) state.ancMode = Protocol.ANC_OFF; }
+                else if (pkt.command == 0x04) state.ancMode = (p[0] & 0xFF) == 1 ? Protocol.ANC_TRANSPARENCY : Protocol.ANC_ON;
+                else state.ancMode = (p[0] & 0xFF) == 0 ? Protocol.ANC_OFF : (p.length >= 2 && (p[1] & 0xFF) == 1 ? Protocol.ANC_TRANSPARENCY : Protocol.ANC_ON);
+            }
+            notifyState();
+        } else if (pkt.feature == 0x06 && pkt.command == 0x06 && p.length >= 1) {
+            synchronized (state) { state.spatialAudio = (p[0] & 0xFF) == 1; }
+            notifyState();
+        }
+    }
+
+    private void handleJabraPacket(ExtraProtos.JabraPkt pkt) {
+        byte[] p = pkt.payload;
+        if (pkt.feat == 0x0101 && p.length >= 1) {
+            synchronized (state) {
+                if (p.length >= 3) {
+                    int l = p[0] & 0xFF, r = p[1] & 0xFF, c = p[2] & 0xFF;
+                    state.leftBat = l <= 100 ? l : -1; state.rightBat = r <= 100 ? r : -1; state.caseBat = c <= 100 ? c : -1;
+                } else {
+                    int b = p[0] & 0xFF; state.leftBat = state.rightBat = b <= 100 ? b : -1;
+                }
+            }
+            notifyState();
+        } else if (pkt.feat == 0x0104 && p.length >= 1) {
+            int v = p[0] & 0xFF;
+            synchronized (state) { state.ancMode = v == 2 ? Protocol.ANC_ON : (v == 1 ? Protocol.ANC_TRANSPARENCY : Protocol.ANC_OFF); }
+            notifyState();
+        } else if (pkt.feat == 0x0107 && p.length >= 1) {
+            synchronized (state) { state.dualConn = (p[0] & 0xFF) == 1; }
+            notifyState();
+        }
+    }
+
+    private void handlePixelBudsPacket(ExtraProtos.PbPkt pkt) {
+        if (pkt.ch > 0) pbChannel = pkt.ch;
+        List<ExtraProtos.PbField> fs = ExtraProtos.pbReadFields(pkt.payload);
+        if (pkt.method == ExtraProtos.PB_M_SUB_BAT) {
+            synchronized (state) {
+                for (ExtraProtos.PbField f : fs) {
+                    if (f.wire == 2 && f.b != null && (f.num == 1 || f.num == 2 || f.num == 3)) {
+                        int lvl = -1; boolean chg = false;
+                        for (ExtraProtos.PbField sub : ExtraProtos.pbReadFields(f.b)) {
+                            if (sub.num == 1) lvl = (int) sub.v;
+                            else if (sub.num == 2) chg = sub.v != 0;
+                        }
+                        if (lvl >= 0 && lvl <= 100) {
+                            if (f.num == 1) { state.leftBat = lvl; state.leftChg = chg; }
+                            else if (f.num == 2) { state.rightBat = lvl; state.rightChg = chg; }
+                            else { state.caseBat = (lvl == 0 && !chg) ? -1 : lvl; state.caseChg = chg; }
+                        }
+                    }
+                }
+            }
+            notifyState();
+            return;
+        }
+        for (ExtraProtos.PbField f : fs) {
+            if (f.num == 4 && f.wire == 2 && f.b != null) {
+                synchronized (state) {
+                    for (ExtraProtos.PbField sf : ExtraProtos.pbReadFields(f.b)) {
+                        if (sf.num == 11) {
+                            state.ancMode = sf.v == 2 ? Protocol.ANC_ON : (sf.v == 3 ? Protocol.ANC_TRANSPARENCY : Protocol.ANC_OFF);
+                        } else if (sf.num == 5) {
+                            state.autoPlayPause = sf.v != 0;
+                        } else if (sf.num == 21) {
+                            state.dualConn = sf.v != 0;
+                        }
+                    }
+                }
+                notifyState();
+            }
+        }
+    }
+
+    private void handleJblPacket(ExtraProtos.JblPkt pkt) {
+        byte[] p = pkt.payload;
+        if (pkt.cmd == 0x25 && p.length >= 2) {
+            synchronized (state) {
+                for (int i = 0; i + 1 < p.length; i += 2) {
+                    int id = p[i] & 0xFF, v = p[i + 1] & 0xFF;
+                    int lvl = v & 0x7F; boolean chg = (v & 0x80) != 0;
+                    if (id == 1) { state.leftBat = lvl <= 100 ? lvl : -1; state.leftChg = chg; }
+                    else if (id == 2) { state.rightBat = lvl <= 100 ? lvl : -1; state.rightChg = chg; }
+                    else if (id == 3) { state.caseBat = (lvl <= 100 && !(lvl == 0 && !chg)) ? lvl : -1; state.caseChg = chg; }
+                }
+            }
+            notifyState();
+        } else if (pkt.cmd == 0x91 && p.length >= 5) {
+            boolean anc = false, amb = false;
+            for (int i = 1; i + 1 < p.length; i += 2) {
+                int k = p[i] & 0xFF, v = p[i + 1] & 0xFF;
+                if (k == 1) anc = v != 0;
+                else if (k == 2) amb = v != 0;
+            }
+            synchronized (state) {
+                state.ancMode = anc ? Protocol.ANC_ON : (amb ? Protocol.ANC_TRANSPARENCY : Protocol.ANC_OFF);
+            }
+            notifyState();
+        } else if (pkt.cmd == 0x22 && p.length >= 2) {
+            int f = p[0] & 0xFF, v = p[1] & 0xFF;
+            synchronized (state) {
+                if (f == 0x35) state.autoPlayPause = v == 1;
+                else if (f == 0x40) {
+                    state.eqId = v == 0 ? 0 : (v == 2 ? 2 : (v == 7 ? 3 : (v == 3 ? 1 : -1)));
+                    state.customEqName = state.eqId < 0 ? ("JBL EQ #" + v) : null;
+                } else if (f == 0x9D) state.spatialAudio = (p.length >= 3 ? (p[2] & 0xFF) : v) == 1;
+            }
+            notifyState();
         }
     }
 }

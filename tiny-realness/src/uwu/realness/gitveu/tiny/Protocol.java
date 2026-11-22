@@ -52,16 +52,17 @@ final class Protocol {
     static final byte ANC_ON = 0x08;
 
     static final int MODEL_UNKNOWN = 0;
-    // realme / OnePlus / OPPO (TL + OPPOv1): 1..29
+    // realme / OnePlus / OPPO / DIZO (TL + OPPOv1): 1..29
     static final int MODEL_T300 = 1;
     static final int MODEL_T200 = 2;
     static final int MODEL_AIR_7_PRO = 3;
-    static final int MODEL_REALME_ADV = 4;   // Air 5/6/7 Pro, T310
-    static final int MODEL_REALME_GEN = 5;   // realme generic / Air / T100
-    static final int MODEL_ONEPLUS_PRO = 6;  // OnePlus Buds 3 / 4 / Pro 2 / Pro 3
-    static final int MODEL_ONEPLUS_GEN = 7;  // OnePlus Buds / Ace / Nord / Z
-    static final int MODEL_OPPO_PRO = 8;     // OPPO Enco X / X2 / X3 / Air3 / Air4
-    static final int MODEL_OPPO_GEN = 9;     // OPPO Enco Air / Buds / Free
+    static final int MODEL_AIR_8_PRO = 10;   // realme Buds Air 8 / Air 8 Pro
+    static final int MODEL_REALME_ADV = 4;   // Air 5/6/7/8, T310, T500 Pro, N1 Pro
+    static final int MODEL_REALME_GEN = 5;   // realme Buds / T110 / T200x / Clip / Wireless / DIZO
+    static final int MODEL_ONEPLUS_PRO = 6;  // OnePlus Buds 3 / 4 / Pro 2 / Pro 3 / Pro 4 / Nord Buds 4 Pro
+    static final int MODEL_ONEPLUS_GEN = 7;  // OnePlus Buds / Ace / Nord / Z / Flow / Bullets
+    static final int MODEL_OPPO_PRO = 8;     // OPPO Enco X / X2 / X3 / X4 / Air3 / Air4 / Air5 / Free4
+    static final int MODEL_OPPO_GEN = 9;     // OPPO Enco Air / Buds / Free / Clip / R / W / M
 
     // HUAWEI / HONOR (Huawei SPP — OpenFreebuds): 30..49
     static final int MODEL_HW_3 = 30;
@@ -90,11 +91,12 @@ final class Protocol {
     static final int MODEL_HONOR_X2 = 53;
     static final int MODEL_HONOR_CHOICE_GEN = 54;
 
-    // Nothing / CMF (Nothing SPP): 60..69
-    static final int MODEL_NOTHING_EAR = 60;      // Ear (1)/(2)/(a)/(3)/Ear/Headphone
-    static final int MODEL_NOTHING_OPEN = 61;     // Ear (stick) / Ear (open) (no ANC)
+    // Nothing / CMF (Nothing SPP — swift-nothing-ear all 23 models): 60..69
+    static final int MODEL_NOTHING_EAR = 60;      // Ear (1)/(2)/(a)/(3)/(3a)/Ear/Headphone (1)/(1) Pro/(a)
+    static final int MODEL_NOTHING_OPEN = 61;     // Ear (stick) / Ear (open) / CMF Clip Pro / Speaker
     static final int MODEL_CMF_CLASSIC = 62;      // CMF Buds Pro / Neckband Pro
-    static final int MODEL_CMF_LISTENING = 63;    // CMF Buds / Buds 2 / Buds Pro 2 / Headphone Pro
+    static final int MODEL_CMF_LISTENING = 63;    // CMF Buds / Buds 2 / 2a / 2 Plus / Buds Pro 2 / Headphone Pro
+    static final int MODEL_CMF_NEO = 64;          // CMF Buds Neo
 
     // Samsung Galaxy Buds (Galaxy Buds SPP): 70..79
     static final int MODEL_GALAXY_BUDS = 70;      // Buds (2019, legacy 0xFE)
@@ -102,17 +104,29 @@ final class Protocol {
     static final int MODEL_GALAXY_LIVE = 72;      // Buds Live
     static final int MODEL_GALAXY_MODERN = 73;    // Buds Pro / Buds2 / 2 Pro / FE / Buds3 / 3 Pro / Core / Buds4
 
+    // kde-headphones extra protocols: 80..89
+    static final int MODEL_SONY_MDR = 80;         // Sony WH / WF / LinkBuds / ULT (MDR V1/V2)
+    static final int MODEL_BOSE_BMAP = 81;        // Bose QuietComfort / NC 700 / Sport (BMAP)
+    static final int MODEL_SOUNDCORE = 82;        // Anker Soundcore Liberty / Space / Life / Q / P / A
+    static final int MODEL_XIAOMI = 83;           // Xiaomi / Redmi / POCO Buds (SAFER+ SPP)
+    static final int MODEL_SENNHEISER = 84;       // Sennheiser MOMENTUM / ACCENTUM / CX (GAIA v3)
+    static final int MODEL_JABRA = 85;            // Jabra Elite / Evolve / Talk (Jabra SPP)
+    static final int MODEL_PIXEL_BUDS = 86;       // Google Pixel Buds Pro / Pro 2 / A-Series / 2a (Maestro)
+    static final int MODEL_JBL = 87;              // JBL Tour / Live / Tune / Wave / Reflect / Club (BLE GATT)
+
     static final int[] PICKER_MODELS = {
         MODEL_UNKNOWN,
-        MODEL_T300, MODEL_T200, MODEL_AIR_7_PRO, MODEL_REALME_ADV, MODEL_REALME_GEN,
+        MODEL_T300, MODEL_T200, MODEL_AIR_7_PRO, MODEL_AIR_8_PRO, MODEL_REALME_ADV, MODEL_REALME_GEN,
         MODEL_ONEPLUS_PRO, MODEL_ONEPLUS_GEN,
         MODEL_OPPO_PRO, MODEL_OPPO_GEN,
         MODEL_HW_PRO3, MODEL_HW_PRO2, MODEL_HW_PRO, MODEL_HW_PRO5, MODEL_HW_6I, MODEL_HW_5I, MODEL_HW_4I,
         MODEL_HW_CLIP, MODEL_HW_CLIP2, MODEL_HW_SE4, MODEL_HW_SE2, MODEL_HW_SE, MODEL_HW_3,
         MODEL_HW_STUDIO, MODEL_HW_LACE, MODEL_HW_LACE2, MODEL_HONOR_S2, MODEL_HW_GENERIC,
         MODEL_HONOR_X8, MODEL_HONOR_X5, MODEL_HONOR_X3, MODEL_HONOR_X2, MODEL_HONOR_CHOICE_GEN,
-        MODEL_NOTHING_EAR, MODEL_NOTHING_OPEN, MODEL_CMF_CLASSIC, MODEL_CMF_LISTENING,
-        MODEL_GALAXY_MODERN, MODEL_GALAXY_LIVE, MODEL_GALAXY_PLUS, MODEL_GALAXY_BUDS
+        MODEL_NOTHING_EAR, MODEL_NOTHING_OPEN, MODEL_CMF_CLASSIC, MODEL_CMF_LISTENING, MODEL_CMF_NEO,
+        MODEL_GALAXY_MODERN, MODEL_GALAXY_LIVE, MODEL_GALAXY_PLUS, MODEL_GALAXY_BUDS,
+        MODEL_SONY_MDR, MODEL_BOSE_BMAP, MODEL_SOUNDCORE, MODEL_XIAOMI,
+        MODEL_SENNHEISER, MODEL_JABRA, MODEL_PIXEL_BUDS, MODEL_JBL
     };
 
     static String modelTitle(int m) {
@@ -120,12 +134,13 @@ final class Protocol {
             case MODEL_T300: return "realme Buds T300";
             case MODEL_T200: return "realme Buds T200";
             case MODEL_AIR_7_PRO: return "realme Buds Air 7 Pro";
-            case MODEL_REALME_ADV: return "realme Buds Air 5/6/7 / T310";
-            case MODEL_REALME_GEN: return "realme Buds (Generic)";
-            case MODEL_ONEPLUS_PRO: return "OnePlus Buds 3 / 4 / Pro 2 / Pro 3";
+            case MODEL_AIR_8_PRO: return "realme Buds Air 8 Pro";
+            case MODEL_REALME_ADV: return "realme Buds Air 5/6/7/8 / T310 / T500";
+            case MODEL_REALME_GEN: return "realme Buds / DIZO (Generic)";
+            case MODEL_ONEPLUS_PRO: return "OnePlus Buds 3 / 4 / Pro 2 / 3 / 4";
             case MODEL_ONEPLUS_GEN: return "OnePlus Buds / Ace / Nord / Z";
-            case MODEL_OPPO_PRO: return "OPPO Enco X / X2 / X3 / Air3 / Air4";
-            case MODEL_OPPO_GEN: return "OPPO Enco Air / Buds / Free";
+            case MODEL_OPPO_PRO: return "OPPO Enco X / X2 / X3 / X4 / Air3..5";
+            case MODEL_OPPO_GEN: return "OPPO Enco Air / Buds / Free / Clip";
             case MODEL_HW_3: return "HUAWEI FreeBuds 3";
             case MODEL_HW_4I: return "HUAWEI FreeBuds 4i";
             case MODEL_HW_5I: return "HUAWEI FreeBuds 5i";
@@ -149,14 +164,23 @@ final class Protocol {
             case MODEL_HONOR_X3: return "HONOR CHOICE Earbuds X3 / Lite";
             case MODEL_HONOR_X2: return "HONOR CHOICE Earbuds X2 / X";
             case MODEL_HONOR_CHOICE_GEN: return "HONOR CHOICE (Generic)";
-            case MODEL_NOTHING_EAR: return "Nothing Ear / Ear (1)/(2)/(a)/(3)";
-            case MODEL_NOTHING_OPEN: return "Nothing Ear (stick) / (open)";
+            case MODEL_NOTHING_EAR: return "Nothing Ear / (1)/(2)/(a)/(3)/(3a) / Headphone";
+            case MODEL_NOTHING_OPEN: return "Nothing Ear (stick)/(open) / CMF Clip Pro";
             case MODEL_CMF_CLASSIC: return "CMF Buds Pro / Neckband Pro";
             case MODEL_CMF_LISTENING: return "CMF Buds / Buds 2 / Buds Pro 2";
+            case MODEL_CMF_NEO: return "CMF Buds Neo";
             case MODEL_GALAXY_MODERN: return "Galaxy Buds Pro / 2 / FE / 3 / 4";
             case MODEL_GALAXY_LIVE: return "Galaxy Buds Live";
             case MODEL_GALAXY_PLUS: return "Galaxy Buds+";
             case MODEL_GALAXY_BUDS: return "Galaxy Buds (2019)";
+            case MODEL_SONY_MDR: return "Sony WH / WF / LinkBuds / ULT";
+            case MODEL_BOSE_BMAP: return "Bose QuietComfort / NC 700 / Sport";
+            case MODEL_SOUNDCORE: return "Soundcore Liberty / Space / Life / Q / P";
+            case MODEL_XIAOMI: return "Xiaomi / Redmi / POCO Buds";
+            case MODEL_SENNHEISER: return "Sennheiser MOMENTUM / ACCENTUM / CX";
+            case MODEL_JABRA: return "Jabra Elite / Evolve";
+            case MODEL_PIXEL_BUDS: return "Google Pixel Buds Pro / A-Series / 2a";
+            case MODEL_JBL: return "JBL Tour / Live / Tune / Wave / Reflect";
             default: return "Automatic";
         }
     }
@@ -189,9 +213,12 @@ final class Protocol {
             return MODEL_GALAXY_BUDS;
         }
 
-        // 2. Nothing / CMF
-        if (n.contains("nothing") || n.contains("cmf") || n.startsWith("ear (") || n.equals("ear")) {
+        // 2. Nothing / CMF (all 23 models from swift-nothing-ear)
+        if (n.contains("nothing") || n.contains("cmf") || n.startsWith("ear (") || n.equals("ear")
+            || n.startsWith("headphone (")) {
             if (n.contains("cmf")) {
+                if (n.contains("neo")) return MODEL_CMF_NEO;
+                if (n.contains("clip") || n.contains("speaker")) return MODEL_NOTHING_OPEN;
                 if (n.contains("neckband") || (n.contains("pro") && !n.contains("pro 2") && !n.contains("pro2") && !n.contains("headphone"))) {
                     return MODEL_CMF_CLASSIC;
                 }
@@ -201,7 +228,54 @@ final class Protocol {
             return MODEL_NOTHING_EAR;
         }
 
-        // 3. HUAWEI
+        // 3. Sony MDR
+        if (n.contains("wh-1000") || n.contains("wf-1000") || n.contains("wh-ch") || n.contains("wh-xb")
+            || n.contains("wf-c") || n.contains("wf-sp") || n.contains("wf-xb") || n.contains("wi-1000")
+            || n.contains("linkbuds") || n.contains("ult wear") || n.contains("inzone") || n.contains("sony")) {
+            return MODEL_SONY_MDR;
+        }
+
+        // 4. Bose BMAP
+        if (n.contains("bose") || n.contains("quietcomfort") || n.startsWith("qc") || n.contains("nc 700")
+            || n.contains("nc700") || n.contains("soundsport")) {
+            return MODEL_BOSE_BMAP;
+        }
+
+        // 5. Anker Soundcore
+        if (n.contains("soundcore") || n.contains("liberty") || n.contains("space q") || n.contains("space a")
+            || n.contains("space one") || n.contains("life q") || n.contains("life p") || n.contains("life a")
+            || n.contains("life dot") || n.contains("life note") || n.contains("vr p10") || n.contains("sport x")) {
+            return MODEL_SOUNDCORE;
+        }
+
+        // 6. Xiaomi / Redmi / POCO Buds
+        if (n.contains("xiaomi") || n.contains("redmi buds") || n.contains("redmi airdots") || n.contains("poco buds")
+            || n.contains("poco pods") || n.contains("mi true wireless") || n.contains("mi airdots")) {
+            return MODEL_XIAOMI;
+        }
+
+        // 7. Sennheiser GAIA
+        if (n.contains("sennheiser") || n.contains("momentum") || n.contains("accentum") || n.contains("cx plus")
+            || n.contains("cx true") || n.contains("cx 400") || n.contains("sport true")) {
+            return MODEL_SENNHEISER;
+        }
+
+        // 8. Jabra
+        if (n.contains("jabra") || n.contains("elite ") || n.contains("evolve")) {
+            return MODEL_JABRA;
+        }
+
+        // 9. Google Pixel Buds
+        if (n.contains("pixel buds")) {
+            return MODEL_PIXEL_BUDS;
+        }
+
+        // 10. JBL BLE GATT
+        if (n.contains("jbl")) {
+            return MODEL_JBL;
+        }
+
+        // 11. HUAWEI
         if (n.contains("huawei") || n.contains("freebuds") || n.contains("freeclip") || n.contains("freelace")) {
             if (n.contains("freeclip 2") || n.contains("freeclip2")) return MODEL_HW_CLIP2;
             if (n.contains("freeclip")) return MODEL_HW_CLIP;
@@ -222,7 +296,7 @@ final class Protocol {
             return MODEL_HW_GENERIC;
         }
 
-        // 4. HONOR (Huawei SPP & HONOR CHOICE SPP)
+        // 12. HONOR (Huawei SPP & HONOR CHOICE SPP)
         if (n.contains("honor") || n.contains("荣耀") || n.contains("moecen")) {
             if (n.contains("earbuds s2")) return MODEL_HONOR_S2;
             if (n.contains("earbuds 2") && !n.contains("choice")) return MODEL_HW_4I;
@@ -234,35 +308,39 @@ final class Protocol {
             return MODEL_UNKNOWN;
         }
 
-        // 5. OnePlus Buds
-        if (n.contains("oneplus") || n.contains("nord buds")) {
+        // 13. OnePlus Buds (all QuickBuds models)
+        if (n.contains("oneplus") || n.contains("nord buds") || n.contains("bullets wireless")) {
             if (n.contains("pro 2") || n.contains("pro2") || n.contains("pro 3") || n.contains("pro3")
-                || n.contains("buds 3") || n.contains("buds3") || n.contains("buds 4") || n.contains("buds4")) {
+                || n.contains("pro 4") || n.contains("pro4") || n.contains("buds 3") || n.contains("buds3")
+                || n.contains("buds 4") || n.contains("buds4") || n.contains("nord buds 4 pro")) {
                 return MODEL_ONEPLUS_PRO;
             }
             return MODEL_ONEPLUS_GEN;
         }
 
-        // 6. OPPO Enco
+        // 14. OPPO Enco (all QuickBuds models)
         if (n.contains("oppo") || n.contains("enco")) {
-            if (n.contains("enco x") || n.contains("x2") || n.contains("x3")
-                || n.contains("air3") || n.contains("air 3") || n.contains("air4") || n.contains("air 4")) {
+            if (n.contains("enco x") || n.contains("x2") || n.contains("x3") || n.contains("x4")
+                || n.contains("air3") || n.contains("air 3") || n.contains("air4") || n.contains("air 4")
+                || n.contains("air5") || n.contains("air 5") || n.contains("free4") || n.contains("free 4")) {
                 return MODEL_OPPO_PRO;
             }
             return MODEL_OPPO_GEN;
         }
 
-        // 7. realme Buds
-        boolean isRealmeOrBuds = n.contains("realme") || n.contains("buds");
+        // 15. realme Buds / DIZO (all QuickBuds models, incl. Air 8 Pro)
+        boolean isRealmeOrBuds = n.contains("realme") || n.contains("dizo") || n.contains("buds");
         if (!isRealmeOrBuds) return MODEL_UNKNOWN;
+        if (n.contains("air 8 pro") || n.contains("air8 pro")) return MODEL_AIR_8_PRO;
         if (n.contains("air 7 pro") || n.contains("air7 pro")) return MODEL_AIR_7_PRO;
-        if (n.contains("t200")) return MODEL_T200;
+        if (n.contains("t200") && !n.contains("lite") && !n.contains("t200x")) return MODEL_T200;
         if (n.contains("t300")) return MODEL_T300;
-        if (n.contains("t310") || n.contains("air 5") || n.contains("air5")
-            || n.contains("air 6") || n.contains("air6") || n.contains("air 7") || n.contains("air7")) {
+        if (n.contains("t310") || n.contains("t500") || n.contains("air 5") || n.contains("air5")
+            || n.contains("air 6") || n.contains("air6") || n.contains("air 7") || n.contains("air7")
+            || n.contains("air 8") || n.contains("air8") || n.contains("n1 pro")) {
             return MODEL_REALME_ADV;
         }
-        if (n.contains("realme")) return MODEL_REALME_GEN;
+        if (n.contains("realme") || n.contains("dizo")) return MODEL_REALME_GEN;
         return MODEL_UNKNOWN;
     }
 
@@ -271,7 +349,16 @@ final class Protocol {
     static boolean isHuawei(int m) { return m >= 30 && m <= 49; }
     static boolean isHonorChoice(int m) { return m >= 50 && m <= 59; }
     static boolean isNothing(int m) { return m >= 60 && m <= 69; }
+    static boolean isNothingListeningEq(int m) { return m == MODEL_CMF_LISTENING || m == MODEL_CMF_NEO; }
     static boolean isGalaxy(int m) { return m >= 70 && m <= 79; }
+    static boolean isSony(int m) { return m == MODEL_SONY_MDR; }
+    static boolean isBose(int m) { return m == MODEL_BOSE_BMAP; }
+    static boolean isSoundcore(int m) { return m == MODEL_SOUNDCORE; }
+    static boolean isXiaomi(int m) { return m == MODEL_XIAOMI; }
+    static boolean isSennheiser(int m) { return m == MODEL_SENNHEISER; }
+    static boolean isJabra(int m) { return m == MODEL_JABRA; }
+    static boolean isPixelBuds(int m) { return m == MODEL_PIXEL_BUDS; }
+    static boolean isJbl(int m) { return m == MODEL_JBL; }
 
     static boolean prefersHwPrivateUuid(int m) {
         return m == MODEL_HW_4I || m == MODEL_HW_5I || m == MODEL_HW_SE || m == MODEL_HW_LACE;
@@ -282,19 +369,23 @@ final class Protocol {
         if (isHuawei(m)) return m != MODEL_HW_3 && m != MODEL_HW_SE && m != MODEL_HW_SE2 && m != MODEL_HW_CLIP && m != MODEL_HW_CLIP2;
         if (isHonorChoice(m)) return m != MODEL_HONOR_X2;
         if (isNothing(m)) return m != MODEL_NOTHING_OPEN;
-        return isGalaxy(m);
+        return isGalaxy(m) || isSony(m) || isBose(m) || isSoundcore(m) || isXiaomi(m)
+            || isSennheiser(m) || isJabra(m) || isPixelBuds(m) || isJbl(m);
     }
     static boolean supportsAncLevel(int m) {
-        return (isHuawei(m) && supportsAnc(m) && m != MODEL_HW_4I) || (isNothing(m) && supportsAnc(m));
+        return (isHuawei(m) && supportsAnc(m) && m != MODEL_HW_4I)
+            || (isNothing(m) && supportsAnc(m))
+            || isXiaomi(m);
     }
     static boolean supportsAncDynamic(int m) {
-        if (isNothing(m)) return supportsAnc(m);
+        if (isNothing(m) || isXiaomi(m)) return supportsAnc(m);
         return m == MODEL_HW_5I || m == MODEL_HW_6I || m == MODEL_HW_PRO || m == MODEL_HW_PRO3
             || m == MODEL_HW_PRO5 || m == MODEL_HW_SE4 || m == MODEL_HW_STUDIO
             || m == MODEL_HW_LACE2 || m == MODEL_HW_GENERIC;
     }
     static boolean supportsEq(int m) {
         return isRealme(m) || isHonorChoice(m) || isNothing(m) || isGalaxy(m)
+            || isSony(m) || isXiaomi(m) || isJbl(m)
             || m == MODEL_HW_5I || m == MODEL_HW_6I || m == MODEL_HW_PRO2
             || m == MODEL_HW_PRO3 || m == MODEL_HW_PRO5 || m == MODEL_HW_CLIP || m == MODEL_HW_CLIP2
             || m == MODEL_HW_SE2 || m == MODEL_HW_SE4 || m == MODEL_HW_STUDIO
@@ -316,37 +407,40 @@ final class Protocol {
             || m == MODEL_HW_CLIP2 || m == MODEL_HW_SE4 || m == MODEL_HW_LACE2 || m == MODEL_HW_GENERIC;
     }
     static boolean supportsTouch(int m) { return supportsDoubleTap(m) || supportsTripleTap(m) || supportsLongTap(m); }
-    static boolean supportsSpatial(int m) { return isRealme(m); }
+    static boolean supportsSpatial(int m) { return isRealme(m) || isSennheiser(m) || isJbl(m); }
     static boolean supportsGameMode(int m) {
-        return isRealme(m) || isNothing(m) || m == MODEL_HW_5I || m == MODEL_HW_6I || m == MODEL_HW_PRO3 || m == MODEL_HW_PRO5
+        return isRealme(m) || isNothing(m) || isSoundcore(m)
+            || m == MODEL_HW_5I || m == MODEL_HW_6I || m == MODEL_HW_PRO3 || m == MODEL_HW_PRO5
             || m == MODEL_HW_CLIP || m == MODEL_HW_CLIP2 || m == MODEL_HW_SE2 || m == MODEL_HW_SE4
             || m == MODEL_HW_LACE2 || m == MODEL_HW_GENERIC;
     }
     static boolean supportsHqAudio(int m) {
-        return m == MODEL_T200 || m == MODEL_AIR_7_PRO || m == MODEL_REALME_ADV
+        return m == MODEL_T200 || m == MODEL_AIR_7_PRO || m == MODEL_AIR_8_PRO || m == MODEL_REALME_ADV
             || m == MODEL_ONEPLUS_PRO || m == MODEL_OPPO_PRO
             || m == MODEL_HW_5I || m == MODEL_HW_6I || m == MODEL_HW_PRO2 || m == MODEL_HW_PRO3
             || m == MODEL_HW_PRO5 || m == MODEL_HW_CLIP || m == MODEL_HW_CLIP2
             || m == MODEL_HW_LACE2 || m == MODEL_HW_GENERIC;
     }
-    static boolean usesLhdc(int m) { return m == MODEL_AIR_7_PRO || m == MODEL_ONEPLUS_PRO || m == MODEL_OPPO_PRO; }
+    static boolean usesLhdc(int m) { return m == MODEL_AIR_7_PRO || m == MODEL_AIR_8_PRO || m == MODEL_ONEPLUS_PRO || m == MODEL_OPPO_PRO; }
     static boolean supportsDynamic(int m) {
-        return m == MODEL_T200 || m == MODEL_AIR_7_PRO || m == MODEL_REALME_ADV || isNothing(m);
+        return m == MODEL_T200 || m == MODEL_AIR_7_PRO || m == MODEL_AIR_8_PRO || m == MODEL_REALME_ADV || isNothing(m);
     }
     static boolean supportsDual(int m) {
-        return m == MODEL_T200 || m == MODEL_AIR_7_PRO || m == MODEL_REALME_ADV
+        return m == MODEL_T200 || m == MODEL_AIR_7_PRO || m == MODEL_AIR_8_PRO || m == MODEL_REALME_ADV
             || m == MODEL_ONEPLUS_PRO || m == MODEL_OPPO_PRO || m == MODEL_GALAXY_MODERN
+            || isBose(m) || isXiaomi(m) || isJabra(m) || isPixelBuds(m)
             || m == MODEL_HW_5I || m == MODEL_HW_6I || m == MODEL_HW_PRO || m == MODEL_HW_PRO2
             || m == MODEL_HW_PRO3 || m == MODEL_HW_PRO5 || m == MODEL_HW_CLIP || m == MODEL_HW_CLIP2
             || m == MODEL_HW_LACE2 || m == MODEL_HW_GENERIC;
     }
     static boolean supportsAutoPlayPause(int m) {
-        return m == MODEL_AIR_7_PRO || m == MODEL_REALME_ADV || m == MODEL_ONEPLUS_PRO || m == MODEL_OPPO_PRO
-            || isNothing(m) || m == MODEL_HW_4I || m == MODEL_HW_5I || m == MODEL_HW_6I
+        return m == MODEL_AIR_7_PRO || m == MODEL_AIR_8_PRO || m == MODEL_REALME_ADV || m == MODEL_ONEPLUS_PRO || m == MODEL_OPPO_PRO
+            || isNothing(m) || isXiaomi(m) || isPixelBuds(m) || isJbl(m)
+            || m == MODEL_HW_4I || m == MODEL_HW_5I || m == MODEL_HW_6I
             || m == MODEL_HW_PRO2 || m == MODEL_HW_PRO3 || m == MODEL_HW_PRO5 || m == MODEL_HW_CLIP
             || m == MODEL_HW_CLIP2 || m == MODEL_HW_STUDIO || m == MODEL_HW_GENERIC;
     }
-    static boolean supportsAutoAnswer(int m) { return m == MODEL_AIR_7_PRO; }
+    static boolean supportsAutoAnswer(int m) { return m == MODEL_AIR_7_PRO || m == MODEL_AIR_8_PRO || isXiaomi(m); }
     static boolean supportsUseTime(int m) { return isRealme(m); }
 
     static final class Frame {

@@ -36,6 +36,22 @@ object T300GattConfig {
     val GALAXY_SPP_UUID: UUID = UUID.fromString("2E73A4AD-332D-41FC-90E2-16BEF06523F2")
     val GALAXY_LEGACY_SPP_UUID: UUID = UUID.fromString("00001102-0000-1000-8000-00805F9B34FD")
 
+    // Sony MDR RFCOMM SPP UUIDs (V2 / V1 — SonyHeadphonesClient / kde-headphones)
+    val SONY_V2_SPP_UUID: UUID = UUID.fromString("956C7B26-D49A-4BA8-B03F-B17D393CB6E2")
+    val SONY_V1_SPP_UUID: UUID = UUID.fromString("96CC203E-5068-46AD-B32D-E316F5E069BA")
+
+    // Xiaomi / Redmi Buds RFCOMM SPP UUID (kde-headphones)
+    val XIAOMI_SPP_UUID: UUID = UUID.fromString("0000FD2D-0000-1000-8000-00805F9B34FB")
+
+    // Sennheiser GAIA RFCOMM SPP UUID (kde-headphones)
+    val SENNHEISER_SPP_UUID: UUID = UUID.fromString("A2129FF3-081B-4C45-8AFE-469D9C4842EC")
+
+    // Google Pixel Buds Maestro RFCOMM SPP UUID (kde-headphones)
+    val PIXEL_BUDS_SPP_UUID: UUID = UUID.fromString("25E97FF7-24CE-4C4C-8951-F764A708F7B5")
+
+    // JBL BLE GATT Service UUID (kde-headphones)
+    val JBL_GATT_SERVICE: UUID = UUID.fromString("65786365-6c70-6f69-6e74-2e636f6d0000")
+
     val KNOWN_SPP_UUIDS = listOf(
         REALME_VENDOR_SPP_UUID,
         OPPO_ONEPLUS_SPP_UUID,
@@ -80,6 +96,31 @@ object T300GattConfig {
     val GALAXY_PLUS_SPP_UUIDS = listOf(
         STANDARD_SPP_UUID,
         GALAXY_SPP_UUID
+    )
+
+    val SONY_SPP_UUIDS = listOf(
+        SONY_V2_SPP_UUID,
+        SONY_V1_SPP_UUID,
+        STANDARD_SPP_UUID
+    )
+
+    val XIAOMI_SPP_UUIDS = listOf(
+        XIAOMI_SPP_UUID,
+        STANDARD_SPP_UUID
+    )
+
+    val SENNHEISER_SPP_UUIDS = listOf(
+        SENNHEISER_SPP_UUID,
+        STANDARD_SPP_UUID
+    )
+
+    val PIXEL_BUDS_SPP_UUIDS = listOf(
+        PIXEL_BUDS_SPP_UUID,
+        STANDARD_SPP_UUID
+    )
+
+    val STANDARD_SPP_ONLY_UUIDS = listOf(
+        STANDARD_SPP_UUID
     )
 
     /**

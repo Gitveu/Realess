@@ -74,18 +74,34 @@ object T300Protocol {
         HUAWEI_SPP,
         HONOR_CHOICE_SPP,
         NOTHING_SPP,
-        GALAXY_BUDS_SPP
+        GALAXY_BUDS_SPP,
+        SONY_MDR_SPP,
+        BOSE_BMAP_SPP,
+        SOUNDCORE_SPP,
+        XIAOMI_SPP,
+        SENNHEISER_GAIA_SPP,
+        JABRA_SPP,
+        PIXEL_BUDS_SPP,
+        JBL_GATT
     }
 
     enum class Brand(val title: String) {
         UNKNOWN(""),
-        REALME("realme"),
+        REALME("realme / DIZO"),
         ONEPLUS("OnePlus"),
         OPPO("OPPO"),
         HUAWEI("HUAWEI"),
         HONOR("HONOR"),
         NOTHING("Nothing / CMF"),
-        SAMSUNG("Samsung")
+        SAMSUNG("Samsung"),
+        SONY("Sony"),
+        BOSE("Bose"),
+        SOUNDCORE("Anker Soundcore"),
+        XIAOMI("Xiaomi / Redmi"),
+        SENNHEISER("Sennheiser"),
+        JABRA("Jabra"),
+        GOOGLE("Google Pixel Buds"),
+        JBL("JBL")
     }
 
     enum class BudsModel(
@@ -95,20 +111,32 @@ object T300Protocol {
     ) {
         UNKNOWN(ProtocolFamily.NONE, Brand.UNKNOWN, "Unknown"),
 
-        // realme Buds (TL + OPPOv1)
+        // realme Buds & DIZO (TL + OPPOv1 — realme Link & QuickBuds full whiteList)
         BUDS_T300(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds T300"),
         BUDS_T200(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds T200"),
+        BUDS_T200_LITE(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds T200 Lite / T200x"),
         BUDS_T310(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds T310"),
-        BUDS_T100(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds T100"),
-        BUDS_AIR_5(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds Air 5"),
-        BUDS_AIR_5_PRO(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds Air 5 Pro"),
-        BUDS_AIR_6(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds Air 6"),
-        BUDS_AIR_6_PRO(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds Air 6 Pro"),
-        BUDS_AIR_7(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds Air 7"),
+        BUDS_T500(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds T500"),
+        BUDS_T500_PRO(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds T500 Pro"),
+        BUDS_T110(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds T110 / T100 / T01"),
+        BUDS_AIR_8_PRO(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds Air 8 Pro"),
+        BUDS_AIR_8(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds Air 8"),
         BUDS_AIR_7_PRO(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds Air 7 Pro"),
+        BUDS_AIR_7(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds Air 7"),
+        BUDS_AIR_6_PRO(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds Air 6 Pro"),
+        BUDS_AIR_6(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds Air 6"),
+        BUDS_AIR_5_PRO(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds Air 5 Pro"),
+        BUDS_AIR_5(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds Air 5"),
+        BUDS_AIR_3(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds Air 3 / 3S / 3 Neo"),
+        BUDS_AIR_2(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds Air / 2 / Pro / Neo"),
+        BUDS_N1(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds N1 / N1 Pro"),
+        BUDS_CLIP(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds Clip"),
+        BUDS_Q2(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds Q2 / Q2s"),
+        BUDS_WIRELESS(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds Wireless 2 / 3 / 5 / 6"),
+        DIZO_BUDS(ProtocolFamily.REALME_TL, Brand.REALME, "DIZO GoPods / Wireless"),
         REALME_GENERIC(ProtocolFamily.REALME_TL, Brand.REALME, "realme Buds (Generic)"),
 
-        // OnePlus Buds (TL + OPPOv1, UUID 00001107 / 0000079A — QuickBuds)
+        // OnePlus Buds (TL + OPPOv1 — QuickBuds full whiteList)
         ONEPLUS_BUDS(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Buds"),
         ONEPLUS_BUDS_3(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Buds 3"),
         ONEPLUS_BUDS_3V(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Buds 3V"),
@@ -116,25 +144,35 @@ object T300Protocol {
         ONEPLUS_BUDS_ACE(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Buds Ace"),
         ONEPLUS_BUDS_ACE_2(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Buds Ace 2"),
         ONEPLUS_BUDS_ACE_3(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Buds Ace 3"),
-        ONEPLUS_BUDS_CLIP(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Buds Clip"),
-        ONEPLUS_BUDS_N(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Buds N"),
+        ONEPLUS_BUDS_CLIP(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Buds Clip / Open / Flow"),
+        ONEPLUS_BUDS_N(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Buds N / V"),
         ONEPLUS_BUDS_PRO(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Buds Pro"),
-        ONEPLUS_BUDS_PRO_2(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Buds Pro 2"),
+        ONEPLUS_BUDS_PRO_2(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Buds Pro 2 / 2R"),
         ONEPLUS_BUDS_PRO_3(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Buds Pro 3"),
+        ONEPLUS_BUDS_PRO_4(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Buds Pro 4"),
         ONEPLUS_BUDS_Z(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Buds Z / Z2"),
-        ONEPLUS_NORD_BUDS(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Nord Buds / 2 / 3"),
+        ONEPLUS_NORD_BUDS(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Nord Buds / CE / 2 / 2r"),
+        ONEPLUS_NORD_BUDS_3(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Nord Buds 3 / 3r"),
         ONEPLUS_NORD_BUDS_3_PRO(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Nord Buds 3 Pro"),
+        ONEPLUS_NORD_BUDS_4(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Nord Buds 4 / 4 Pro"),
+        ONEPLUS_BULLETS(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Bullets Wireless Z2 / Z3"),
         ONEPLUS_GENERIC(ProtocolFamily.REALME_TL, Brand.ONEPLUS, "OnePlus Buds (Generic)"),
 
-        // OPPO Enco (TL + OPPOv1, UUID 00001107 / 0000079A — QuickBuds)
-        OPPO_ENCO_AIR(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco Air / Air2"),
-        OPPO_ENCO_AIR_3(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco Air3 / Air3 Pro"),
-        OPPO_ENCO_AIR_4(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco Air4 / Air4 Pro"),
-        OPPO_ENCO_BUDS(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco Buds / Buds2"),
-        OPPO_ENCO_FREE_2(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco Free2 / Free3"),
+        // OPPO Enco (TL + OPPOv1 — QuickBuds full whiteList)
+        OPPO_ENCO_AIR(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco Air / Lite / Air2 / 2i / 2 Pro"),
+        OPPO_ENCO_AIR_3(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco Air3 / 3i / 3s / 3 Pro"),
+        OPPO_ENCO_AIR_4(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco Air4 / 4i / 4s / 4 Pro"),
+        OPPO_ENCO_AIR_5(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco Air5 / 5s / 5 Pro"),
+        OPPO_ENCO_BUDS(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco Buds / 2 / 2 Pro"),
+        OPPO_ENCO_BUDS_3(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco Buds3 / 3s / 3 Pro / 3 Pro+"),
+        OPPO_ENCO_CLIP(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco Clip / Clip2"),
+        OPPO_ENCO_FREE_2(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco Free / 2 / 2i / 3 / 4"),
         OPPO_ENCO_X(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco X"),
         OPPO_ENCO_X2(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco X2"),
-        OPPO_ENCO_X3(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco X3"),
+        OPPO_ENCO_X3(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco X3 / X3i / X3s"),
+        OPPO_ENCO_X4(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco X4"),
+        OPPO_ENCO_R(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco R / R2 / R3 / R4 / R5"),
+        OPPO_ENCO_W(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco W11 / W31 / W51 / M31..M33"),
         OPPO_GENERIC(ProtocolFamily.REALME_TL, Brand.OPPO, "OPPO Enco (Generic)"),
 
         // HUAWEI FreeBuds / FreeClip / FreeLace (Huawei SPP — OpenFreebuds)
@@ -156,7 +194,7 @@ object T300Protocol {
         HUAWEI_FREELACE_PRO_2(ProtocolFamily.HUAWEI_SPP, Brand.HUAWEI, "HUAWEI FreeLace Pro 2"),
         HUAWEI_GENERIC(ProtocolFamily.HUAWEI_SPP, Brand.HUAWEI, "HUAWEI FreeBuds (Generic)"),
 
-        // HONOR Earbuds (Huawei SPP + HONOR CHOICE SPP — OpenFreebuds & noctalia/honor-earbuds)
+        // HONOR Earbuds (Huawei SPP & HONOR CHOICE SPP — OpenFreebuds & noctalia/honor-earbuds)
         HONOR_EARBUDS_S2(ProtocolFamily.HUAWEI_SPP, Brand.HONOR, "HONOR Earbuds S2"),
         HONOR_CHOICE_X8(ProtocolFamily.HONOR_CHOICE_SPP, Brand.HONOR, "HONOR CHOICE Earbuds X8"),
         HONOR_CHOICE_X5_PRO(ProtocolFamily.HONOR_CHOICE_SPP, Brand.HONOR, "HONOR CHOICE Earbuds X5 Pro"),
@@ -165,24 +203,32 @@ object T300Protocol {
         HONOR_CHOICE_X2(ProtocolFamily.HONOR_CHOICE_SPP, Brand.HONOR, "HONOR CHOICE Earbuds X2 / X"),
         HONOR_CHOICE_GENERIC(ProtocolFamily.HONOR_CHOICE_SPP, Brand.HONOR, "HONOR CHOICE (Generic)"),
 
-        // Nothing / CMF (Nothing RFCOMM SPP — swift-nothing-ear / omarchy / kde-headphones)
+        // Nothing / CMF (ALL 23 models from swift-nothing-ear / omarchy / kde-headphones)
         NOTHING_EAR_1(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "Nothing Ear (1)"),
         NOTHING_EAR_2(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "Nothing Ear (2)"),
         NOTHING_EAR(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "Nothing Ear"),
         NOTHING_EAR_A(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "Nothing Ear (a)"),
-        NOTHING_EAR_3(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "Nothing Ear (3) / (3a)"),
+        NOTHING_EAR_3(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "Nothing Ear (3)"),
+        NOTHING_EAR_3A(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "Nothing Ear (3a)"),
         NOTHING_EAR_STICK(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "Nothing Ear (stick)"),
         NOTHING_EAR_OPEN(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "Nothing Ear (open)"),
-        NOTHING_HEADPHONE_1(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "Nothing Headphone (1) / (a)"),
+        NOTHING_HEADPHONE_1(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "Nothing Headphone (1)"),
+        NOTHING_HEADPHONE_1_PRO(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "Nothing Headphone (1) Pro"),
+        NOTHING_HEADPHONE_A(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "Nothing Headphone (a)"),
         CMF_BUDS(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "CMF Buds"),
+        CMF_BUDS_NEO(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "CMF Buds Neo"),
         CMF_BUDS_PRO(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "CMF Buds Pro"),
         CMF_BUDS_PRO_2(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "CMF Buds Pro 2"),
-        CMF_BUDS_2(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "CMF Buds 2 / 2a / 2 Plus"),
+        CMF_BUDS_2(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "CMF Buds 2"),
+        CMF_BUDS_2A(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "CMF Buds 2a"),
+        CMF_BUDS_2_PLUS(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "CMF Buds 2 Plus"),
         CMF_NECKBAND_PRO(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "CMF Neckband Pro"),
         CMF_HEADPHONE_PRO(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "CMF Headphone Pro"),
+        CMF_CLIP_PRO(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "CMF Clip Pro"),
+        CMF_SPEAKER(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "CMF Speaker S / M"),
         NOTHING_GENERIC(ProtocolFamily.NOTHING_SPP, Brand.NOTHING, "Nothing / CMF (Generic)"),
 
-        // Samsung Galaxy Buds (Galaxy Buds SPP — kde-headphones / GalaxyBudsClient)
+        // Samsung Galaxy Buds (Galaxy Buds SPP — kde-headphones)
         GALAXY_BUDS(ProtocolFamily.GALAXY_BUDS_SPP, Brand.SAMSUNG, "Galaxy Buds (2019)"),
         GALAXY_BUDS_PLUS(ProtocolFamily.GALAXY_BUDS_SPP, Brand.SAMSUNG, "Galaxy Buds+"),
         GALAXY_BUDS_LIVE(ProtocolFamily.GALAXY_BUDS_SPP, Brand.SAMSUNG, "Galaxy Buds Live"),
@@ -193,7 +239,58 @@ object T300Protocol {
         GALAXY_BUDS_3(ProtocolFamily.GALAXY_BUDS_SPP, Brand.SAMSUNG, "Galaxy Buds3 / 3 FE"),
         GALAXY_BUDS_3_PRO(ProtocolFamily.GALAXY_BUDS_SPP, Brand.SAMSUNG, "Galaxy Buds3 Pro"),
         GALAXY_BUDS_CORE(ProtocolFamily.GALAXY_BUDS_SPP, Brand.SAMSUNG, "Galaxy Buds Core"),
-        GALAXY_BUDS_4(ProtocolFamily.GALAXY_BUDS_SPP, Brand.SAMSUNG, "Galaxy Buds4 / 4 Pro");
+        GALAXY_BUDS_4(ProtocolFamily.GALAXY_BUDS_SPP, Brand.SAMSUNG, "Galaxy Buds4 / 4 Pro"),
+
+        // Sony MDR V1 / V2 (kde-headphones / SonyHeadphonesClient)
+        SONY_WH_1000XM5(ProtocolFamily.SONY_MDR_SPP, Brand.SONY, "Sony WH-1000XM5 / XM4 / XM3"),
+        SONY_WF_1000XM5(ProtocolFamily.SONY_MDR_SPP, Brand.SONY, "Sony WF-1000XM5 / XM4 / XM3"),
+        SONY_LINKBUDS(ProtocolFamily.SONY_MDR_SPP, Brand.SONY, "Sony LinkBuds / S / Fit / Open"),
+        SONY_ULT_CH(ProtocolFamily.SONY_MDR_SPP, Brand.SONY, "Sony ULT WEAR / WH-CH720N / WF-C700N"),
+        SONY_GENERIC(ProtocolFamily.SONY_MDR_SPP, Brand.SONY, "Sony MDR (Generic)"),
+
+        // Bose BMAP (kde-headphones)
+        BOSE_QC_ULTRA_HEADPHONES(ProtocolFamily.BOSE_BMAP_SPP, Brand.BOSE, "Bose QC Ultra / QC Headphones"),
+        BOSE_QC_45_35(ProtocolFamily.BOSE_BMAP_SPP, Brand.BOSE, "Bose QC 45 / QC 35 / QC 35 II"),
+        BOSE_NC_700(ProtocolFamily.BOSE_BMAP_SPP, Brand.BOSE, "Bose NC 700"),
+        BOSE_QC_EARBUDS(ProtocolFamily.BOSE_BMAP_SPP, Brand.BOSE, "Bose QC Earbuds / II / Ultra"),
+        BOSE_SPORT_OPEN(ProtocolFamily.BOSE_BMAP_SPP, Brand.BOSE, "Bose Ultra Open / Sport Earbuds"),
+
+        // Anker Soundcore (kde-headphones)
+        SOUNDCORE_LIBERTY_4_NC(ProtocolFamily.SOUNDCORE_SPP, Brand.SOUNDCORE, "Soundcore Liberty 4 / 4 NC / 4 Pro"),
+        SOUNDCORE_SPACE_Q45(ProtocolFamily.SOUNDCORE_SPP, Brand.SOUNDCORE, "Soundcore Space Q45 / Space One"),
+        SOUNDCORE_SPACE_A40(ProtocolFamily.SOUNDCORE_SPP, Brand.SOUNDCORE, "Soundcore Space A40"),
+        SOUNDCORE_LIFE_Q30(ProtocolFamily.SOUNDCORE_SPP, Brand.SOUNDCORE, "Soundcore Life Q30 / Q35 / Tune Pro"),
+        SOUNDCORE_LIFE_NOTE_3(ProtocolFamily.SOUNDCORE_SPP, Brand.SOUNDCORE, "Soundcore Life Note 3 / 3S / Dot 2 NC"),
+        SOUNDCORE_P30I(ProtocolFamily.SOUNDCORE_SPP, Brand.SOUNDCORE, "Soundcore P30i / P40i / R50i"),
+        SOUNDCORE_GENERIC(ProtocolFamily.SOUNDCORE_SPP, Brand.SOUNDCORE, "Soundcore (Generic)"),
+
+        // Xiaomi / Redmi Buds (kde-headphones)
+        XIAOMI_REDMI_BUDS_6_PRO(ProtocolFamily.XIAOMI_SPP, Brand.XIAOMI, "Redmi Buds 6 / 6 Pro"),
+        XIAOMI_REDMI_BUDS_6_ACTIVE(ProtocolFamily.XIAOMI_SPP, Brand.XIAOMI, "Redmi Buds 6 Active / 6 Lite"),
+        XIAOMI_REDMI_BUDS_5_PRO(ProtocolFamily.XIAOMI_SPP, Brand.XIAOMI, "Redmi Buds 5 / 5 Pro"),
+        XIAOMI_REDMI_BUDS_4_ACTIVE(ProtocolFamily.XIAOMI_SPP, Brand.XIAOMI, "Redmi Buds 4 / 4 Active"),
+        XIAOMI_REDMI_BUDS_3_PRO(ProtocolFamily.XIAOMI_SPP, Brand.XIAOMI, "Redmi Buds 3 Pro"),
+        XIAOMI_REDMI_BUDS_8_ACTIVE(ProtocolFamily.XIAOMI_SPP, Brand.XIAOMI, "Redmi Buds 8 Active"),
+        XIAOMI_BUDS_GENERIC(ProtocolFamily.XIAOMI_SPP, Brand.XIAOMI, "Xiaomi / Redmi Buds (Generic)"),
+
+        // Sennheiser GAIA (kde-headphones)
+        SENNHEISER_MOMENTUM_4(ProtocolFamily.SENNHEISER_GAIA_SPP, Brand.SENNHEISER, "Sennheiser MOMENTUM 4 / 5"),
+        SENNHEISER_MOMENTUM_TW(ProtocolFamily.SENNHEISER_GAIA_SPP, Brand.SENNHEISER, "Sennheiser MOMENTUM TW 3 / 4"),
+        SENNHEISER_ACCENTUM(ProtocolFamily.SENNHEISER_GAIA_SPP, Brand.SENNHEISER, "Sennheiser ACCENTUM / CX Plus"),
+
+        // Jabra (kde-headphones)
+        JABRA_ELITE_PRO(ProtocolFamily.JABRA_SPP, Brand.JABRA, "Jabra Elite 7 / 8 / 10 / 85t / 85h"),
+        JABRA_ELITE_CLASSIC(ProtocolFamily.JABRA_SPP, Brand.JABRA, "Jabra Elite 4 / 5 / 65t / 75t"),
+        JABRA_EVOLVE(ProtocolFamily.JABRA_SPP, Brand.JABRA, "Jabra Evolve2 65 / 75 / 85 / Buds"),
+
+        // Google Pixel Buds (kde-headphones)
+        PIXEL_BUDS_PRO_2(ProtocolFamily.PIXEL_BUDS_SPP, Brand.GOOGLE, "Google Pixel Buds Pro 2"),
+        PIXEL_BUDS_PRO(ProtocolFamily.PIXEL_BUDS_SPP, Brand.GOOGLE, "Google Pixel Buds Pro"),
+        PIXEL_BUDS_A(ProtocolFamily.PIXEL_BUDS_SPP, Brand.GOOGLE, "Google Pixel Buds A-Series / 2a"),
+
+        // JBL GATT (kde-headphones)
+        JBL_TOUR_LIVE(ProtocolFamily.JBL_GATT, Brand.JBL, "JBL Tour Pro 2/3 / Live Pro 2 / Buds 3"),
+        JBL_TUNE_WAVE(ProtocolFamily.JBL_GATT, Brand.JBL, "JBL Tune / Wave / Reflect / Club");
 
         val isSupported: Boolean get() = this != UNKNOWN
         val isRealme: Boolean get() = protocolFamily == ProtocolFamily.REALME_TL
@@ -202,6 +299,14 @@ object T300Protocol {
         val isHonorChoice: Boolean get() = protocolFamily == ProtocolFamily.HONOR_CHOICE_SPP
         val isNothing: Boolean get() = protocolFamily == ProtocolFamily.NOTHING_SPP
         val isGalaxy: Boolean get() = protocolFamily == ProtocolFamily.GALAXY_BUDS_SPP
+        val isSony: Boolean get() = protocolFamily == ProtocolFamily.SONY_MDR_SPP
+        val isBose: Boolean get() = protocolFamily == ProtocolFamily.BOSE_BMAP_SPP
+        val isSoundcore: Boolean get() = protocolFamily == ProtocolFamily.SOUNDCORE_SPP
+        val isXiaomi: Boolean get() = protocolFamily == ProtocolFamily.XIAOMI_SPP
+        val isSennheiser: Boolean get() = protocolFamily == ProtocolFamily.SENNHEISER_GAIA_SPP
+        val isJabra: Boolean get() = protocolFamily == ProtocolFamily.JABRA_SPP
+        val isPixelBuds: Boolean get() = protocolFamily == ProtocolFamily.PIXEL_BUDS_SPP
+        val isJbl: Boolean get() = protocolFamily == ProtocolFamily.JBL_GATT
 
         val prefersHuaweiPrivateUuid: Boolean
             get() = this in setOf(
@@ -210,33 +315,41 @@ object T300Protocol {
 
         val nothingUsesListeningModeEq: Boolean
             get() = this in setOf(
-                CMF_BUDS, CMF_BUDS_PRO_2, CMF_BUDS_2, CMF_HEADPHONE_PRO
+                CMF_BUDS, CMF_BUDS_NEO, CMF_BUDS_PRO_2, CMF_BUDS_2, CMF_BUDS_2A,
+                CMF_BUDS_2_PLUS, CMF_HEADPHONE_PRO, CMF_CLIP_PRO
             )
 
         val supportsAnc: Boolean
             get() = when {
                 !isSupported -> false
-                isRealme -> this !in setOf(BUDS_T100, ONEPLUS_BUDS_CLIP, ONEPLUS_BUDS_Z, OPPO_ENCO_BUDS)
+                isRealme -> this !in setOf(
+                    BUDS_T110, BUDS_CLIP, BUDS_Q2, ONEPLUS_BUDS_CLIP, ONEPLUS_BUDS_Z,
+                    OPPO_ENCO_BUDS, OPPO_ENCO_CLIP
+                )
                 isHuawei -> this !in setOf(
                     HUAWEI_FREEBUDS_3, HUAWEI_FREEBUDS_SE, HUAWEI_FREEBUDS_SE_2,
                     HUAWEI_FREECLIP, HUAWEI_FREECLIP_2
                 )
                 isHonorChoice -> this != HONOR_CHOICE_X2
-                isNothing -> this !in setOf(NOTHING_EAR_STICK, NOTHING_EAR_OPEN)
-                isGalaxy -> true
-                else -> false
+                isNothing -> this !in setOf(NOTHING_EAR_STICK, NOTHING_EAR_OPEN, CMF_CLIP_PRO, CMF_SPEAKER)
+                isBose -> this != BOSE_SPORT_OPEN
+                isXiaomi -> this !in setOf(XIAOMI_REDMI_BUDS_4_ACTIVE, XIAOMI_REDMI_BUDS_6_ACTIVE, XIAOMI_REDMI_BUDS_8_ACTIVE)
+                isPixelBuds -> this != PIXEL_BUDS_A
+                else -> true
             }
 
         val supportsAncLevel: Boolean
             get() = when {
                 isHuawei -> supportsAnc && this != HUAWEI_FREEBUDS_4I
                 isNothing -> supportsAnc
+                isXiaomi -> supportsAnc && this != XIAOMI_REDMI_BUDS_6_ACTIVE
                 else -> false
             }
 
         val supportsAncDynamic: Boolean
             get() = when {
-                isNothing -> supportsAnc && this != NOTHING_EAR_1 && this != CMF_BUDS
+                isNothing -> supportsAnc && this != NOTHING_EAR_1 && this != CMF_BUDS && this != CMF_BUDS_NEO
+                isXiaomi -> this in setOf(XIAOMI_REDMI_BUDS_3_PRO, XIAOMI_REDMI_BUDS_5_PRO, XIAOMI_REDMI_BUDS_6_PRO, XIAOMI_BUDS_GENERIC)
                 isHuawei -> this in setOf(
                     HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I, HUAWEI_FREEBUDS_PRO,
                     HUAWEI_FREEBUDS_PRO_3, HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREEBUDS_SE_4,
@@ -248,16 +361,13 @@ object T300Protocol {
         val supportsEq: Boolean
             get() = when {
                 !isSupported -> false
-                isRealme -> true
+                isRealme || isHonorChoice || isNothing || isGalaxy || isSony || isXiaomi || isJbl -> true
                 isHuawei -> this in setOf(
                     HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I, HUAWEI_FREEBUDS_PRO_2,
                     HUAWEI_FREEBUDS_PRO_3, HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREECLIP,
                     HUAWEI_FREECLIP_2, HUAWEI_FREEBUDS_SE_2, HUAWEI_FREEBUDS_SE_4,
                     HUAWEI_FREEBUDS_STUDIO, HUAWEI_FREELACE_PRO_2, HUAWEI_GENERIC
                 )
-                isHonorChoice -> true
-                isNothing -> true
-                isGalaxy -> true
                 else -> false
             }
 
@@ -288,10 +398,11 @@ object T300Protocol {
         val supportsTouchSettings: Boolean
             get() = supportsDoubleTap || supportsTripleTap || supportsLongPress
 
-        val supportsSpatialAudio: Boolean get() = isRealme
+        val supportsSpatialAudio: Boolean
+            get() = isRealme || isSennheiser || isJbl
 
         val supportsGameMode: Boolean
-            get() = isRealme || isNothing || this in setOf(
+            get() = isRealme || isNothing || isSoundcore || this in setOf(
                 HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I, HUAWEI_FREEBUDS_PRO_3,
                 HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREECLIP, HUAWEI_FREECLIP_2,
                 HUAWEI_FREEBUDS_SE_2, HUAWEI_FREEBUDS_SE_4, HUAWEI_FREELACE_PRO_2,
@@ -300,9 +411,10 @@ object T300Protocol {
 
         val supportsHighQualityAudio: Boolean
             get() = this in setOf(
-                BUDS_T200, BUDS_AIR_5_PRO, BUDS_AIR_6, BUDS_AIR_6_PRO, BUDS_AIR_7, BUDS_AIR_7_PRO,
-                ONEPLUS_BUDS_3, ONEPLUS_BUDS_4, ONEPLUS_BUDS_PRO_2, ONEPLUS_BUDS_PRO_3,
-                OPPO_ENCO_X, OPPO_ENCO_X2, OPPO_ENCO_X3, OPPO_ENCO_AIR_4,
+                BUDS_T200, BUDS_T500_PRO, BUDS_AIR_5_PRO, BUDS_AIR_6, BUDS_AIR_6_PRO,
+                BUDS_AIR_7, BUDS_AIR_7_PRO, BUDS_AIR_8, BUDS_AIR_8_PRO,
+                ONEPLUS_BUDS_3, ONEPLUS_BUDS_4, ONEPLUS_BUDS_PRO_2, ONEPLUS_BUDS_PRO_3, ONEPLUS_BUDS_PRO_4,
+                OPPO_ENCO_X, OPPO_ENCO_X2, OPPO_ENCO_X3, OPPO_ENCO_X4, OPPO_ENCO_AIR_4, OPPO_ENCO_AIR_5,
                 HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I, HUAWEI_FREEBUDS_PRO_2,
                 HUAWEI_FREEBUDS_PRO_3, HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREECLIP,
                 HUAWEI_FREECLIP_2, HUAWEI_FREELACE_PRO_2, HUAWEI_GENERIC
@@ -310,43 +422,50 @@ object T300Protocol {
 
         val usesLhdc: Boolean
             get() = this in setOf(
-                BUDS_AIR_7_PRO, ONEPLUS_BUDS_3, ONEPLUS_BUDS_4,
-                ONEPLUS_BUDS_PRO_2, ONEPLUS_BUDS_PRO_3, OPPO_ENCO_X2, OPPO_ENCO_X3
+                BUDS_AIR_7_PRO, BUDS_AIR_8_PRO, ONEPLUS_BUDS_3, ONEPLUS_BUDS_4,
+                ONEPLUS_BUDS_PRO_2, ONEPLUS_BUDS_PRO_3, ONEPLUS_BUDS_PRO_4,
+                OPPO_ENCO_X2, OPPO_ENCO_X3, OPPO_ENCO_X4
             )
 
         val supportsDynamicAudio: Boolean
             get() = this in setOf(
-                BUDS_T200, BUDS_T310, BUDS_AIR_5_PRO, BUDS_AIR_6, BUDS_AIR_6_PRO,
-                BUDS_AIR_7, BUDS_AIR_7_PRO,
-                CMF_BUDS, CMF_BUDS_PRO, CMF_BUDS_PRO_2, CMF_BUDS_2, CMF_NECKBAND_PRO,
-                CMF_HEADPHONE_PRO, NOTHING_EAR, NOTHING_EAR_A, NOTHING_EAR_3, NOTHING_HEADPHONE_1
-            )
+                BUDS_T200, BUDS_T310, BUDS_T500_PRO, BUDS_AIR_5_PRO, BUDS_AIR_6, BUDS_AIR_6_PRO,
+                BUDS_AIR_7, BUDS_AIR_7_PRO, BUDS_AIR_8, BUDS_AIR_8_PRO
+            ) || (isNothing && this != NOTHING_EAR_1 && this != NOTHING_EAR_STICK)
 
         val supportsDualConnection: Boolean
             get() = this in setOf(
-                BUDS_T200, BUDS_T310, BUDS_AIR_5_PRO, BUDS_AIR_6, BUDS_AIR_6_PRO,
-                BUDS_AIR_7, BUDS_AIR_7_PRO,
-                ONEPLUS_BUDS_3, ONEPLUS_BUDS_4, ONEPLUS_BUDS_PRO_2, ONEPLUS_BUDS_PRO_3,
-                ONEPLUS_NORD_BUDS_3_PRO, OPPO_ENCO_X, OPPO_ENCO_X2, OPPO_ENCO_X3,
-                OPPO_ENCO_AIR_3, OPPO_ENCO_AIR_4,
+                BUDS_T200, BUDS_T310, BUDS_T500, BUDS_T500_PRO, BUDS_AIR_5_PRO, BUDS_AIR_6, BUDS_AIR_6_PRO,
+                BUDS_AIR_7, BUDS_AIR_7_PRO, BUDS_AIR_8, BUDS_AIR_8_PRO,
+                ONEPLUS_BUDS_3, ONEPLUS_BUDS_4, ONEPLUS_BUDS_PRO_2, ONEPLUS_BUDS_PRO_3, ONEPLUS_BUDS_PRO_4,
+                ONEPLUS_NORD_BUDS_3_PRO, ONEPLUS_NORD_BUDS_4,
+                OPPO_ENCO_X, OPPO_ENCO_X2, OPPO_ENCO_X3, OPPO_ENCO_X4,
+                OPPO_ENCO_AIR_3, OPPO_ENCO_AIR_4, OPPO_ENCO_AIR_5, OPPO_ENCO_BUDS_3,
                 HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I, HUAWEI_FREEBUDS_PRO,
                 HUAWEI_FREEBUDS_PRO_2, HUAWEI_FREEBUDS_PRO_3, HUAWEI_FREEBUDS_PRO_5,
                 HUAWEI_FREECLIP, HUAWEI_FREECLIP_2, HUAWEI_FREELACE_PRO_2, HUAWEI_GENERIC,
                 GALAXY_BUDS_PRO, GALAXY_BUDS_2, GALAXY_BUDS_2_PRO, GALAXY_BUDS_FE,
-                GALAXY_BUDS_3, GALAXY_BUDS_3_PRO, GALAXY_BUDS_4
-            )
+                GALAXY_BUDS_3, GALAXY_BUDS_3_PRO, GALAXY_BUDS_4,
+                XIAOMI_REDMI_BUDS_3_PRO, XIAOMI_REDMI_BUDS_5_PRO, XIAOMI_REDMI_BUDS_6_PRO, XIAOMI_REDMI_BUDS_8_ACTIVE, XIAOMI_BUDS_GENERIC
+            ) || isBose || isSoundcore || isPixelBuds
 
         val supportsAutoPlayPause: Boolean
-            get() = isNothing || this in setOf(
-                BUDS_AIR_5_PRO, BUDS_AIR_6, BUDS_AIR_6_PRO, BUDS_AIR_7, BUDS_AIR_7_PRO,
-                ONEPLUS_BUDS_3, ONEPLUS_BUDS_4, ONEPLUS_BUDS_PRO, ONEPLUS_BUDS_PRO_2, ONEPLUS_BUDS_PRO_3,
-                OPPO_ENCO_X, OPPO_ENCO_X2, OPPO_ENCO_X3,
+            get() = isNothing || isBose || isSoundcore || isSennheiser || isPixelBuds || isJbl || this in setOf(
+                BUDS_AIR_5_PRO, BUDS_AIR_6, BUDS_AIR_6_PRO, BUDS_AIR_7, BUDS_AIR_7_PRO, BUDS_AIR_8, BUDS_AIR_8_PRO,
+                ONEPLUS_BUDS_3, ONEPLUS_BUDS_4, ONEPLUS_BUDS_PRO, ONEPLUS_BUDS_PRO_2, ONEPLUS_BUDS_PRO_3, ONEPLUS_BUDS_PRO_4,
+                OPPO_ENCO_X, OPPO_ENCO_X2, OPPO_ENCO_X3, OPPO_ENCO_X4,
                 HUAWEI_FREEBUDS_4I, HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I,
                 HUAWEI_FREEBUDS_PRO_2, HUAWEI_FREEBUDS_PRO_3, HUAWEI_FREEBUDS_PRO_5,
-                HUAWEI_FREECLIP, HUAWEI_FREECLIP_2, HUAWEI_FREEBUDS_STUDIO, HUAWEI_GENERIC
+                HUAWEI_FREECLIP, HUAWEI_FREECLIP_2, HUAWEI_FREEBUDS_STUDIO, HUAWEI_GENERIC,
+                XIAOMI_REDMI_BUDS_3_PRO, XIAOMI_REDMI_BUDS_5_PRO, XIAOMI_REDMI_BUDS_6_PRO, XIAOMI_BUDS_GENERIC
             )
 
-        val supportsAutoAnswer: Boolean get() = this == BUDS_AIR_7_PRO
+        val supportsAutoAnswer: Boolean
+            get() = this in setOf(
+                BUDS_AIR_7_PRO, BUDS_AIR_8_PRO,
+                XIAOMI_REDMI_BUDS_3_PRO, XIAOMI_REDMI_BUDS_5_PRO, XIAOMI_REDMI_BUDS_6_PRO, XIAOMI_BUDS_GENERIC
+            ) || isBose || isSennheiser
+
         val supportsUseTime: Boolean get() = isRealme
 
         companion object {
@@ -368,7 +487,92 @@ object T300Protocol {
                 if (name.isNullOrBlank()) return UNKNOWN
                 val n = name.lowercase().replace(Regex("\\s+"), " ").trim()
 
-                // 1. Samsung Galaxy Buds
+                // 1. Sony MDR
+                if (n.contains("wh-1000") || n.contains("wf-1000") || n.contains("linkbuds") ||
+                    n.contains("ult wear") || n.contains("wh-ch") || n.contains("wf-c") || n.startsWith("sony ")
+                ) {
+                    return when {
+                        n.contains("wf-1000") -> SONY_WF_1000XM5
+                        n.contains("wh-1000") -> SONY_WH_1000XM5
+                        n.contains("linkbuds") -> SONY_LINKBUDS
+                        n.contains("ult") || n.contains("wh-ch") || n.contains("wf-c") -> SONY_ULT_CH
+                        else -> SONY_GENERIC
+                    }
+                }
+
+                // 2. Bose BMAP
+                if (n.contains("bose") || n.contains("quietcomfort") || n.contains("qc35") || n.contains("qc45") || n.contains("nc 700") || n.contains("nc700")) {
+                    return when {
+                        n.contains("ultra open") || n.contains("sport") -> BOSE_SPORT_OPEN
+                        n.contains("earbuds") -> BOSE_QC_EARBUDS
+                        n.contains("700") -> BOSE_NC_700
+                        n.contains("35") || n.contains("45") -> BOSE_QC_45_35
+                        else -> BOSE_QC_ULTRA_HEADPHONES
+                    }
+                }
+
+                // 3. Anker Soundcore
+                if (n.contains("soundcore")) {
+                    return when {
+                        n.contains("liberty") -> SOUNDCORE_LIBERTY_4_NC
+                        n.contains("space q45") || n.contains("space one") -> SOUNDCORE_SPACE_Q45
+                        n.contains("space a40") -> SOUNDCORE_SPACE_A40
+                        n.contains("q30") || n.contains("q35") || n.contains("tune pro") -> SOUNDCORE_LIFE_Q30
+                        n.contains("note 3") || n.contains("dot 2") -> SOUNDCORE_LIFE_NOTE_3
+                        n.contains("p30i") || n.contains("p40i") || n.contains("r50i") -> SOUNDCORE_P30I
+                        else -> SOUNDCORE_GENERIC
+                    }
+                }
+
+                // 4. Xiaomi / Redmi Buds
+                if (n.contains("redmi buds") || n.contains("xiaomi buds") || n.contains("poco buds")) {
+                    return when {
+                        n.contains("8 active") -> XIAOMI_REDMI_BUDS_8_ACTIVE
+                        n.contains("6 active") || n.contains("6 lite") -> XIAOMI_REDMI_BUDS_6_ACTIVE
+                        n.contains("6") -> XIAOMI_REDMI_BUDS_6_PRO
+                        n.contains("5") -> XIAOMI_REDMI_BUDS_5_PRO
+                        n.contains("4") -> XIAOMI_REDMI_BUDS_4_ACTIVE
+                        n.contains("3 pro") -> XIAOMI_REDMI_BUDS_3_PRO
+                        else -> XIAOMI_BUDS_GENERIC
+                    }
+                }
+
+                // 5. Sennheiser GAIA
+                if (n.contains("sennheiser") || n.contains("momentum") || n.contains("accentum")) {
+                    return when {
+                        n.contains("tw") || n.contains("true wireless") -> SENNHEISER_MOMENTUM_TW
+                        n.contains("accentum") || n.contains("cx ") -> SENNHEISER_ACCENTUM
+                        else -> SENNHEISER_MOMENTUM_4
+                    }
+                }
+
+                // 6. Jabra
+                if (n.contains("jabra")) {
+                    return when {
+                        n.contains("evolve") -> JABRA_EVOLVE
+                        n.contains("65t") || n.contains("75t") || n.contains("elite 4") || n.contains("elite 5") -> JABRA_ELITE_CLASSIC
+                        else -> JABRA_ELITE_PRO
+                    }
+                }
+
+                // 7. Google Pixel Buds
+                if (n.contains("pixel buds")) {
+                    return when {
+                        n.contains("pro 2") || n.contains("pro2") -> PIXEL_BUDS_PRO_2
+                        n.contains("pro") -> PIXEL_BUDS_PRO
+                        else -> PIXEL_BUDS_A
+                    }
+                }
+
+                // 8. JBL
+                if (n.startsWith("jbl ") || n.contains("jbl ")) {
+                    return when {
+                        n.contains("tour") || n.contains("live") -> JBL_TOUR_LIVE
+                        else -> JBL_TUNE_WAVE
+                    }
+                }
+
+                // 9. Samsung Galaxy Buds
                 if (n.contains("galaxy buds") || n.contains("buds live") || n.contains("buds fe") ||
                     n.contains("buds core") || n.contains("buds2") || n.contains("buds3") || n.contains("buds4")
                 ) {
@@ -387,19 +591,27 @@ object T300Protocol {
                     }
                 }
 
-                // 2. Nothing / CMF
+                // 10. Nothing / CMF (all 23 swift-nothing-ear models)
                 if (n.contains("nothing") || n.contains("cmf") || n.startsWith("ear (") || n == "ear") {
                     return when {
+                        n.contains("cmf") && n.contains("speaker") -> CMF_SPEAKER
+                        n.contains("cmf") && n.contains("clip") -> CMF_CLIP_PRO
                         n.contains("cmf") && n.contains("headphone") -> CMF_HEADPHONE_PRO
                         n.contains("cmf") && n.contains("neckband") -> CMF_NECKBAND_PRO
+                        n.contains("cmf") && n.contains("neo") -> CMF_BUDS_NEO
                         n.contains("cmf") && (n.contains("pro 2") || n.contains("pro2")) -> CMF_BUDS_PRO_2
                         n.contains("cmf") && n.contains("pro") -> CMF_BUDS_PRO
-                        n.contains("cmf") && (n.contains("buds 2") || n.contains("buds2") || n.contains("2a")) -> CMF_BUDS_2
+                        n.contains("cmf") && (n.contains("2 plus") || n.contains("2+")) -> CMF_BUDS_2_PLUS
+                        n.contains("cmf") && n.contains("2a") -> CMF_BUDS_2A
+                        n.contains("cmf") && (n.contains("buds 2") || n.contains("buds2")) -> CMF_BUDS_2
                         n.contains("cmf") -> CMF_BUDS
+                        n.contains("headphone") && n.contains("pro") -> NOTHING_HEADPHONE_1_PRO
+                        n.contains("headphone") && (n.contains("(a)") || n.endsWith(" a")) -> NOTHING_HEADPHONE_A
                         n.contains("headphone") -> NOTHING_HEADPHONE_1
                         n.contains("stick") -> NOTHING_EAR_STICK
                         n.contains("open") -> NOTHING_EAR_OPEN
-                        n.contains("(3") || n.contains("ear 3") -> NOTHING_EAR_3
+                        n.contains("(3a)") || n.contains("ear 3a") -> NOTHING_EAR_3A
+                        n.contains("(3)") || n.contains("ear 3") -> NOTHING_EAR_3
                         n.contains("(a)") || n.contains("ear a") -> NOTHING_EAR_A
                         n.contains("(2)") || n.contains("ear 2") -> NOTHING_EAR_2
                         n.contains("(1)") || n.contains("ear 1") -> NOTHING_EAR_1
@@ -408,7 +620,7 @@ object T300Protocol {
                     }
                 }
 
-                // 3. HUAWEI FreeBuds / FreeClip / FreeLace
+                // 11. HUAWEI FreeBuds / FreeClip / FreeLace
                 val isHuaweiBrand = n.contains("huawei") || n.contains("freebuds") ||
                     n.contains("freeclip") || n.contains("freelace")
                 if (isHuaweiBrand) {
@@ -434,7 +646,7 @@ object T300Protocol {
                     }
                 }
 
-                // 4. HONOR (Huawei SPP & HONOR CHOICE SPP)
+                // 12. HONOR (Huawei SPP & HONOR CHOICE SPP)
                 if (n.contains("honor") || n.contains("荣耀") || n.contains("moecen")) {
                     return when {
                         n.contains("earbuds s2") -> HONOR_EARBUDS_S2
@@ -449,11 +661,15 @@ object T300Protocol {
                     }
                 }
 
-                // 5. OnePlus Buds (QuickBuds — TL + OPPOv1)
+                // 13. OnePlus Buds (QuickBuds full whiteList)
                 if (n.contains("oneplus") || n.contains("nord buds")) {
                     return when {
+                        n.contains("bullets") -> ONEPLUS_BULLETS
+                        n.contains("nord") && n.contains("4") -> ONEPLUS_NORD_BUDS_4
                         n.contains("nord") && n.contains("3 pro") -> ONEPLUS_NORD_BUDS_3_PRO
+                        n.contains("nord") && n.contains("3") -> ONEPLUS_NORD_BUDS_3
                         n.contains("nord") -> ONEPLUS_NORD_BUDS
+                        n.contains("pro 4") || n.contains("pro4") -> ONEPLUS_BUDS_PRO_4
                         n.contains("pro 3") || n.contains("pro3") -> ONEPLUS_BUDS_PRO_3
                         n.contains("pro 2") || n.contains("pro2") -> ONEPLUS_BUDS_PRO_2
                         n.contains("buds pro") -> ONEPLUS_BUDS_PRO
@@ -463,43 +679,61 @@ object T300Protocol {
                         n.contains("3v") -> ONEPLUS_BUDS_3V
                         n.contains("buds 4") || n.contains("buds4") -> ONEPLUS_BUDS_4
                         n.contains("buds 3") || n.contains("buds3") -> ONEPLUS_BUDS_3
-                        n.contains("clip") -> ONEPLUS_BUDS_CLIP
-                        n.contains("buds n") -> ONEPLUS_BUDS_N
+                        n.contains("clip") || n.contains("open") || n.contains("flow") -> ONEPLUS_BUDS_CLIP
+                        n.contains("buds n") || n.contains("buds v") -> ONEPLUS_BUDS_N
                         n.contains("buds z") -> ONEPLUS_BUDS_Z
                         n.contains("oneplus buds") -> ONEPLUS_BUDS
                         else -> ONEPLUS_GENERIC
                     }
                 }
 
-                // 6. OPPO Enco (QuickBuds — TL + OPPOv1)
+                // 14. OPPO Enco (QuickBuds full whiteList)
                 if (n.contains("oppo") || n.contains("enco")) {
                     return when {
+                        n.contains("x4") -> OPPO_ENCO_X4
                         n.contains("x3") -> OPPO_ENCO_X3
                         n.contains("x2") -> OPPO_ENCO_X2
                         n.contains("enco x") -> OPPO_ENCO_X
+                        n.contains("air5") || n.contains("air 5") -> OPPO_ENCO_AIR_5
                         n.contains("air4") || n.contains("air 4") -> OPPO_ENCO_AIR_4
                         n.contains("air3") || n.contains("air 3") -> OPPO_ENCO_AIR_3
                         n.contains("air") -> OPPO_ENCO_AIR
+                        n.contains("clip") -> OPPO_ENCO_CLIP
                         n.contains("free") -> OPPO_ENCO_FREE_2
+                        n.contains("buds3") || n.contains("buds 3") -> OPPO_ENCO_BUDS_3
                         n.contains("buds") -> OPPO_ENCO_BUDS
+                        n.contains("enco r") -> OPPO_ENCO_R
+                        n.contains("w11") || n.contains("w31") || n.contains("w51") || n.contains("m31") || n.contains("m32") || n.contains("m33") -> OPPO_ENCO_W
                         else -> OPPO_GENERIC
                     }
                 }
 
-                // 7. realme Buds (TL + OPPOv1)
+                // 15. realme Buds & DIZO (QuickBuds full whiteList)
+                if (n.contains("dizo")) return DIZO_BUDS
                 val isRealmeOrBuds = n.contains("realme") || n.contains("buds")
                 if (isRealmeOrBuds) {
                     return when {
+                        n.contains("air 8 pro") || n.contains("air8 pro") -> BUDS_AIR_8_PRO
+                        n.contains("air 8") || n.contains("air8") -> BUDS_AIR_8
                         n.contains("air 7 pro") || n.contains("air7 pro") -> BUDS_AIR_7_PRO
                         n.contains("air 7") || n.contains("air7") -> BUDS_AIR_7
                         n.contains("air 6 pro") || n.contains("air6 pro") -> BUDS_AIR_6_PRO
                         n.contains("air 6") || n.contains("air6") -> BUDS_AIR_6
                         n.contains("air 5 pro") || n.contains("air5 pro") -> BUDS_AIR_5_PRO
                         n.contains("air 5") || n.contains("air5") -> BUDS_AIR_5
+                        n.contains("air 3") || n.contains("air3") -> BUDS_AIR_3
+                        n.contains("air 2") || n.contains("air2") || n.contains("air pro") || n.contains("air neo") -> BUDS_AIR_2
+                        n.contains("t500 pro") -> BUDS_T500_PRO
+                        n.contains("t500") -> BUDS_T500
                         n.contains("t310") -> BUDS_T310
                         n.contains("t300") -> BUDS_T300
+                        n.contains("t200 lite") || n.contains("t200x") -> BUDS_T200_LITE
                         n.contains("t200") -> BUDS_T200
-                        n.contains("t100") -> BUDS_T100
+                        n.contains("t110") || n.contains("t100") || n.contains("t01") -> BUDS_T110
+                        n.contains("n1") -> BUDS_N1
+                        n.contains("clip") -> BUDS_CLIP
+                        n.contains("q2") -> BUDS_Q2
+                        n.contains("wireless") -> BUDS_WIRELESS
                         n.contains("realme") -> REALME_GENERIC
                         else -> UNKNOWN
                     }

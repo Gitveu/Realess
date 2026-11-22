@@ -3,7 +3,7 @@
 **English** | [Русский](AGENTS.ru.md)
 
 Last updated: 2026-11-23  
-Status: supports **realme Buds / OnePlus Buds / OPPO Enco** (`TL + OPPOv1`), **HUAWEI FreeBuds / FreeClip / FreeLace & HONOR Earbuds 2 / S2** (`Huawei SPP`), **HONOR CHOICE Earbuds (X8 / X5 / X3 / X2 / X)** (`HONOR CHOICE SPP`), **Nothing / CMF** (`Nothing SPP`), and **Samsung Galaxy Buds** (`Galaxy Buds SPP`); **realness** app (`uwu.realness.gitveu`, version `1.6`, `build 7`, release builds). Full list: [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md).
+Status: supports **13 protocol families across 15 brands** — **realme / OnePlus / OPPO / DIZO** (`TL + OPPOv1`), **HUAWEI / HONOR** (`Huawei SPP`), **HONOR CHOICE** (`HONOR CHOICE SPP`), **Nothing / CMF** (`Nothing SPP`, all 23 models), **Samsung Galaxy Buds** (`Galaxy Buds SPP`), **Sony** (`Sony MDR V1/V2 SPP`), **Bose** (`Bose BMAP SPP`), **Anker Soundcore** (`Soundcore SPP`), **Xiaomi / Redmi / POCO** (`Xiaomi SPP + SAFER+`), **Sennheiser** (`GAIA v3 SPP`), **Jabra** (`Jabra SPP`), **Google Pixel Buds** (`Maestro HDLC + Pigweed RPC`), and **JBL** (`JBL BLE GATT`); **realness** app (`uwu.realness.gitveu`, version `1.7`, `build 8`, release builds). Full list: [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md).
 
 ---
 
@@ -346,20 +346,31 @@ Based on [kde-headphones](https://github.com/RodiAda/kde-headphones):
 * **Frame Format**: Modern `[0xFD, sizeLo, sizeHi&0x03, msgId, payload..., crcLo, crcHi, 0xDD]` and Legacy `[0xFE, 0x00, size, msgId, payload..., crcLo, crcHi, 0xEE]` (`CRC16-CCITT` over `msgId + payload`, stored little-endian).
 * **Messages**: Push `0x61` (`ExtendedStatusUpdated`) & `0x60` (`StatusUpdated`); Handshake `0x88` (`ManagerInfo [01 02 22]`); ANC `0x78` (modern) / `0x98` (Buds Live) / `0x80` (Buds/Buds+); EQ `0x86`; Seamless Connection `0xAF`.
 
+### 14.3. Additional `kde-headphones` Protocols (`SonyProtocol.kt`, `BoseSoundcoreProtocol.kt`, `XiaomiProtocol.kt`, `ExtraProtocols.kt` / `ExtraProtos.java`)
+* **Sony MDR (V1/V2)**: UUIDs `956C7B26-D49A-4BA8-B03F-B17D393CB6E2` (V2) / `96CC203E-5068-46AD-B32D-E316F5E069BA` (V1); framing `0x3E..0x3C` with `0x3D` escape, sum8 checksum, ACK `0x01`; Battery `0x22`/`0x23`/`0x25`, NCASM `0x66`..`0x69`, EQ `0x56`..`0x59`.
+* **Bose BMAP**: Standard SPP `00001101`; `[block, func, op, len, payload]`; Battery `0x02/0x02`, ANC `0x01/0x06`, Multipoint `0x01/0x07`.
+* **Anker Soundcore**: Standard SPP `00001101`; `08 EE 00 00 00` TX / `09 FF 00 00 01` RX + sum8; Status `0x01/0x01`, Battery `0x01/0x03`, ANC `0x06/0x01`/`0x81`, Game Mode `0x01/0x11`.
+* **Xiaomi / Redmi / POCO**: UUID `0000FD2D-0000-1000-8000-00805F9B34FB`; `FE DC BA .. EF` + full **SAFER+** challenge-response auth (`0x50`/`0x51`); Battery `0x09`, ANC `0x08`, Ear Detection `0x0E`, Config `0xF2`/`0xF3`/`0xF4` (AutoAnswer `0x03`, Multipoint `0x04`, EQ `0x07`, ANC Strength `0x0B`).
+* **Sennheiser GAIA v3**: UUID `A2129FF3-081B-4C45-8AFE-469D9C4842EC`; `0xFF 0x03`, vendor `0x0495`; Battery `0x06/0x02`, ANC `0x05/0x01..0x04`, Spatial `0x06/0x06`.
+* **Jabra**: Standard SPP `00001101`; `04 09 seq (type|len) feat16 payload`; Battery `0x0101`, ANC `0x0104`, Multipoint `0x0107`.
+* **Google Pixel Buds**: UUID `25E97FF7-24CE-4C4C-8951-F764A708F7B5`; HDLC (`0x7E`, `0x7D` escape, CRC32) + Pigweed RPC (`maestro_pw.Maestro`); Battery stream + settings `11` (ANC), `5` (In-Ear), `21` (Multipoint).
+* **JBL BLE GATT**: Service `65786365-6c70-6f69-6e74-2e636f6d0000`; `0xAA cmd len payload`; Battery `0x25`, Noise `0x91`, EQ `0x40`, AutoPlay `0x35`, Spatial `0x9D`.
+* **Apple AirPods / Beats note**: Uses raw BR/EDR L2CAP `PSM 0x1001` in `kde-headphones`, which unrooted Android SDK blocks.
+
 ---
 
 ## 15. realness App Architecture
 
-1. **Stack**: Kotlin, Jetpack Compose (Material3), Coroutines/Flow, MinSdk 26, TargetSdk 34, package `uwu.realness.gitveu` (project folder `realness/`). An ultra-lightweight build `tiny-realness/` (`uwu.realness.gitveu.tiny`) in pure Java 8 without Gradle/AndroidX is also available (`aapt2 -> javac -> R8 -> zipalign -> apksigner`, ~45 KB).
+1. **Stack**: Kotlin, Jetpack Compose (Material3), Coroutines/Flow, MinSdk 26, TargetSdk 34, package `uwu.realness.gitveu` (project folder `realness/`). An ultra-lightweight build `tiny-realness/` (`uwu.realness.gitveu.tiny`) in pure Java 8 without Gradle/AndroidX is also available (`aapt2 -> javac -> R8 -> zipalign -> apksigner`, ~58 KB).
 2. **Versioning & Release Builds**:
-   * Always increment `versionCode` and `versionName` after every change in `realness/app/build.gradle.kts` and `tiny-realness/AndroidManifest.xml` (current: `versionName = "1.6"`, `versionCode = 7`).
+   * Always increment `versionCode` and `versionName` after every change in `realness/app/build.gradle.kts` and `tiny-realness/AndroidManifest.xml` (current: `versionName = "1.7"`, `versionCode = 8`).
    * All builds are produced in **release** mode (`./gradlew assembleRelease` with R8 minify + shrinkResources, and `./tiny-realness/build.sh`).
    * The signing keystore (`realness-release.keystore`) is **never stored in git** (added to `.gitignore` along with `keystore.properties`) — it is stored in **GitHub Actions Secrets** (`REALNESS_KEYSTORE_BASE64`, `REALNESS_KEYSTORE_PASSWORD`, `REALNESS_KEY_ALIAS`, `REALNESS_KEY_PASSWORD`) and locally on the developer's machine.
    * Compiled `.apk` files are **not committed to git** (`*.apk` is in `.gitignore`). The `.github/workflows/build-release.yml` workflow automatically builds signed `realness <versionName>.apk` and `realness-tiny <versionName>.apk` and publishes them to **GitHub Releases** under tag `v<versionName>`.
 3. **Source Code Structure**:
-   * `T300Protocol.kt`, `HuaweiProtocol.kt`, `NothingProtocol.kt`, `GalaxyProtocol.kt`: frame builders/parsers for all 5 protocol families (`REALME_TL`, `HUAWEI_SPP`, `HONOR_CHOICE_SPP`, `NOTHING_SPP`, `GALAXY_BUDS_SPP`) and `BudsModel` capability flags grouped by brand.
-   * `T300BleManager.kt`: RFCOMM SPP socket management (and GATT fallback for realme/OnePlus/OPPO), streaming packet readers for all 5 protocols, optional manual model override, async events, and state polling.
-   * `BudsViewModel.kt`: reactive `StateFlow` state, auto-connect on Bluetooth events, `SharedPreferences` persistence for **last connected device** and **manual model override**, unsupported device detection, `MediaPlayer` demo playback controller.
+   * `T300Protocol.kt`, `HuaweiProtocol.kt`, `NothingProtocol.kt`, `GalaxyProtocol.kt`, `SonyProtocol.kt`, `BoseSoundcoreProtocol.kt`, `XiaomiProtocol.kt`, `ExtraProtocols.kt`: frame builders/parsers for all 13 protocol families and `BudsModel` capability flags grouped across 15 brands.
+   * `T300BleManager.kt`: session-generation-guarded RFCOMM SPP & BLE GATT manager (prevents overlapping connect races, emits `unexpectedDisconnectFlow` for automatic recovery on TWS role switch), streaming packet readers for all 13 protocols, manual model override, async events, and state polling.
+   * `BudsViewModel.kt`: reactive `StateFlow` state, duplicate-`ACTION_ACL_CONNECTED`-safe auto-connect, automatic backoff reconnect on transient SPP drops while A2DP stays online, `SharedPreferences` persistence for **last connected device** and **manual model override**, unsupported device detection, `MediaPlayer` demo playback controller.
    * `MainActivity.kt`: Material3 UI — **Model Picker Side Drawer** (`ModalNavigationDrawer` with Automatic + brand-grouped models), unsupported device banner, battery cards, ANC selector (+ intensity levels for Huawei & Nothing), EQ presets (+ custom profiles), touch gesture editor, Spatial Audio / LDAC / LHDC 5.0 / Sound Quality / Dynamic Audio / Ultra Bass / Game Mode / Dual-Device / Seamless Connection / Auto Play/Pause / Auto Answer toggles, L/R usage time stats, collapsible log console, dynamic version and build number.
 4. **Localization**:
    * Default language is English (`values/strings.xml`), full Russian localization (`values-ru/strings.xml`), `res/xml/locales_config.xml`.

@@ -2,9 +2,9 @@
 
 [English](README.md) | **Русский**
 
-Автономное Android-приложение (**realness**, пакет `uwu.realness.gitveu`, Kotlin + Jetpack Compose) и документация протоколов для прямого управления наушниками **realme Buds**, **OnePlus Buds**, **OPPO Enco**, **HUAWEI FreeBuds**, **HONOR / HONOR CHOICE**, **Nothing / CMF** и **Samsung Galaxy Buds** — без фирменных комбайнов, без аккаунтов и облака, напрямую по Bluetooth.
+Автономное Android-приложение (**realness**, пакет `uwu.realness.gitveu`, Kotlin + Jetpack Compose) и документация протоколов для прямого управления наушниками **15 брендов (13 семейств протоколов)** — **realme**, **OnePlus**, **OPPO**, **HUAWEI**, **HONOR / HONOR CHOICE**, **Nothing / CMF**, **Samsung Galaxy Buds**, **Sony**, **Bose**, **Soundcore**, **Xiaomi / Redmi**, **Sennheiser**, **Jabra**, **Google Pixel Buds** и **JBL** — без фирменных комбайнов, без аккаунтов и облака, напрямую по Bluetooth.
 
-**Актуальная версия:** `v1.6 (build 7)` — release-сборки (`realness 1.6.apk` и `realness-tiny 1.6.apk`)  
+**Актуальная версия:** `v1.7 (build 8)` — release-сборки (`realness 1.7.apk` и `realness-tiny 1.7.apk`)  
 **Источники протоколов:** `realme Link.apkm` (`com.realme.iot.headset.tl.*`), [QuickBuds](https://github.com/spizganed/QuickBuds), [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds), [noctalia/honor-earbuds](https://github.com/noctalia-dev/community-plugins/tree/main/honor-earbuds), [swift-nothing-ear](https://github.com/bestK1ngArthur/swift-nothing-ear), [omarchy-nothing-ear](https://github.com/r-witz/omarchy-nothing-ear) и [kde-headphones](https://github.com/RodiAda/kde-headphones).
 
 ---
@@ -15,14 +15,22 @@
 
 👉 **[SUPPORTED_DEVICES.ru.md](SUPPORTED_DEVICES.ru.md)** ([English](SUPPORTED_DEVICES.md))
 
-Краткий обзор брендов:
-- **realme Buds** (T300, T200, T310, T100, Air 5 / 6 / 7 / Pro) — `TL + OPPOv1`
-- **OnePlus Buds** (Buds / 3 / 3V / 4 / Ace / Clip / N / Pro / Z / Nord Buds) — `TL + OPPOv1`
-- **OPPO Enco** (Air / Air2 / Air3 / Air4 / Buds / Free / X / X2 / X3) — `TL + OPPOv1`
+Краткий обзор брендов (13 семейств протоколов):
+- **realme Buds и DIZO** (T300, T200, T310, T500, Air 5 / 6 / 7 / 8 / **Air 8 Pro**, Buds Clip, Wireless) — `TL + OPPOv1`
+- **OnePlus Buds** (Buds / 3 / 3V / 4 / Ace / Clip / Flow / N / Pro..Pro 4 / Z / Nord Buds..4 Pro) — `TL + OPPOv1`
+- **OPPO Enco** (Air..Air5 Pro / Buds..Buds3 Pro+ / Clip / Free..Free4 / X..X4 / R / W / M) — `TL + OPPOv1`
 - **HUAWEI** (FreeBuds 3 / 4i / 5i / 6i / Pro..Pro 5 / SE..SE 4 / Studio / FreeClip / FreeLace) — `Huawei SPP`
 - **HONOR** (Earbuds 2 / S2, **HONOR CHOICE Earbuds X8** / X5 / X5 Pro / X3 / X2 / X) — `Huawei SPP` и `HONOR CHOICE SPP`
-- **Nothing и CMF** (Ear (1)/(2)/(a)/(3)/(stick)/(open), Headphone, CMF Buds / Pro / 2 / Neckband) — `Nothing SPP`
+- **Nothing и CMF** (все 23 модели: Ear (1)/(2)/(a)/(3)/(3a)/(stick)/(open), Headphone, **CMF Buds Neo** / Buds / Pro / 2 / Clip Pro) — `Nothing SPP`
 - **Samsung Galaxy Buds** (Buds / Buds+ / Live / Pro / Buds2 / FE / Buds3 / Core / Buds4) — `Galaxy Buds SPP`
+- **Sony** (WH-1000XM3..XM6, WF-1000XM3..XM5, LinkBuds, WH-CH, ULT WEAR) — `Sony MDR V1/V2 SPP`
+- **Bose** (QuietComfort 35 / 45 / QC / QC Ultra, NC 700, SoundSport) — `Bose BMAP SPP`
+- **Anker Soundcore** (Liberty, Space, Life, Sport X) — `Soundcore SPP`
+- **Xiaomi / Redmi / POCO** (Xiaomi Buds 3..5 Pro, Redmi Buds 4..6 Pro, POCO Buds) — `Xiaomi SPP (+ SAFER+ Auth)`
+- **Sennheiser** (MOMENTUM, ACCENTUM, CX True Wireless) — `Sennheiser GAIA v3 SPP`
+- **Jabra** (Elite 4..10 / 75t / 85t, Evolve2) — `Jabra SPP`
+- **Google Pixel Buds** (Pro, Pro 2, A-Series, 2a) — `Maestro HDLC + Pigweed RPC SPP`
+- **JBL** (Tour, Live, Tune, Wave, Reflect, Club) — `JBL BLE GATT`
 
 В боковой панели **«Модель»** (`☰`) можно оставить **Автоматическое** определение или вручную выбрать любую модель/протокол. Когда наушники не подключены, приложение запоминает и показывает **последнее подключённое устройство**, а не подставляет жёстко T300.
 
@@ -186,7 +194,7 @@ Realess/
 ├── tiny-realness/                 # Исходники и build.sh на чистой Java 8 без Gradle и AndroidX
 └── realness/
     ├── app/src/main/java/uwu/realness/gitveu/
-    │   ├── protocol/              # T300Protocol, HuaweiProtocol, NothingProtocol, GalaxyProtocol
+    │   ├── protocol/              # 13 протоколов (realme/OPPO, Huawei, Nothing, Galaxy, Sony, Bose, Soundcore, Xiaomi, Sennheiser, Jabra, Pixel Buds, JBL)
     │   ├── ble/                   # T300BleManager.kt — мультипротокольный SPP-сокет, GATT fallback
     │   ├── viewmodel/             # BudsViewModel.kt — StateFlow, автоподключение, память последнего устройства
     │   └── ui/                    # MainActivity.kt — Material3 UI + боковая панель выбора модели

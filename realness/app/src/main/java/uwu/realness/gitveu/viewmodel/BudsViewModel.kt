@@ -22,6 +22,8 @@ import uwu.realness.gitveu.protocol.T300Protocol.T300State
 import uwu.realness.gitveu.protocol.T300Protocol.TouchSide
 import uwu.realness.gitveu.protocol.T300Protocol.TouchGesture
 import uwu.realness.gitveu.protocol.T300Protocol.TouchAction
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -55,6 +57,8 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
     private var a2dpProfile: BluetoothA2dp? = null
     private var lastConnectedAddress: String? = null
     private var lastConnectedModel: BudsModel = BudsModel.UNKNOWN
+    private var autoReconnectJob: Job? = null
+    private var reconnectAttempt = 0
 
     val connectionState: StateFlow<BleConnectionState> = bleManager.connectionState
     val t300State: StateFlow<T300State> = bleManager.t300State
@@ -116,6 +120,10 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
                         val autoModel = BudsModel.fromDeviceName(device.name)
                         val effectiveModel = _manualModelOverride.value ?: autoModel
                         if (effectiveModel.isSupported) {
+                            // Never disrupt an active or in-flight connection to the same device & model!
+                            if (bleManager.isConnectedOrConnectingTo(device.address, effectiveModel)) {
+                                return
+                            }
                             saveLastDevice(device, effectiveModel)
                             _detectedBudsDevice.value = device
                             _autoDetectedModel.value = autoModel
@@ -136,6 +144,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
                         intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
                     }
                     if (device != null && device.address == lastConnectedAddress) {
+                        autoReconnectJob?.cancel()
                         bleManager.disconnect()
                         lastConnectedAddress = null
                     }
@@ -190,11 +199,36 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             bleManager.connectionState.collect { state ->
                 if (state == BleConnectionState.CONNECTED) {
+                    reconnectAttempt = 0
+                    autoReconnectJob?.cancel()
                     _deviceStatus.value = SystemDeviceStatus.APP_LINK_ACTIVE
                 } else if (_deviceStatus.value == SystemDeviceStatus.APP_LINK_ACTIVE) {
                     _deviceStatus.value = SystemDeviceStatus.DEVICE_CONNECTED_OS
                 }
             }
+        }
+
+        // Seamless automatic reconnect on transient RFCOMM drops (e.g. TWS L/R master switch)
+        viewModelScope.launch {
+            bleManager.unexpectedDisconnectFlow.collect {
+                scheduleAutoReconnect()
+            }
+        }
+    }
+
+    private fun scheduleAutoReconnect() {
+        if (!_hasPermissions.value) return
+        autoReconnectJob?.cancel()
+        val delayMs = when (reconnectAttempt) {
+            0 -> 900L
+            1 -> 1800L
+            2 -> 3200L
+            else -> 5000L
+        }
+        reconnectAttempt = (reconnectAttempt + 1).coerceAtMost(4)
+        autoReconnectJob = viewModelScope.launch {
+            delay(delayMs)
+            checkAndAutoConnect()
         }
     }
 
@@ -211,6 +245,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun connectToDevice(device: BluetoothDevice, model: BudsModel) {
+        if (bleManager.isConnectedOrConnectingTo(device.address, model)) return
         lastConnectedAddress = device.address
         lastConnectedModel = model
         bleManager.connect(device, model)
@@ -223,6 +258,8 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         }.apply()
 
         // Если сейчас подключено A2DP-устройство, сразу переподключаемся с выбранной моделью/протоколом
+        autoReconnectJob?.cancel()
+        reconnectAttempt = 0
         bleManager.disconnect()
         lastConnectedAddress = null
         checkAndAutoConnect()
@@ -265,23 +302,22 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
                 _detectedModel.value = effectiveModel
                 _unsupportedDeviceName.value = null
 
-                val needsReconnect = bleManager.connectionState.value == BleConnectionState.DISCONNECTED ||
-                    lastConnectedAddress != connectedSupported.address ||
-                    lastConnectedModel != effectiveModel
-
-                _deviceStatus.value = if (!needsReconnect && bleManager.connectionState.value == BleConnectionState.CONNECTED) {
+                val alreadyActive = bleManager.isConnectedOrConnectingTo(connectedSupported.address, effectiveModel)
+                _deviceStatus.value = if (alreadyActive && bleManager.connectionState.value == BleConnectionState.CONNECTED) {
                     SystemDeviceStatus.APP_LINK_ACTIVE
                 } else {
                     SystemDeviceStatus.DEVICE_CONNECTED_OS
                 }
 
-                if (needsReconnect) {
+                if (!alreadyActive) {
                     connectToDevice(connectedSupported, effectiveModel)
                 }
                 return
             }
 
             // Нет активного поддерживаемого A2DP-устройства -> закрываем старый канал
+            autoReconnectJob?.cancel()
+            reconnectAttempt = 0
             if (bleManager.connectionState.value != BleConnectionState.DISCONNECTED) {
                 bleManager.disconnect()
             }

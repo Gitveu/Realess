@@ -71,6 +71,31 @@ public class MainActivity extends Activity implements BudsLink.Listener {
     private int selectedSide = 0; // 0=L, 1=R
     private boolean logsExpanded = false;
     private boolean updatingUi = false;
+    private final android.os.Handler uiHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private int reconnectAttempt = 0;
+    private final Runnable reconnectTask = new Runnable() {
+        @Override public void run() {
+            if (connState != BudsLink.CONN_DISCONNECTED) return;
+            if (!hasPerms()) return;
+            try {
+                List<BluetoothDevice> a2dpDevs = a2dp != null ? a2dp.getConnectedDevices() : Collections.<BluetoothDevice>emptyList();
+                if (detectedDevice != null && detectedModel != Protocol.MODEL_UNKNOWN) {
+                    boolean stillOnline = false;
+                    for (BluetoothDevice d : a2dpDevs) {
+                        if (d.getAddress() != null && d.getAddress().equals(detectedDevice.getAddress())) {
+                            stillOnline = true; break;
+                        }
+                    }
+                    if (stillOnline) {
+                        onLog("Auto-reconnecting to " + detectedDevice.getName() + " (attempt " + reconnectAttempt + ")...");
+                        connectDevice(detectedDevice, detectedModel);
+                        return;
+                    }
+                }
+            } catch (Exception ignored) {}
+            checkAndAutoConnect();
+        }
+    };
 
     // UI references
     private TextView tvTopTitle, btnRefresh;
@@ -110,6 +135,7 @@ public class MainActivity extends Activity implements BudsLink.Listener {
                     int autoM = Protocol.detectModel(d.getName());
                     int effM = manualModelOverride != Protocol.MODEL_UNKNOWN ? manualModelOverride : autoM;
                     if (effM != Protocol.MODEL_UNKNOWN) {
+                        if (link.isConnectedOrConnectingTo(d.getAddress(), effM)) return;
                         saveLastDevice(d, effM);
                         detectedDevice = d;
                         autoDetectedModel = autoM;
@@ -124,6 +150,8 @@ public class MainActivity extends Activity implements BudsLink.Listener {
             } else if (BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(a)) {
                 BluetoothDevice d = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
                 if (d != null && d.getAddress() != null && d.getAddress().equals(activeConnMac)) {
+                    uiHandler.removeCallbacks(reconnectTask);
+                    reconnectAttempt = 0;
                     link.disconnect();
                     activeConnMac = null;
                 }
@@ -197,6 +225,7 @@ public class MainActivity extends Activity implements BudsLink.Listener {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        uiHandler.removeCallbacks(reconnectTask);
         try { unregisterReceiver(btReceiver); } catch (Exception ignored) {}
         try { if (adapter != null && a2dp != null) adapter.closeProfileProxy(BluetoothProfile.A2DP, a2dp); } catch (Exception ignored) {}
         link.disconnect();
@@ -246,6 +275,8 @@ public class MainActivity extends Activity implements BudsLink.Listener {
     }
 
     private void connectDevice(BluetoothDevice d, int model) {
+        uiHandler.removeCallbacks(reconnectTask);
+        if (link.isConnectedOrConnectingTo(d.getAddress(), model)) return;
         activeConnMac = d.getAddress();
         activeConnModel = model;
         link.connect(d, model);
@@ -359,9 +390,25 @@ public class MainActivity extends Activity implements BudsLink.Listener {
     public void onStateChanged(int cs, Protocol.State st) {
         connState = cs;
         budsState = st;
-        if (cs == BudsLink.CONN_CONNECTED) sysStatus = ST_ACTIVE;
-        else if (sysStatus == ST_ACTIVE) sysStatus = ST_CONNECTED_OS;
+        if (cs == BudsLink.CONN_CONNECTED) {
+            sysStatus = ST_ACTIVE;
+            reconnectAttempt = 0;
+            uiHandler.removeCallbacks(reconnectTask);
+        } else if (sysStatus == ST_ACTIVE) {
+            sysStatus = ST_CONNECTED_OS;
+        }
         render();
+    }
+
+    @Override
+    public void onUnexpectedDisconnect() {
+        if (detectedDevice == null || detectedModel == Protocol.MODEL_UNKNOWN) return;
+        if (reconnectAttempt >= 5) return;
+        long[] delays = {900L, 1800L, 3200L, 5000L, 5000L};
+        long delay = delays[Math.min(reconnectAttempt, delays.length - 1)];
+        reconnectAttempt++;
+        uiHandler.removeCallbacks(reconnectTask);
+        uiHandler.postDelayed(reconnectTask, delay);
     }
 
     @Override
@@ -862,6 +909,9 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         boolean isHc = Protocol.isHonorChoice(detectedModel);
         boolean isNo = Protocol.isNothing(detectedModel);
         boolean isGx = Protocol.isGalaxy(detectedModel);
+        boolean isSn = Protocol.isSony(detectedModel);
+        boolean isXi = Protocol.isXiaomi(detectedModel);
+        boolean isJb = Protocol.isJbl(detectedModel);
 
         // ANC
         int ancVis = (!known || Protocol.supportsAnc(detectedModel)) ? View.VISIBLE : View.GONE;
@@ -873,7 +923,7 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         boolean showAncLvl = Protocol.supportsAncLevel(detectedModel) && budsState.ancMode == Protocol.ANC_ON;
         rowAncLvl.setVisibility(showAncLvl ? View.VISIBLE : View.GONE);
         if (showAncLvl) {
-            String[] lvlNames = isNo
+            String[] lvlNames = (isNo || isXi)
                 ? new String[]{t("Low", "Низк."), t("Mid", "Сред."), t("High", "Выс."), t("Adaptive", "Адапт.")}
                 : new String[]{t("Comfort", "Комфорт"), t("General", "Обычный"), t("Ultra", "Ультра"), t("Dynamic", "Динам.")};
             btnAncLvl[3].setVisibility(Protocol.supportsAncDynamic(detectedModel) ? View.VISIBLE : View.GONE);
@@ -891,16 +941,20 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         int eqVis = (!known || Protocol.supportsEq(detectedModel)) ? View.VISIBLE : View.GONE;
         secEq.setVisibility(eqVis); cardEq.setVisibility(eqVis);
         String[] eqNames;
-        if (isHw) {
+        if (isHw || isXi) {
             eqNames = new String[]{t("Voices", "Голоса"), t("Default", "По умолчанию"), t("Treble boost", "Высокие частоты"), t("Bass boost", "Усиление басов")};
         } else if (isHc) {
             eqNames = new String[]{t("Voices", "Голоса"), t("Balanced", "Баланс"), t("Bass boost", "Усиление басов"), t("Bass boost", "Усиление басов")};
-        } else if (isNo && detectedModel == Protocol.MODEL_CMF_LISTENING) {
+        } else if (isNo && Protocol.isNothingListeningEq(detectedModel)) {
             eqNames = new String[]{t("Vocals", "Вокал"), t("Pop", "Поп"), t("Electronic", "Электроника"), t("Rock", "Рок")};
         } else if (isNo) {
             eqNames = new String[]{t("Voice", "Голос"), t("Balanced", "Баланс"), t("More treble", "Больше высоких"), t("More bass", "Больше басов")};
         } else if (isGx) {
             eqNames = new String[]{t("Clear", "Чёткий"), t("Normal", "Обычный"), t("Dynamic", "Динамичный"), t("Bass boost", "Усиление басов")};
+        } else if (isSn) {
+            eqNames = new String[]{t("Voices", "Голоса"), t("Off", "Выкл."), t("Bright", "Яркий"), t("Bass boost", "Усиление басов")};
+        } else if (isJb) {
+            eqNames = new String[]{t("Voices", "Голоса"), t("Studio", "Студия"), t("Club", "Клуб"), t("Bass boost", "Усиление басов")};
         } else {
             eqNames = new String[]{t("Serenade", "Серенада"), t("Original sound", "Оригинальный звук"), t("Pure bass", "Чистые басы"), t("Deep bass", "Глубокие басы")};
         }

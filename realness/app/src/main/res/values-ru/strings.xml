@@ -43,7 +43,7 @@
 
     <!-- Unsupported Device Warning -->
     <string name="unsupported_warning_title">Устройство не поддерживается</string>
-    <string name="unsupported_warning_message">«%s» не определилось автоматически. Поддерживаются: realme, OnePlus, OPPO, HUAWEI, HONOR, Nothing / CMF, Samsung Galaxy Buds. Вы также можете выбрать модель вручную в боковой панели.</string>
+    <string name="unsupported_warning_message">«%s» не определилось автоматически. Поддерживаются: realme, OnePlus, OPPO, HUAWEI, HONOR, Nothing / CMF, Samsung Galaxy Buds, Sony, Bose, Soundcore, Xiaomi / Redmi, Sennheiser, Jabra, Google Pixel Buds, JBL. Вы также можете выбрать модель вручную в боковой панели.</string>
 
     <!-- Permissions Banner -->
     <string name="perm_warning_title">Требуется доступ к Bluetooth</string>
@@ -87,6 +87,9 @@
     <string name="eq_galaxy_normal">Обычный</string>
     <string name="eq_galaxy_dynamic">Динамичный</string>
     <string name="eq_galaxy_bass">Усиление басов</string>
+    <string name="eq_sony_bright">Яркий</string>
+    <string name="eq_jbl_studio">Студия</string>
+    <string name="eq_jbl_club">Клуб</string>
     <string name="eq_custom_active">Пользовательский: %s (активен)</string>
 
     <!-- Button Settings (Gestures) -->

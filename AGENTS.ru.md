@@ -3,7 +3,7 @@
 [English](AGENTS.md) | **Русский**
 
 Дата обновления: 2026-11-23  
-Статус: поддерживаются **realme Buds / OnePlus Buds / OPPO Enco** (`TL + OPPOv1`), **HUAWEI FreeBuds / FreeClip / FreeLace и HONOR Earbuds 2 / S2** (`Huawei SPP`), **HONOR CHOICE Earbuds (X8 / X5 / X3 / X2 / X)** (`HONOR CHOICE SPP`), **Nothing / CMF** (`Nothing SPP`) и **Samsung Galaxy Buds** (`Galaxy Buds SPP`); приложение **realness** (`uwu.realness.gitveu`, версия `1.6`, `build 7`, release-сборки). Полный список: [SUPPORTED_DEVICES.ru.md](SUPPORTED_DEVICES.ru.md).
+Статус: поддерживаются **13 семейств протоколов и 15 брендов** — **realme / OnePlus / OPPO / DIZO** (`TL + OPPOv1`), **HUAWEI / HONOR** (`Huawei SPP`), **HONOR CHOICE** (`HONOR CHOICE SPP`), **Nothing / CMF** (`Nothing SPP`, все 23 модели), **Samsung Galaxy Buds** (`Galaxy Buds SPP`), **Sony** (`Sony MDR V1/V2 SPP`), **Bose** (`Bose BMAP SPP`), **Anker Soundcore** (`Soundcore SPP`), **Xiaomi / Redmi / POCO** (`Xiaomi SPP + SAFER+`), **Sennheiser** (`GAIA v3 SPP`), **Jabra** (`Jabra SPP`), **Google Pixel Buds** (`Maestro HDLC + Pigweed RPC`) и **JBL** (`JBL BLE GATT`); приложение **realness** (`uwu.realness.gitveu`, версия `1.7`, `build 8`, release-сборки). Полный список: [SUPPORTED_DEVICES.ru.md](SUPPORTED_DEVICES.ru.md).
 
 ---
 
@@ -346,20 +346,31 @@ Payload: `[status (0x00), count (N), (componentId, value)...]`
 * **Формат кадра**: Современный `[0xFD, sizeLo, sizeHi&0x03, msgId, payload..., crcLo, crcHi, 0xDD]` и Legacy `[0xFE, 0x00, size, msgId, payload..., crcLo, crcHi, 0xEE]` (`CRC16-CCITT` по `msgId + payload`, little-endian).
 * **Сообщения**: Push `0x61` (`ExtendedStatusUpdated`) и `0x60` (`StatusUpdated`); Handshake `0x88` (`ManagerInfo [01 02 22]`); ANC `0x78` (современные) / `0x98` (Buds Live) / `0x80` (Buds/Buds+); EQ `0x86`; Seamless Connection `0xAF`.
 
+### 14.3. Дополнительные протоколы `kde-headphones` (`SonyProtocol.kt`, `BoseSoundcoreProtocol.kt`, `XiaomiProtocol.kt`, `ExtraProtocols.kt` / `ExtraProtos.java`)
+* **Sony MDR (V1/V2)**: UUID `956C7B26-D49A-4BA8-B03F-B17D393CB6E2` (V2) / `96CC203E-5068-46AD-B32D-E316F5E069BA` (V1); кадр `0x3E..0x3C` с экранированием `0x3D`, sum8, ACK `0x01`; Батарея `0x22`/`0x23`/`0x25`, NCASM `0x66`..`0x69`, EQ `0x56`..`0x59`.
+* **Bose BMAP**: Standard SPP `00001101`; `[block, func, op, len, payload]`; Батарея `0x02/0x02`, ANC `0x01/0x06`, Мультипоинт `0x01/0x07`.
+* **Anker Soundcore**: Standard SPP `00001101`; `08 EE 00 00 00` TX / `09 FF 00 00 01` RX + sum8; Статус `0x01/0x01`, Батарея `0x01/0x03`, ANC `0x06/0x01`/`0x81`, Game Mode `0x01/0x11`.
+* **Xiaomi / Redmi / POCO**: UUID `0000FD2D-0000-1000-8000-00805F9B34FB`; `FE DC BA .. EF` + полная аутентификация **SAFER+** challenge-response (`0x50`/`0x51`); Батарея `0x09`, ANC `0x08`, датчик ношения `0x0E`, Config `0xF2`/`0xF3`/`0xF4` (AutoAnswer `0x03`, Multipoint `0x04`, EQ `0x07`, уровень ANC `0x0B`).
+* **Sennheiser GAIA v3**: UUID `A2129FF3-081B-4C45-8AFE-469D9C4842EC`; `0xFF 0x03`, vendor `0x0495`; Батарея `0x06/0x02`, ANC `0x05/0x01..0x04`, Spatial `0x06/0x06`.
+* **Jabra**: Standard SPP `00001101`; `04 09 seq (type|len) feat16 payload`; Батарея `0x0101`, ANC `0x0104`, Мультипоинт `0x0107`.
+* **Google Pixel Buds**: UUID `25E97FF7-24CE-4C4C-8951-F764A708F7B5`; HDLC (`0x7E`, экранирование `0x7D`, CRC32) + Pigweed RPC (`maestro_pw.Maestro`); поток батареи + настройки `11` (ANC), `5` (In-Ear), `21` (Multipoint).
+* **JBL BLE GATT**: Сервис `65786365-6c70-6f69-6e74-2e636f6d0000`; `0xAA cmd len payload`; Батарея `0x25`, Noise `0x91`, EQ `0x40`, AutoPlay `0x35`, Spatial `0x9D`.
+* **Примечание по Apple AirPods / Beats**: В `kde-headphones` используется сырой BR/EDR L2CAP `PSM 0x1001`, который заблокирован на нерутованном Android SDK.
+
 ---
 
 ## 15. Архитектура приложения realness
 
-1. **Стек**: Kotlin, Jetpack Compose (Material3), Coroutines/Flow, MinSdk 26, TargetSdk 34, пакет `uwu.realness.gitveu` (папка проекта `realness/`). Также доступна облегчённая сборка `tiny-realness/` (`uwu.realness.gitveu.tiny`) на чистой Java 8 без Gradle/AndroidX (`aapt2 -> javac -> R8 -> zipalign -> apksigner`, ~45 КБ).
+1. **Стек**: Kotlin, Jetpack Compose (Material3), Coroutines/Flow, MinSdk 26, TargetSdk 34, пакет `uwu.realness.gitveu` (папка проекта `realness/`). Также доступна облегчённая сборка `tiny-realness/` (`uwu.realness.gitveu.tiny`) на чистой Java 8 без Gradle/AndroidX (`aapt2 -> javac -> R8 -> zipalign -> apksigner`, ~58 КБ).
 2. **Версионирование и release-сборки**:
-   * Обязательно увеличивать `versionCode` и `versionName` после каждого изменения в `realness/app/build.gradle.kts` и `tiny-realness/AndroidManifest.xml` (текущая: `versionName = "1.6"`, `versionCode = 7`).
+   * Обязательно увеличивать `versionCode` и `versionName` после каждого изменения в `realness/app/build.gradle.kts` и `tiny-realness/AndroidManifest.xml` (текущая: `versionName = "1.7"`, `versionCode = 8`).
    * Все сборки выполняются в режиме **release** (`./gradlew assembleRelease` с R8 minify + shrinkResources, а также `./tiny-realness/build.sh`).
    * Ключ подписи (`realness-release.keystore`) **не хранится в git** (добавлен в `.gitignore` вместе с `keystore.properties`) — хранится в **GitHub Actions Secrets** (`REALNESS_KEYSTORE_BASE64`, `REALNESS_KEYSTORE_PASSWORD`, `REALNESS_KEY_ALIAS`, `REALNESS_KEY_PASSWORD`) и локально на машине разработчика.
    * Скомпилированные `.apk` **не коммитятся в git** (`*.apk` добавлен в `.gitignore`). Workflow `.github/workflows/build-release.yml` автоматически собирает подписанные `realness <versionName>.apk` и `realness-tiny <versionName>.apk` и публикует их в **GitHub Releases** с тегом `v<versionName>`.
 3. **Структура исходного кода**:
-   * `T300Protocol.kt`, `HuaweiProtocol.kt`, `NothingProtocol.kt`, `GalaxyProtocol.kt`: построение и разбор кадров всех 5 протоколов (`REALME_TL`, `HUAWEI_SPP`, `HONOR_CHOICE_SPP`, `NOTHING_SPP`, `GALAXY_BUDS_SPP`) и capability-флаги `BudsModel`, сгруппированные по брендам.
-   * `T300BleManager.kt`: управление сокетом RFCOMM SPP (и GATT fallback для realme/OnePlus/OPPO), потоковые парсеры всех 5 протоколов, поддержка ручного выбора модели, события и опрос.
-   * `BudsViewModel.kt`: реактивное состояние `StateFlow`, автоподключение по событиям Bluetooth, сохранение в `SharedPreferences` **последнего подключённого устройства** и **выбранной вручную модели**, определение неподдерживаемых устройств, управление демо-плеером `MediaPlayer`.
+   * `T300Protocol.kt`, `HuaweiProtocol.kt`, `NothingProtocol.kt`, `GalaxyProtocol.kt`, `SonyProtocol.kt`, `BoseSoundcoreProtocol.kt`, `XiaomiProtocol.kt`, `ExtraProtocols.kt`: построение и разбор кадров всех 13 семейств протоколов и capability-флаги `BudsModel` для 15 брендов.
+   * `T300BleManager.kt`: защищённый поколением сессии (`sessionGen`) менеджер RFCOMM SPP и BLE GATT (исключает гонки параллельных подключений, генерирует `unexpectedDisconnectFlow` для автовосстановления при смене ведущего наушника TWS), потоковые парсеры всех 13 протоколов, ручной выбор модели, события и опрос.
+   * `BudsViewModel.kt`: реактивное состояние `StateFlow`, защита от дублирующихся `ACTION_ACL_CONNECTED`, автоматический переконнект с экспоненциальной паузой при кратковременных обрывах SPP (пока A2DP в сети), сохранение в `SharedPreferences` **последнего подключённого устройства** и **выбранной вручную модели**, определение неподдерживаемых устройств, управление демо-плеером `MediaPlayer`.
    * `MainActivity.kt`: Material3 UI — **боковая панель выбора модели** (`ModalNavigationDrawer` с пунктом «Автоматически» и группировкой по брендам), баннер неподдерживаемого устройства, карточки батареи, селектор ANC (+ уровни интенсивности для Huawei и Nothing), пресеты эквалайзера (+ кастомные профили), редактор жестов кнопок, переключатели Spatial Audio, LDAC/LHDC 5.0/Качество звука, Dynamic Audio / Ultra Bass, Game Mode, Dual-Device / Seamless Connection, Auto Play/Pause, Auto Answer, статистика использования L/R, сворачиваемая панель логов, динамическая версия и номер билда.
 4. **Локализация**:
    * Язык по умолчанию — английский (`values/strings.xml`), полная русская локализация (`values-ru/strings.xml`), `res/xml/locales_config.xml`.
