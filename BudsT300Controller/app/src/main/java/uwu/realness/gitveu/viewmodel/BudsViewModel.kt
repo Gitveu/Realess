@@ -15,6 +15,7 @@ import uwu.realness.gitveu.R
 import uwu.realness.gitveu.ble.BleConnectionState
 import uwu.realness.gitveu.ble.T300BleManager
 import uwu.realness.gitveu.protocol.T300Protocol.AncMode
+import uwu.realness.gitveu.protocol.T300Protocol.BudsModel
 import uwu.realness.gitveu.protocol.T300Protocol.EqPreset
 import uwu.realness.gitveu.protocol.T300Protocol.T300State
 import uwu.realness.gitveu.protocol.T300Protocol.TouchSide
@@ -26,8 +27,9 @@ import kotlinx.coroutines.launch
 enum class SystemDeviceStatus {
     NO_PERMISSIONS,
     NO_PAIRED_DEVICE,
-    DEVICE_DISCONNECTED, // Сопряжено, но сейчас отключено в Bluetooth (в кейсе)
-    DEVICE_CONNECTED_OS, // Подключено в Android Bluetooth как аудиоустройство
+    UNSUPPORTED_DEVICE,  // Подключено аудиоустройство, но модель не поддерживается (например, Honor, Galaxy Buds и т. п.)
+    DEVICE_DISCONNECTED, // Поддерживаемые Buds сопряжены, но сейчас отключены в Bluetooth (в кейсе)
+    DEVICE_CONNECTED_OS, // Поддерживаемые Buds подключены в Android Bluetooth как аудиоустройство
     APP_LINK_ACTIVE      // Подключен канал управления (SPP/GATT)
 }
 
@@ -51,6 +53,12 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
     private val _detectedBudsDevice = MutableStateFlow<BluetoothDevice?>(null)
     val detectedBudsDevice: StateFlow<BluetoothDevice?> = _detectedBudsDevice.asStateFlow()
 
+    private val _detectedModel = MutableStateFlow(BudsModel.UNKNOWN)
+    val detectedModel: StateFlow<BudsModel> = _detectedModel.asStateFlow()
+
+    private val _unsupportedDeviceName = MutableStateFlow<String?>(null)
+    val unsupportedDeviceName: StateFlow<String?> = _unsupportedDeviceName.asStateFlow()
+
     private val _recentLogs = MutableStateFlow<List<String>>(emptyList())
     val recentLogs: StateFlow<List<String>> = _recentLogs.asStateFlow()
 
@@ -72,10 +80,14 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
                         @Suppress("DEPRECATION")
                         intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
                     }
-                    if (isBudsT300(device)) {
+                    if (isSupportedBuds(device)) {
                         _detectedBudsDevice.value = device
+                        _detectedModel.value = BudsModel.fromDeviceName(device?.name)
+                        _unsupportedDeviceName.value = null
                         _deviceStatus.value = SystemDeviceStatus.DEVICE_CONNECTED_OS
                         bleManager.connect(device!!)
+                    } else {
+                        checkAndAutoConnect()
                     }
                 }
                 BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
@@ -85,10 +97,11 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
                         @Suppress("DEPRECATION")
                         intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
                     }
-                    if (isBudsT300(device)) {
+                    if (isSupportedBuds(device)) {
                         _deviceStatus.value = SystemDeviceStatus.DEVICE_DISCONNECTED
                         bleManager.disconnect()
                     }
+                    checkAndAutoConnect()
                 }
                 BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED -> {
                     checkAndAutoConnect()
@@ -163,50 +176,69 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Автоматическое обнаружение и автоподключение к Buds T300 без ручных действий.
+     * Автоматическое обнаружение и автоподключение к поддерживаемым realme Buds (T300 / T200).
      */
     fun checkAndAutoConnect() {
         if (!_hasPermissions.value) return
 
         try {
+            val connectedA2dp = a2dpProfile?.connectedDevices ?: emptyList()
             val bonded = bluetoothAdapter?.bondedDevices?.toList() ?: emptyList()
-            val budsDevice = bonded.firstOrNull { isBudsT300(it) }
 
-            if (budsDevice == null) {
-                _detectedBudsDevice.value = null
-                _deviceStatus.value = SystemDeviceStatus.NO_PAIRED_DEVICE
+            // 1. Сначала ищем среди активно подключённых по A2DP поддерживаемые модели (T300 / T200)
+            val connectedSupported = connectedA2dp.firstOrNull { isSupportedBuds(it) }
+            if (connectedSupported != null) {
+                val model = BudsModel.fromDeviceName(connectedSupported.name)
+                _detectedBudsDevice.value = connectedSupported
+                _detectedModel.value = model
+                _unsupportedDeviceName.value = null
+                _deviceStatus.value = if (bleManager.connectionState.value == BleConnectionState.CONNECTED) {
+                    SystemDeviceStatus.APP_LINK_ACTIVE
+                } else {
+                    SystemDeviceStatus.DEVICE_CONNECTED_OS
+                }
+                if (bleManager.connectionState.value == BleConnectionState.DISCONNECTED) {
+                    bleManager.connect(connectedSupported)
+                }
                 return
             }
 
-            _detectedBudsDevice.value = budsDevice
+            // Поддерживаемое устройство сейчас не активно по A2DP -> закрываем старое соединение
+            if (bleManager.connectionState.value != BleConnectionState.DISCONNECTED) {
+                bleManager.disconnect()
+            }
 
-            // Проверяем, подключены ли наушники в системе прямо сейчас (A2DP профиль)
-            val isA2dpConnected = a2dpProfile?.connectedDevices?.any { it.address == budsDevice.address } == true
+            // 2. Если по A2DP подключено другое (неподдерживаемое) аудиоустройство — сообщаем об этом пользователю
+            val connectedUnsupported = connectedA2dp.firstOrNull()
+            if (connectedUnsupported != null) {
+                _detectedBudsDevice.value = null
+                _detectedModel.value = BudsModel.UNKNOWN
+                _unsupportedDeviceName.value = connectedUnsupported.name ?: connectedUnsupported.address
+                _deviceStatus.value = SystemDeviceStatus.UNSUPPORTED_DEVICE
+                return
+            }
 
-            if (isA2dpConnected) {
-                _deviceStatus.value = SystemDeviceStatus.DEVICE_CONNECTED_OS
-                // Если наш канал управления ещё не подключён — подключаемся немедленно
-                if (bleManager.connectionState.value == BleConnectionState.DISCONNECTED) {
-                    bleManager.connect(budsDevice)
-                }
-            } else {
+            // 3. Проверяем сопряжённые поддерживаемые Buds (вероятно, сейчас в кейсе)
+            val bondedSupported = bonded.firstOrNull { isSupportedBuds(it) }
+            if (bondedSupported != null) {
+                _detectedBudsDevice.value = bondedSupported
+                _detectedModel.value = BudsModel.fromDeviceName(bondedSupported.name)
+                _unsupportedDeviceName.value = null
                 _deviceStatus.value = SystemDeviceStatus.DEVICE_DISCONNECTED
-                if (bleManager.connectionState.value != BleConnectionState.DISCONNECTED) {
-                    bleManager.disconnect()
-                }
+            } else {
+                _detectedBudsDevice.value = null
+                _detectedModel.value = BudsModel.UNKNOWN
+                _unsupportedDeviceName.value = null
+                _deviceStatus.value = SystemDeviceStatus.NO_PAIRED_DEVICE
             }
         } catch (e: Exception) {
             // Исключения безопасности при отсутствии разрешений
         }
     }
 
-    private fun isBudsT300(device: BluetoothDevice?): Boolean {
+    private fun isSupportedBuds(device: BluetoothDevice?): Boolean {
         if (device == null) return false
-        val name = device.name ?: ""
-        return name.contains("T300", ignoreCase = true) ||
-               name.contains("T200", ignoreCase = true) ||
-               name.contains("Buds", ignoreCase = true) ||
-               name.contains("realme", ignoreCase = true)
+        return BudsModel.fromDeviceName(device.name).isSupported
     }
 
     fun manualReconnect() {
@@ -329,13 +361,16 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refreshAll() {
         if (connectionState.value == BleConnectionState.CONNECTED) {
+            val model = _detectedModel.value
             bleManager.refreshAncState()
             bleManager.refreshGameMode()
             bleManager.refreshSpatialAudio()
-            bleManager.refreshHighQualityAudio()
-            bleManager.refreshDynamicAudio()
-            bleManager.refreshDualConnection()
-            bleManager.refreshMultiConnectInfo()
+            if (model.supportsLdac) bleManager.refreshHighQualityAudio()
+            if (model.supportsDynamicAudio) bleManager.refreshDynamicAudio()
+            if (model.supportsDualConnection) {
+                bleManager.refreshDualConnection()
+                bleManager.refreshMultiConnectInfo()
+            }
             bleManager.refreshEq()
             bleManager.refreshKeySettings()
             bleManager.refreshUseTime()

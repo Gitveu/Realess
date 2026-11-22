@@ -66,6 +66,30 @@ object T300Protocol {
     // CCCD UUID для включения notify/indicate
     const val CCCD_UUID_STRING = "00002902-0000-1000-8000-00805f9b34fb"
 
+    enum class BudsModel {
+        UNKNOWN,
+        BUDS_T300,
+        BUDS_T200;
+
+        val isSupported: Boolean get() = this != UNKNOWN
+        val supportsLdac: Boolean get() = this == BUDS_T200
+        val supportsDynamicAudio: Boolean get() = this == BUDS_T200
+        val supportsDualConnection: Boolean get() = this == BUDS_T200
+
+        companion object {
+            fun fromDeviceName(name: String?): BudsModel {
+                if (name.isNullOrBlank()) return UNKNOWN
+                val isRealmeOrBuds = name.contains("realme", ignoreCase = true) ||
+                    name.contains("Buds", ignoreCase = true)
+                return when {
+                    isRealmeOrBuds && name.contains("T200", ignoreCase = true) -> BUDS_T200
+                    isRealmeOrBuds && name.contains("T300", ignoreCase = true) -> BUDS_T300
+                    else -> UNKNOWN
+                }
+            }
+        }
+    }
+
     enum class AncMode(val modeByte: Byte, @StringRes val titleRes: Int) {
         NOISE_REDUCTION(0x08, R.string.anc_noise_reduction),
         OFF(0x01, R.string.anc_off),

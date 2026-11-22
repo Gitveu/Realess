@@ -69,6 +69,7 @@ class T300BleManager(private val context: Context) {
     private var notifyCharacteristic: BluetoothGattCharacteristic? = null
 
     private var activeTransport = ActiveTransport.NONE
+    private var activeModel = T300Protocol.BudsModel.UNKNOWN
 
     private val _connectionState = MutableStateFlow(BleConnectionState.DISCONNECTED)
     val connectionState: StateFlow<BleConnectionState> = _connectionState.asStateFlow()
@@ -100,15 +101,15 @@ class T300BleManager(private val context: Context) {
             delay(80)
             refreshSpatialAudio()
             delay(80)
-            if (_t300State.value.highQualityAudio != null) {
+            if (activeModel.supportsLdac) {
                 refreshHighQualityAudio()
                 delay(80)
             }
-            if (_t300State.value.dynamicAudio != null) {
+            if (activeModel.supportsDynamicAudio) {
                 refreshDynamicAudio()
                 delay(80)
             }
-            if (_t300State.value.dualConnection != null) {
+            if (activeModel.supportsDualConnection) {
                 refreshDualConnection()
                 delay(80)
                 refreshMultiConnectInfo()
@@ -129,9 +130,10 @@ class T300BleManager(private val context: Context) {
      */
     fun connect(device: BluetoothDevice) {
         disconnect()
+        activeModel = T300Protocol.BudsModel.fromDeviceName(device.name)
         _connectionState.value = BleConnectionState.CONNECTING
-        val name = device.name ?: "Buds T300"
-        log("Starting connection to $name (${device.address})...")
+        val name = device.name ?: "realme Buds"
+        log("Starting connection to $name (${device.address}, model=$activeModel)...")
 
         scope.launch {
             // Attempt 1: RFCOMM SPP
@@ -290,6 +292,7 @@ class T300BleManager(private val context: Context) {
         notifyCharacteristic = null
 
         activeTransport = ActiveTransport.NONE
+        activeModel = T300Protocol.BudsModel.UNKNOWN
         _connectionState.value = BleConnectionState.DISCONNECTED
         _t300State.value = T300Protocol.T300State()
         log("Connection closed")
@@ -562,14 +565,20 @@ class T300BleManager(private val context: Context) {
             delay(80)
             refreshSpatialAudio()
             delay(80)
-            refreshHighQualityAudio()
-            delay(80)
-            refreshDynamicAudio()
-            delay(80)
-            refreshDualConnection()
-            delay(80)
-            refreshMultiConnectInfo()
-            delay(80)
+            if (activeModel.supportsLdac) {
+                refreshHighQualityAudio()
+                delay(80)
+            }
+            if (activeModel.supportsDynamicAudio) {
+                refreshDynamicAudio()
+                delay(80)
+            }
+            if (activeModel.supportsDualConnection) {
+                refreshDualConnection()
+                delay(80)
+                refreshMultiConnectInfo()
+                delay(80)
+            }
             refreshEq()
             delay(80)
             refreshAllEq()
@@ -587,7 +596,12 @@ class T300BleManager(private val context: Context) {
 
     private fun registerNotifications() {
         // Subscribe to async device events (3 = ANC, 5 = GameMode, 1 = Battery, 2 = Status, 6 = MultiConnect)
-        for (eventId in byteArrayOf(0x03, 0x05, 0x01, 0x02, 0x06)) {
+        val events = if (activeModel.supportsDualConnection) {
+            byteArrayOf(0x03, 0x05, 0x01, 0x02, 0x06)
+        } else {
+            byteArrayOf(0x03, 0x05, 0x01, 0x02)
+        }
+        for (eventId in events) {
             val frame = T300Protocol.buildRegisterNotificationFrame(eventId)
             sendData(frame)
         }
@@ -604,15 +618,15 @@ class T300BleManager(private val context: Context) {
                 delay(60)
                 refreshSpatialAudio()
                 delay(60)
-                if (_t300State.value.highQualityAudio != null) {
+                if (activeModel.supportsLdac) {
                     refreshHighQualityAudio()
                     delay(60)
                 }
-                if (_t300State.value.dynamicAudio != null) {
+                if (activeModel.supportsDynamicAudio) {
                     refreshDynamicAudio()
                     delay(60)
                 }
-                if (_t300State.value.dualConnection != null) {
+                if (activeModel.supportsDualConnection) {
                     refreshDualConnection()
                     delay(60)
                 }
@@ -811,9 +825,9 @@ class T300BleManager(private val context: Context) {
                 if (ok) {
                     refreshGameMode()
                     refreshSpatialAudio()
-                    if (_t300State.value.highQualityAudio != null) refreshHighQualityAudio()
-                    if (_t300State.value.dynamicAudio != null) refreshDynamicAudio()
-                    if (_t300State.value.dualConnection != null) {
+                    if (activeModel.supportsLdac) refreshHighQualityAudio()
+                    if (activeModel.supportsDynamicAudio) refreshDynamicAudio()
+                    if (activeModel.supportsDualConnection) {
                         refreshDualConnection()
                         refreshMultiConnectInfo()
                     }

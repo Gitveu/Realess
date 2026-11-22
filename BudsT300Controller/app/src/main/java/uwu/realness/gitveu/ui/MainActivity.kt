@@ -163,13 +163,14 @@ fun MainScreen(
     val t300State by viewModel.t300State.collectAsState()
     val deviceStatus by viewModel.deviceStatus.collectAsState()
     val detectedDevice by viewModel.detectedBudsDevice.collectAsState()
+    val detectedModel by viewModel.detectedModel.collectAsState()
+    val unsupportedDeviceName by viewModel.unsupportedDeviceName.collectAsState()
     val logs by viewModel.recentLogs.collectAsState()
     val hasPermissions by viewModel.hasPermissions.collectAsState()
     val isPlayingDemo by viewModel.isPlayingDemo.collectAsState()
 
     var selectedTouchSide by remember { mutableStateOf(TouchSide.LEFT) }
     var activeEditingGesture by remember { mutableStateOf<Pair<TouchSide, TouchGesture>?>(null) }
-    val isT200 = detectedDevice?.name?.contains("T200", ignoreCase = true) == true
 
     Scaffold(
         topBar = {
@@ -205,11 +206,17 @@ fun MainScreen(
                 )
             }
 
+            // Unsupported connected Bluetooth audio device banner (e.g. Honor, Redmi, etc.)
+            if (deviceStatus == SystemDeviceStatus.UNSUPPORTED_DEVICE && unsupportedDeviceName != null) {
+                UnsupportedDeviceCard(deviceName = unsupportedDeviceName!!)
+            }
+
             // Device status card
             StatusDeviceCard(
                 deviceStatus = deviceStatus,
                 connectionState = connectionState,
                 device = detectedDevice,
+                unsupportedDeviceName = unsupportedDeviceName,
                 onRetryConnect = { viewModel.manualReconnect() }
             )
 
@@ -298,8 +305,8 @@ fun MainScreen(
                 onToggleDemo = { viewModel.toggleDemoAudio() }
             )
 
-            // High-Definition Audio (LDAC) — shown when supported (e.g. Buds T200)
-            if (t300State.highQualityAudio != null || isT200) {
+            // High-Definition Audio (LDAC) — strictly for models supporting LDAC (Buds T200)
+            if (detectedModel.supportsLdac) {
                 SwitchFeatureCard(
                     title = stringResource(R.string.high_quality_audio_title),
                     description = stringResource(R.string.high_quality_audio_desc),
@@ -309,8 +316,8 @@ fun MainScreen(
                 )
             }
 
-            // Dynamic Audio — shown when supported (e.g. Buds T200)
-            if (t300State.dynamicAudio != null || isT200) {
+            // Dynamic Audio — strictly for models supporting Dynamic Audio (Buds T200)
+            if (detectedModel.supportsDynamicAudio) {
                 SwitchFeatureCard(
                     title = stringResource(R.string.dynamic_audio_title),
                     description = stringResource(R.string.dynamic_audio_desc),
@@ -332,8 +339,8 @@ fun MainScreen(
                 onToggle = { viewModel.setGameMode(it) }
             )
 
-            // Dual-Device Connection — shown when supported (e.g. Buds T200)
-            if (t300State.dualConnection != null || isT200) {
+            // Dual-Device Connection — strictly for models supporting Multipoint (Buds T200)
+            if (detectedModel.supportsDualConnection) {
                 DualConnectionCard(
                     dualConnection = t300State.dualConnection,
                     connectedDevices = t300State.connectedDevices,
@@ -426,12 +433,40 @@ fun PermissionWarningCard(onRequest: () -> Unit, onOpenSettings: () -> Unit) {
     }
 }
 
+@Composable
+fun UnsupportedDeviceCard(deviceName: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF331414)),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = Color(0xFFEF5350))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.unsupported_warning_title),
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFEF5350),
+                    fontSize = 15.sp
+                )
+            }
+            Text(
+                text = stringResource(R.string.unsupported_warning_message, deviceName),
+                fontSize = 13.sp,
+                color = Color.LightGray
+            )
+        }
+    }
+}
+
 @SuppressLint("MissingPermission")
 @Composable
 fun StatusDeviceCard(
     deviceStatus: SystemDeviceStatus,
     connectionState: BleConnectionState,
     device: BluetoothDevice?,
+    unsupportedDeviceName: String?,
     onRetryConnect: () -> Unit
 ) {
     Card(
@@ -445,14 +480,22 @@ fun StatusDeviceCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                     Text(
-                        text = device?.name ?: stringResource(R.string.default_device_name),
+                        text = device?.name
+                            ?: unsupportedDeviceName
+                            ?: stringResource(R.string.default_device_name),
                         fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp
+                        fontSize = 17.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = device?.address ?: stringResource(R.string.status_searching_paired),
+                        text = when {
+                            device?.address != null -> device.address
+                            deviceStatus == SystemDeviceStatus.UNSUPPORTED_DEVICE -> stringResource(R.string.unsupported_warning_title)
+                            else -> stringResource(R.string.status_searching_paired)
+                        },
                         fontSize = 12.sp,
                         color = Color.Gray
                     )
@@ -463,6 +506,7 @@ fun StatusDeviceCard(
                     connectionState == BleConnectionState.CONNECTED -> stringResource(R.string.status_connected) to Color(0xFF4CAF50)
                     connectionState == BleConnectionState.CONNECTING -> stringResource(R.string.status_connecting) to Color(0xFFFF9800)
                     deviceStatus == SystemDeviceStatus.DEVICE_CONNECTED_OS -> stringResource(R.string.status_online_connecting) to Color(0xFFFF9800)
+                    deviceStatus == SystemDeviceStatus.UNSUPPORTED_DEVICE -> stringResource(R.string.status_unsupported) to Color(0xFFE53935)
                     deviceStatus == SystemDeviceStatus.NO_PAIRED_DEVICE -> stringResource(R.string.status_not_paired) to Color(0xFFE53935)
                     deviceStatus == SystemDeviceStatus.NO_PERMISSIONS -> stringResource(R.string.status_no_permissions) to Color(0xFFE53935)
                     else -> stringResource(R.string.status_in_case_disconnected) to Color.Gray
@@ -482,6 +526,7 @@ fun StatusDeviceCard(
             val hintText = when {
                 connectionState == BleConnectionState.CONNECTED -> null
                 connectionState == BleConnectionState.CONNECTING -> stringResource(R.string.hint_connecting)
+                deviceStatus == SystemDeviceStatus.UNSUPPORTED_DEVICE -> stringResource(R.string.hint_unsupported)
                 deviceStatus == SystemDeviceStatus.DEVICE_DISCONNECTED -> stringResource(R.string.hint_disconnected)
                 deviceStatus == SystemDeviceStatus.NO_PAIRED_DEVICE -> stringResource(R.string.hint_not_paired)
                 deviceStatus == SystemDeviceStatus.NO_PERMISSIONS -> stringResource(R.string.hint_no_permissions)

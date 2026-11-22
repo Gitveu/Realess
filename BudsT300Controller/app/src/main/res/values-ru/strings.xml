@@ -15,22 +15,27 @@
     <string name="battery_right">Правый</string>
 
     <!-- Status & Device Card -->
-    <string name="default_device_name">realme Buds T300</string>
+    <string name="default_device_name">realme Buds</string>
     <string name="status_searching_paired">Поиск сопряжённого устройства…</string>
     <string name="status_connected">Подключено</string>
     <string name="status_connecting">Подключение…</string>
     <string name="status_online_connecting">В сети (подключение)</string>
     <string name="status_not_paired">Не сопряжено</string>
+    <string name="status_unsupported">Не поддерживается</string>
     <string name="status_no_permissions">Нет прав</string>
     <string name="status_in_case_disconnected">В кейсе / отключено</string>
 
-    <string name="hint_link_active">✓ Канал прямого управления Buds T300 активен.</string>
     <string name="hint_connecting">Установка соединения с наушниками через SPP/GATT…</string>
     <string name="hint_disconnected">Наушники не подключены к телефону по Bluetooth. Откройте кейс или наденьте наушники.</string>
-    <string name="hint_not_paired">Buds T300 не найдены среди сопряжённых устройств в Android. Выполните сопряжение в настройках телефона.</string>
+    <string name="hint_not_paired">Поддерживаемые наушники (realme Buds T300 / T200) не найдены среди сопряжённых устройств.</string>
+    <string name="hint_unsupported">Подключённое устройство не поддерживается. Сейчас поддерживаются только realme Buds T300 и realme Buds T200.</string>
     <string name="hint_no_permissions">Предоставьте доступ к Bluetooth выше.</string>
     <string name="hint_waiting_activity">Ожидание активности устройства…</string>
     <string name="btn_reconnect">Повторить подключение к наушникам</string>
+
+    <!-- Unsupported Device Warning -->
+    <string name="unsupported_warning_title">Устройство не поддерживается</string>
+    <string name="unsupported_warning_message">«%s» не поддерживается этим приложением. Сейчас поддерживаются только realme Buds T300 и realme Buds T200.</string>
 
     <!-- Permissions Banner -->
     <string name="perm_warning_title">Требуется доступ к Bluetooth</string>
