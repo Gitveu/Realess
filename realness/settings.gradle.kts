@@ -15,5 +15,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "BudsT300Controller"
+rootProject.name = "realness"
 include(":app")

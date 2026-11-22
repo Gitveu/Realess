@@ -2,8 +2,8 @@
 
 [English](AGENTS.md) | **Русский**
 
-Дата обновления: 2026-11-22  
-Статус: поддерживаются **realme Buds T300 / T200 / Air 7 Pro** (TL + OPPOv1) и **HUAWEI FreeBuds / FreeClip / FreeLace / HONOR Earbuds 2 & S2** (Huawei SPP по базе OpenFreebuds); приложение **realness** (`uwu.realness.gitveu`, версия `1.5`, `build 6`, release-сборки).
+Дата обновления: 2026-11-23  
+Статус: поддерживаются **realme Buds / OnePlus Buds / OPPO Enco** (`TL + OPPOv1`), **HUAWEI FreeBuds / FreeClip / FreeLace и HONOR Earbuds 2 / S2** (`Huawei SPP`), **HONOR CHOICE Earbuds (X8 / X5 / X3 / X2 / X)** (`HONOR CHOICE SPP`), **Nothing / CMF** (`Nothing SPP`) и **Samsung Galaxy Buds** (`Galaxy Buds SPP`); приложение **realness** (`uwu.realness.gitveu`, версия `1.6`, `build 7`, release-сборки). Полный список: [SUPPORTED_DEVICES.ru.md](SUPPORTED_DEVICES.ru.md).
 
 ---
 
@@ -29,8 +29,10 @@
 ### 2.1. Bluetooth Classic RFCOMM SPP (Основной транспорт)
 
 Наушники Realme Buds T300 сопрягаются с Android как стандартная гарнитура Bluetooth Classic (A2DP / HFP). Канал управления данными работает через **RFCOMM SPP**:
-* **Основной вендорный UUID realme / OPPO / OnePlus**:
+* **Основной вендорный UUID realme**:
   `0000079A-D102-11E1-9B23-00025B00A5A5`
+* **Вендорный UUID OnePlus Buds / OPPO Enco (QuickBuds)**:
+  `00001107-D102-11E1-9B23-00025B00A5A5`
 * **Стандартный SPP UUID (Fallback)**:
   `00001101-0000-1000-8000-00805F9B34FB`
 * **Резервные вендорные UUID**:
@@ -326,25 +328,42 @@ Payload: `[status (0x00), count (N), (componentId, value)...]`
   * Эквалайзер: чтение `0x2B4A` (param 2 = активный ID, param 8 = кастомные профили по 36 байт), запись `0x2B49` (param 1);
   * Dual-Device Connection: чтение `0x2B2F`, запись `0x2B2E`, список устройств `0x2B31`, событие `0x2B36`;
   * Жесты кнопок: двойное касание `0x0120`/`0x011F`, тройное `0x0126`/`0x0125`, долгое нажатие `0x2B17`/`0x2B16`.
+* **Вариант HONOR CHOICE Earbuds** (X8 / X5 / X5 Pro / X3 / X2 / X, по базе [noctalia/honor-earbuds](https://github.com/noctalia-dev/community-plugins/tree/main/honor-earbuds)): тот же фрейминг `0x5A` + CRC16-XMODEM (`0x0108` батарея, `0x2B2A` чтение ANC), но **1-байтовая** запись ANC `0x2B04` (`[0=Off, 1=ANC, 2=Transparency]`) и запись EQ `0x2701` (`[0=Balanced, 1=Bass, 2=Vocal]`).
 
 ---
 
-## 14. Архитектура приложения realness
+## 14. Протоколы Nothing / CMF и Samsung Galaxy Buds
 
-1. **Стек**: Kotlin, Jetpack Compose (Material3), Coroutines/Flow, MinSdk 26, TargetSdk 34, пакет `uwu.realness.gitveu`. Также доступна облегчённая сборка `tiny-realness/` (`uwu.realness.gitveu.tiny`) на чистой Java 8 без Gradle/AndroidX (`aapt2 -> javac -> R8 -> zipalign -> apksigner`, ~41 КБ).
+### 14.1. Nothing / CMF RFCOMM SPP (`NothingProtocol.kt` / `NothingProto.java`)
+По базам [swift-nothing-ear](https://github.com/bestK1ngArthur/swift-nothing-ear), [omarchy-nothing-ear](https://github.com/r-witz/omarchy-nothing-ear) и [kde-headphones](https://github.com/RodiAda/kde-headphones):
+* **RFCOMM UUID**: `AEAC4A03-DFF5-498F-843A-34487CF133EB` (+ fallback Standard SPP).
+* **Формат кадра**: `[0x55, 0x60, 0x01, cmdLo, cmdHi, lenLo, lenHi, opId, payload..., crcLo, crcHi]` (`CRC16/MODBUS`, init `0xFFFF`, poly `0xA001`).
+* **Команды**: Handshake `0xC006`/`0x4006`; Батарея `0xC007`/`0x4007`/`0xE001` (`2=L, 3=R, 4=Case, 6=Main`); ANC `0xC01E`/`0x401E`/`0xE003`/`0xF00F` (`1=High, 2=Mid, 3=Low, 4=Adaptive, 5=Off, 7=Transparency`); Classic EQ `0xC01F`/`0xF010` и ListeningMode EQ `0xC050`/`0xF01D`; In-Ear `0xC00E`/`0xF004`; Low Latency `0xC041`/`0xF040`; Ultra Bass `0xC04E`/`0xF051`.
+
+### 14.2. Samsung Galaxy Buds RFCOMM SPP (`GalaxyProtocol.kt` / `GalaxyProto.java`)
+По базе [kde-headphones](https://github.com/RodiAda/kde-headphones):
+* **RFCOMM UUID**: Современные `2E73A4AD-332D-41FC-90E2-16BEF06523F2`, Legacy Buds (2019) `00001102-0000-1000-8000-00805F9B34FD`, Buds+ `00001101-0000-1000-8000-00805F9B34FB`.
+* **Формат кадра**: Современный `[0xFD, sizeLo, sizeHi&0x03, msgId, payload..., crcLo, crcHi, 0xDD]` и Legacy `[0xFE, 0x00, size, msgId, payload..., crcLo, crcHi, 0xEE]` (`CRC16-CCITT` по `msgId + payload`, little-endian).
+* **Сообщения**: Push `0x61` (`ExtendedStatusUpdated`) и `0x60` (`StatusUpdated`); Handshake `0x88` (`ManagerInfo [01 02 22]`); ANC `0x78` (современные) / `0x98` (Buds Live) / `0x80` (Buds/Buds+); EQ `0x86`; Seamless Connection `0xAF`.
+
+---
+
+## 15. Архитектура приложения realness
+
+1. **Стек**: Kotlin, Jetpack Compose (Material3), Coroutines/Flow, MinSdk 26, TargetSdk 34, пакет `uwu.realness.gitveu` (папка проекта `realness/`). Также доступна облегчённая сборка `tiny-realness/` (`uwu.realness.gitveu.tiny`) на чистой Java 8 без Gradle/AndroidX (`aapt2 -> javac -> R8 -> zipalign -> apksigner`, ~45 КБ).
 2. **Версионирование и release-сборки**:
-   * Обязательно увеличивать `versionCode` и `versionName` после каждого изменения в `BudsT300Controller/app/build.gradle.kts` и `tiny-realness/AndroidManifest.xml` (текущая: `versionName = "1.5"`, `versionCode = 6`).
+   * Обязательно увеличивать `versionCode` и `versionName` после каждого изменения в `realness/app/build.gradle.kts` и `tiny-realness/AndroidManifest.xml` (текущая: `versionName = "1.6"`, `versionCode = 7`).
    * Все сборки выполняются в режиме **release** (`./gradlew assembleRelease` с R8 minify + shrinkResources, а также `./tiny-realness/build.sh`).
    * Ключ подписи (`realness-release.keystore`) **не хранится в git** (добавлен в `.gitignore` вместе с `keystore.properties`) — хранится в **GitHub Actions Secrets** (`REALNESS_KEYSTORE_BASE64`, `REALNESS_KEYSTORE_PASSWORD`, `REALNESS_KEY_ALIAS`, `REALNESS_KEY_PASSWORD`) и локально на машине разработчика.
    * Скомпилированные `.apk` **не коммитятся в git** (`*.apk` добавлен в `.gitignore`). Workflow `.github/workflows/build-release.yml` автоматически собирает подписанные `realness <versionName>.apk` и `realness-tiny <versionName>.apk` и публикует их в **GitHub Releases** с тегом `v<versionName>`.
 3. **Структура исходного кода**:
-   * `T300Protocol.kt` и `HuaweiProtocol.kt`: построение и разбор кадров realme TL + OPPOv1 и Huawei SPP (`0x5A` + CRC16-XMODEM), `BudsModel` с capability-флагами для всех моделей realme и Huawei/Honor.
-   * `T300BleManager.kt`: управление сокетом RFCOMM SPP (и GATT fallback для realme), потоковые парсеры обоих протоколов, очередь команд, события и опрос.
-   * `BudsViewModel.kt`: реактивное состояние `StateFlow`, автоподключение по событиям Bluetooth, определение неподдерживаемых устройств, управление демо-плеером `MediaPlayer`.
-   * `MainActivity.kt`: Material3 UI — баннер неподдерживаемого устройства, карточки батареи, селектор ANC (+ уровни интенсивности для Huawei), пресеты эквалайзера (+ кастомные профили), редактор жестов кнопок, переключатели Spatial Audio, LDAC/LHDC 5.0/Качество звука, Dynamic Audio, Game Mode, Dual-Device Connection + история, Auto Play/Pause, Auto Answer, статистика использования L/R, сворачиваемая панель логов, динамическая версия и номер билда.
+   * `T300Protocol.kt`, `HuaweiProtocol.kt`, `NothingProtocol.kt`, `GalaxyProtocol.kt`: построение и разбор кадров всех 5 протоколов (`REALME_TL`, `HUAWEI_SPP`, `HONOR_CHOICE_SPP`, `NOTHING_SPP`, `GALAXY_BUDS_SPP`) и capability-флаги `BudsModel`, сгруппированные по брендам.
+   * `T300BleManager.kt`: управление сокетом RFCOMM SPP (и GATT fallback для realme/OnePlus/OPPO), потоковые парсеры всех 5 протоколов, поддержка ручного выбора модели, события и опрос.
+   * `BudsViewModel.kt`: реактивное состояние `StateFlow`, автоподключение по событиям Bluetooth, сохранение в `SharedPreferences` **последнего подключённого устройства** и **выбранной вручную модели**, определение неподдерживаемых устройств, управление демо-плеером `MediaPlayer`.
+   * `MainActivity.kt`: Material3 UI — **боковая панель выбора модели** (`ModalNavigationDrawer` с пунктом «Автоматически» и группировкой по брендам), баннер неподдерживаемого устройства, карточки батареи, селектор ANC (+ уровни интенсивности для Huawei и Nothing), пресеты эквалайзера (+ кастомные профили), редактор жестов кнопок, переключатели Spatial Audio, LDAC/LHDC 5.0/Качество звука, Dynamic Audio / Ultra Bass, Game Mode, Dual-Device / Seamless Connection, Auto Play/Pause, Auto Answer, статистика использования L/R, сворачиваемая панель логов, динамическая версия и номер билда.
 4. **Локализация**:
    * Язык по умолчанию — английский (`values/strings.xml`), полная русская локализация (`values-ru/strings.xml`), `res/xml/locales_config.xml`.
    * Технические логи протокола выводятся на английском языке.
 5. **Сборка и репозиторий**:
-   * Репозиторий GitHub: `https://github.com/Gitveu/realess-t300.git` (ветка `main`).
+   * Репозиторий GitHub: `https://github.com/Gitveu/Realess.git` (ветка `main`).
    * Release APK (`realness <versionName>.apk` и `realness-tiny <versionName>.apk`) автоматически публикуются в GitHub Releases через GitHub Actions.

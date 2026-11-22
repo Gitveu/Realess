@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.launch
 import uwu.realness.gitveu.BuildConfig
 import uwu.realness.gitveu.R
 import uwu.realness.gitveu.ble.BleConnectionState
@@ -165,6 +166,10 @@ fun MainScreen(
     val deviceStatus by viewModel.deviceStatus.collectAsState()
     val detectedDevice by viewModel.detectedBudsDevice.collectAsState()
     val detectedModel by viewModel.detectedModel.collectAsState()
+    val autoDetectedModel by viewModel.autoDetectedModel.collectAsState()
+    val manualModelOverride by viewModel.manualModelOverride.collectAsState()
+    val lastDeviceName by viewModel.lastDeviceName.collectAsState()
+    val lastDeviceMac by viewModel.lastDeviceMac.collectAsState()
     val unsupportedDeviceName by viewModel.unsupportedDeviceName.collectAsState()
     val logs by viewModel.recentLogs.collectAsState()
     val hasPermissions by viewModel.hasPermissions.collectAsState()
@@ -173,10 +178,44 @@ fun MainScreen(
     var selectedTouchSide by remember { mutableStateOf(TouchSide.LEFT) }
     var activeEditingGesture by remember { mutableStateOf<Pair<TouchSide, TouchGesture>?>(null) }
 
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val drawerScope = rememberCoroutineScope()
+
+    val displayDeviceName = detectedDevice?.name ?: lastDeviceName
+    val displayDeviceMac = detectedDevice?.address ?: lastDeviceMac
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModelPickerDrawerContent(
+                autoDetectedModel = autoDetectedModel,
+                manualModelOverride = manualModelOverride,
+                onSelectModel = { chosen ->
+                    viewModel.selectManualModel(chosen)
+                    drawerScope.launch { drawerState.close() }
+                }
+            )
+        }
+    ) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(detectedDevice?.name ?: stringResource(R.string.app_name), fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = { drawerScope.launch { drawerState.open() } }) {
+                        Icon(
+                            imageVector = Icons.Default.Menu,
+                            contentDescription = stringResource(R.string.drawer_menu_desc)
+                        )
+                    }
+                },
+                title = {
+                    Text(
+                        text = displayDeviceName ?: stringResource(R.string.app_name),
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
@@ -207,7 +246,7 @@ fun MainScreen(
                 )
             }
 
-            // Unsupported connected Bluetooth audio device banner (e.g. Honor, Redmi, etc.)
+            // Unsupported connected Bluetooth audio device banner
             if (deviceStatus == SystemDeviceStatus.UNSUPPORTED_DEVICE && unsupportedDeviceName != null) {
                 UnsupportedDeviceCard(deviceName = unsupportedDeviceName!!)
             }
@@ -217,6 +256,9 @@ fun MainScreen(
                 deviceStatus = deviceStatus,
                 connectionState = connectionState,
                 device = detectedDevice,
+                displayName = displayDeviceName,
+                displayMac = displayDeviceMac,
+                manualModelOverride = manualModelOverride,
                 unsupportedDeviceName = unsupportedDeviceName,
                 onRetryConnect = { viewModel.manualReconnect() }
             )
@@ -263,6 +305,7 @@ fun MainScreen(
                     currentLevel = t300State.ancLevel,
                     supportsAncLevel = detectedModel.supportsAncLevel,
                     supportsAncDynamic = detectedModel.supportsAncDynamic,
+                    isNothing = detectedModel.isNothing,
                     enabled = connectionState == BleConnectionState.CONNECTED,
                     onModeSelected = { viewModel.setAncMode(it) },
                     onLevelSelected = { viewModel.setAncLevel(it) }
@@ -279,7 +322,7 @@ fun MainScreen(
                 EqPresetSelector(
                     currentPreset = t300State.eqPreset,
                     activeCustomName = t300State.activeCustomEqName,
-                    isHuawei = detectedModel.isHuawei,
+                    model = detectedModel,
                     enabled = connectionState == BleConnectionState.CONNECTED,
                     onPresetSelected = { viewModel.setEqPreset(it) }
                 )
@@ -309,7 +352,7 @@ fun MainScreen(
                 )
             }
 
-            // Spatial Audio Section (realme only)
+            // Spatial Audio Section (realme / OnePlus / OPPO)
             if (!detectedModel.isSupported || detectedModel.supportsSpatialAudio) {
                 Text(
                     text = stringResource(R.string.section_spatial_audio),
@@ -325,7 +368,7 @@ fun MainScreen(
                 )
             }
 
-            // High-Definition Audio (LDAC for T200, LHDC 5.0 for Air 7 Pro, Sound Quality Priority for Huawei)
+            // High-Definition Audio (LDAC / LHDC 5.0 / Huawei Sound Quality Priority)
             if (detectedModel.supportsHighQualityAudio) {
                 val codecDescRes = when {
                     detectedModel.isHuawei -> R.string.high_quality_audio_desc_huawei
@@ -341,11 +384,13 @@ fun MainScreen(
                 )
             }
 
-            // Dynamic Audio (Buds T200 / Buds Air 7 Pro)
+            // Dynamic Audio (realme) / Ultra Bass (Nothing & CMF)
             if (detectedModel.supportsDynamicAudio) {
+                val dynTitle = if (detectedModel.isNothing) R.string.ultra_bass_title else R.string.dynamic_audio_title
+                val dynDesc = if (detectedModel.isNothing) R.string.ultra_bass_desc else R.string.dynamic_audio_desc
                 SwitchFeatureCard(
-                    title = stringResource(R.string.dynamic_audio_title),
-                    description = stringResource(R.string.dynamic_audio_desc),
+                    title = stringResource(dynTitle),
+                    description = stringResource(dynDesc),
                     checked = t300State.dynamicAudio,
                     enabled = connectionState == BleConnectionState.CONNECTED,
                     onToggle = { viewModel.setDynamicAudio(it) }
@@ -372,17 +417,27 @@ fun MainScreen(
                     )
                 }
 
-                // Dual-Device Connection (Buds T200 / Buds Air 7 Pro / Huawei)
+                // Dual-Device Connection / Galaxy Seamless Connection
                 if (detectedModel.supportsDualConnection) {
-                    DualConnectionCard(
-                        dualConnection = t300State.dualConnection,
-                        connectedDevices = t300State.connectedDevices,
-                        enabled = connectionState == BleConnectionState.CONNECTED,
-                        onToggle = { viewModel.setDualConnection(it) }
-                    )
+                    if (detectedModel.isGalaxy) {
+                        SwitchFeatureCard(
+                            title = stringResource(R.string.dual_connection_galaxy_title),
+                            description = stringResource(R.string.dual_connection_galaxy_desc),
+                            checked = t300State.dualConnection,
+                            enabled = connectionState == BleConnectionState.CONNECTED,
+                            onToggle = { viewModel.setDualConnection(it) }
+                        )
+                    } else {
+                        DualConnectionCard(
+                            dualConnection = t300State.dualConnection,
+                            connectedDevices = t300State.connectedDevices,
+                            enabled = connectionState == BleConnectionState.CONNECTED,
+                            onToggle = { viewModel.setDualConnection(it) }
+                        )
+                    }
                 }
 
-                // Auto Play/Pause — In-ear wear detection (Buds Air 7 Pro / Huawei)
+                // Auto Play/Pause — In-ear wear detection (Air 7 Pro / OnePlus / OPPO / Huawei / Nothing)
                 if (detectedModel.supportsAutoPlayPause) {
                     SwitchFeatureCard(
                         title = stringResource(R.string.auto_play_pause_title),
@@ -393,7 +448,7 @@ fun MainScreen(
                     )
                 }
 
-                // Auto Answer — Answer call on put-on (Buds Air 7 Pro)
+                // Auto Answer — Answer call on put-on (Air 7 Pro)
                 if (detectedModel.supportsAutoAnswer) {
                     SwitchFeatureCard(
                         title = stringResource(R.string.auto_answer_title),
@@ -448,6 +503,146 @@ fun MainScreen(
                 },
                 onDismiss = { activeEditingGesture = null }
             )
+        }
+    }
+    }
+}
+
+@Composable
+fun ModelPickerDrawerContent(
+    autoDetectedModel: T300Protocol.BudsModel,
+    manualModelOverride: T300Protocol.BudsModel?,
+    onSelectModel: (T300Protocol.BudsModel?) -> Unit
+) {
+    val grouped = remember { T300Protocol.BudsModel.modelsByBrand }
+    val isAutoSelected = manualModelOverride == null
+
+    ModalDrawerSheet(
+        modifier = Modifier.width(304.dp),
+        drawerContainerColor = Color(0xFF121212),
+        drawerContentColor = Color.White
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.drawer_title_model),
+                fontSize = 24.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
+                modifier = Modifier.padding(top = 12.dp, bottom = 14.dp)
+            )
+
+            // "Automatic" top card (QuickBuds style)
+            val autoSubtitle = if (autoDetectedModel.isSupported) {
+                stringResource(R.string.drawer_auto_detected, autoDetectedModel.displayName)
+            } else {
+                stringResource(R.string.drawer_auto_not_connected)
+            }
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable { onSelectModel(null) },
+                color = if (isAutoSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f) else Color(0xFF1E1E1E),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.drawer_auto_title),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isAutoSelected) MaterialTheme.colorScheme.primary else Color.White
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = autoSubtitle,
+                            fontSize = 12.sp,
+                            color = Color(0xFFBDBDBD),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (isAutoSelected) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Scrollable brand-grouped list of all supported models
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentPadding = PaddingValues(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                grouped.forEach { (brand, models) ->
+                    item(key = "brand_${brand.name}") {
+                        Text(
+                            text = brand.title,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp, start = 4.dp)
+                        )
+                    }
+                    items(models, key = { it.name }) { model ->
+                        val selected = manualModelOverride == model
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { onSelectModel(model) },
+                            color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f) else Color(0xFF1E1E1E),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 13.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = model.displayName,
+                                    fontSize = 15.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (selected) MaterialTheme.colorScheme.primary else Color.White,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (selected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -523,6 +718,9 @@ fun StatusDeviceCard(
     deviceStatus: SystemDeviceStatus,
     connectionState: BleConnectionState,
     device: BluetoothDevice?,
+    displayName: String?,
+    displayMac: String?,
+    manualModelOverride: T300Protocol.BudsModel?,
     unsupportedDeviceName: String?,
     onRetryConnect: () -> Unit
 ) {
@@ -539,7 +737,7 @@ fun StatusDeviceCard(
             ) {
                 Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                     Text(
-                        text = device?.name
+                        text = displayName
                             ?: unsupportedDeviceName
                             ?: stringResource(R.string.default_device_name),
                         fontWeight = FontWeight.Bold,
@@ -549,13 +747,23 @@ fun StatusDeviceCard(
                     )
                     Text(
                         text = when {
-                            device?.address != null -> device.address
+                            displayMac != null -> displayMac
                             deviceStatus == SystemDeviceStatus.UNSUPPORTED_DEVICE -> stringResource(R.string.unsupported_warning_title)
                             else -> stringResource(R.string.status_searching_paired)
                         },
                         fontSize = 12.sp,
                         color = Color.Gray
                     )
+                    if (manualModelOverride != null) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(R.string.drawer_manual_badge, manualModelOverride.displayName),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
 
                 // Status indicator
@@ -668,6 +876,7 @@ fun AncModeSelector(
     currentLevel: HuaweiProtocol.AncLevel?,
     supportsAncLevel: Boolean,
     supportsAncDynamic: Boolean,
+    isNothing: Boolean,
     enabled: Boolean,
     onModeSelected: (AncMode) -> Unit,
     onLevelSelected: (HuaweiProtocol.AncLevel) -> Unit
@@ -731,6 +940,16 @@ fun AncModeSelector(
                 ) {
                     levels.forEach { lvl ->
                         val selected = lvl == currentLevel
+                        val lvlTitleRes = if (isNothing) {
+                            when (lvl) {
+                                HuaweiProtocol.AncLevel.COMFORT -> R.string.anc_level_nothing_low
+                                HuaweiProtocol.AncLevel.GENERAL -> R.string.anc_level_nothing_mid
+                                HuaweiProtocol.AncLevel.ULTRA -> R.string.anc_level_nothing_high
+                                HuaweiProtocol.AncLevel.DYNAMIC -> R.string.anc_level_nothing_adaptive
+                            }
+                        } else {
+                            lvl.titleRes
+                        }
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -741,7 +960,7 @@ fun AncModeSelector(
                             contentAlignment = Alignment.Center
                         ) {
                             AutoSizeSingleLineText(
-                                text = stringResource(lvl.titleRes),
+                                text = stringResource(lvlTitleRes),
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                                 color = if (selected) MaterialTheme.colorScheme.primary else if (enabled) Color.LightGray else Color.Gray,
                                 maxFontSize = 12.sp,
@@ -759,7 +978,7 @@ fun AncModeSelector(
 fun EqPresetSelector(
     currentPreset: T300Protocol.EqPreset?,
     activeCustomName: String?,
-    isHuawei: Boolean,
+    model: T300Protocol.BudsModel,
     enabled: Boolean,
     onPresetSelected: (T300Protocol.EqPreset) -> Unit
 ) {
@@ -774,12 +993,20 @@ fun EqPresetSelector(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            val presets = listOf(
-                T300Protocol.EqPreset.SERENADE,
-                T300Protocol.EqPreset.ORIGINAL_SOUND,
-                T300Protocol.EqPreset.PURE_BASS,
-                T300Protocol.EqPreset.DEEP_BASS
-            )
+            val presets = if (model.isHonorChoice) {
+                listOf(
+                    T300Protocol.EqPreset.ORIGINAL_SOUND,
+                    T300Protocol.EqPreset.DEEP_BASS,
+                    T300Protocol.EqPreset.SERENADE
+                )
+            } else {
+                listOf(
+                    T300Protocol.EqPreset.SERENADE,
+                    T300Protocol.EqPreset.ORIGINAL_SOUND,
+                    T300Protocol.EqPreset.PURE_BASS,
+                    T300Protocol.EqPreset.DEEP_BASS
+                )
+            }
 
             for (row in presets.chunked(2)) {
                 Row(
@@ -788,15 +1015,38 @@ fun EqPresetSelector(
                 ) {
                     for (preset in row) {
                         val selected = (preset == currentPreset) && (activeCustomName == null)
-                        val titleRes = if (isHuawei) {
-                            when (preset) {
+                        val titleRes = when {
+                            model.isHuawei -> when (preset) {
                                 T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
                                 T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_huawei_default
                                 T300Protocol.EqPreset.PURE_BASS -> R.string.eq_huawei_treble
                                 T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
                             }
-                        } else {
-                            preset.titleRes
+                            model.isHonorChoice -> when (preset) {
+                                T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_nothing_balanced
+                                T300Protocol.EqPreset.DEEP_BASS,
+                                T300Protocol.EqPreset.PURE_BASS -> R.string.eq_huawei_bass
+                                T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
+                            }
+                            model.isNothing && model.nothingUsesListeningModeEq -> when (preset) {
+                                T300Protocol.EqPreset.SERENADE -> R.string.eq_cmf_vocals
+                                T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_cmf_pop
+                                T300Protocol.EqPreset.PURE_BASS -> R.string.eq_cmf_electronic
+                                T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_cmf_rock
+                            }
+                            model.isNothing -> when (preset) {
+                                T300Protocol.EqPreset.SERENADE -> R.string.eq_nothing_voice
+                                T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_nothing_balanced
+                                T300Protocol.EqPreset.PURE_BASS -> R.string.eq_nothing_more_treble
+                                T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_nothing_more_bass
+                            }
+                            model.isGalaxy -> when (preset) {
+                                T300Protocol.EqPreset.SERENADE -> R.string.eq_galaxy_clear
+                                T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_galaxy_normal
+                                T300Protocol.EqPreset.PURE_BASS -> R.string.eq_galaxy_dynamic
+                                T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_galaxy_bass
+                            }
+                            else -> preset.titleRes
                         }
                         Box(
                             modifier = Modifier

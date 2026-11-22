@@ -7,6 +7,14 @@
     <string name="dash">—</string>
     <string name="cancel">Cancel</string>
     <string name="refresh_state_desc">Refresh state</string>
+    <string name="drawer_menu_desc">Select model</string>
+
+    <!-- Model Picker Drawer -->
+    <string name="drawer_title_model">Model</string>
+    <string name="drawer_auto_title">Automatic</string>
+    <string name="drawer_auto_detected">Detected: %s</string>
+    <string name="drawer_auto_not_connected">Not connected</string>
+    <string name="drawer_manual_badge">Manual: %s</string>
 
     <!-- Battery Section -->
     <string name="section_battery">Battery level</string>
@@ -15,27 +23,27 @@
     <string name="battery_right">Right</string>
 
     <!-- Status & Device Card -->
-    <string name="default_device_name">realme Buds</string>
-    <string name="status_searching_paired">Searching for paired device…</string>
+    <string name="default_device_name">No device connected</string>
+    <string name="status_searching_paired">Connect earbuds via Bluetooth</string>
     <string name="status_connected">Connected</string>
     <string name="status_connecting">Connecting…</string>
     <string name="status_online_connecting">Online (connecting)</string>
-    <string name="status_not_paired">Not paired</string>
+    <string name="status_not_paired">Disconnected</string>
     <string name="status_unsupported">Unsupported</string>
     <string name="status_no_permissions">No permissions</string>
     <string name="status_in_case_disconnected">In case / disconnected</string>
 
     <string name="hint_connecting">Connecting to earbuds via SPP/GATT…</string>
     <string name="hint_disconnected">Earbuds are not connected to phone via Bluetooth. Open the case or put on the earbuds.</string>
-    <string name="hint_not_paired">No supported earbuds (realme Buds / HUAWEI FreeBuds) found among paired Bluetooth devices.</string>
-    <string name="hint_unsupported">The connected device is not supported. Supported: realme Buds (T300, T200, Air 7 Pro) and HUAWEI FreeBuds / FreeClip / FreeLace.</string>
+    <string name="hint_not_paired">Connect supported earbuds via Bluetooth or choose a model manually in the side menu.</string>
+    <string name="hint_unsupported">The connected device was not recognized automatically. You can try selecting a compatible protocol manually in the side menu.</string>
     <string name="hint_no_permissions">Grant Bluetooth permissions above.</string>
     <string name="hint_waiting_activity">Waiting for device activity…</string>
     <string name="btn_reconnect">Reconnect to earbuds</string>
 
     <!-- Unsupported Device Warning -->
     <string name="unsupported_warning_title">Unsupported device</string>
-    <string name="unsupported_warning_message">\"%s\" is not supported by this app. Supported: realme Buds (T300, T200, Air 7 Pro) and HUAWEI FreeBuds / FreeClip / FreeLace.</string>
+    <string name="unsupported_warning_message">\"%s\" was not recognized automatically. Supported brands: realme, OnePlus, OPPO, HUAWEI, HONOR, Nothing / CMF, Samsung Galaxy Buds. You can also try selecting a model manually in the side menu.</string>
 
     <!-- Permissions Banner -->
     <string name="perm_warning_title">Bluetooth access required</string>
@@ -52,6 +60,10 @@
     <string name="anc_level_general">General</string>
     <string name="anc_level_ultra">Ultra</string>
     <string name="anc_level_dynamic">Dynamic</string>
+    <string name="anc_level_nothing_low">Low</string>
+    <string name="anc_level_nothing_mid">Mid</string>
+    <string name="anc_level_nothing_high">High</string>
+    <string name="anc_level_nothing_adaptive">Adaptive</string>
 
     <!-- Sound Effects (EQ) -->
     <string name="section_eq">Sound effects</string>
@@ -63,6 +75,18 @@
     <string name="eq_huawei_default">Default</string>
     <string name="eq_huawei_treble">Treble boost</string>
     <string name="eq_huawei_bass">Bass boost</string>
+    <string name="eq_nothing_voice">Voice</string>
+    <string name="eq_nothing_balanced">Balanced</string>
+    <string name="eq_nothing_more_treble">More treble</string>
+    <string name="eq_nothing_more_bass">More bass</string>
+    <string name="eq_cmf_vocals">Enhance vocals</string>
+    <string name="eq_cmf_pop">Pop</string>
+    <string name="eq_cmf_electronic">Electronic</string>
+    <string name="eq_cmf_rock">Rock</string>
+    <string name="eq_galaxy_clear">Clear</string>
+    <string name="eq_galaxy_normal">Normal</string>
+    <string name="eq_galaxy_dynamic">Dynamic</string>
+    <string name="eq_galaxy_bass">Bass boost</string>
     <string name="eq_custom_active">Custom: %s (active)</string>
 
     <!-- Button Settings (Gestures) -->
@@ -104,22 +128,26 @@
     <string name="game_mode_title">Game mode</string>
     <string name="game_mode_desc">Provides smooth gameplay with ultra-low audio latency.</string>
 
-    <!-- High-Definition Audio (LDAC / LHDC 5.0 / Huawei) & Dynamic Audio -->
+    <!-- High-Definition Audio (LDAC / LHDC 5.0 / Huawei) & Dynamic Audio / Ultra Bass -->
     <string name="high_quality_audio_title">High-definition audio</string>
     <string name="high_quality_audio_desc">LDAC codec for superior audio quality.</string>
     <string name="high_quality_audio_desc_lhdc">Play high-resolution LHDC 5.0 audio.</string>
     <string name="high_quality_audio_desc_huawei">Prioritize sound quality over connection stability.</string>
     <string name="dynamic_audio_title">Dynamic audio</string>
     <string name="dynamic_audio_desc">Dynamically enhances bass and sound depth.</string>
+    <string name="ultra_bass_title">Ultra Bass</string>
+    <string name="ultra_bass_desc">Enhances low-frequency bass response on Nothing / CMF earbuds.</string>
 
     <!-- Dual-Device Connection -->
     <string name="dual_connection_title">Dual-device connection</string>
     <string name="dual_connection_desc">Connect to 2 devices simultaneously and switch seamlessly between them.</string>
+    <string name="dual_connection_galaxy_title">Seamless earbud connection</string>
+    <string name="dual_connection_galaxy_desc">Quickly switch between nearby paired devices without disconnecting.</string>
     <string name="dual_connection_history">Connection history</string>
     <string name="dual_connection_device_connected">Connected</string>
     <string name="dual_connection_device_disconnected">Disconnected</string>
 
-    <!-- Auto Play/Pause & Auto Answer (Air 7 Pro) -->
+    <!-- Auto Play/Pause & Auto Answer -->
     <string name="auto_play_pause_title">Auto play/pause</string>
     <string name="auto_play_pause_desc">Remove either earbud to pause playback, and put it back on to resume.</string>
     <string name="auto_answer_title">Auto answer</string>

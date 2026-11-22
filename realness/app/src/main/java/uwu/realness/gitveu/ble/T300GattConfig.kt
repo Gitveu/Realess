@@ -13,8 +13,11 @@ object T300GattConfig {
     /**
      * RFCOMM SPP UUIDs (Bluetooth Classic)
      */
-    // Основной вендорный UUID realme / OPPO / OnePlus (из класса BaseBRDevice.L)
+    // Основной вендорный UUID realme (из класса BaseBRDevice.L)
     val REALME_VENDOR_SPP_UUID: UUID = UUID.fromString("0000079A-D102-11E1-9B23-00025B00A5A5")
+
+    // Вендорный UUID OnePlus Buds / OPPO Enco (из QuickBuds)
+    val OPPO_ONEPLUS_SPP_UUID: UUID = UUID.fromString("00001107-D102-11E1-9B23-00025B00A5A5")
 
     // Стандартный SPP UUID (Serial Port Profile, BaseBRDevice.K)
     val STANDARD_SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
@@ -26,7 +29,23 @@ object T300GattConfig {
     // Huawei / Honor приватный SPP UUID (RFCOMM channel 16 на FreeBuds 4i / 5i / SE / FreeLace Pro)
     val HUAWEI_VENDOR_SPP_UUID: UUID = UUID.fromString("96cc203e-5068-46ad-b32d-e316f5e069ba")
 
+    // Nothing / CMF RFCOMM SPP UUID (swift-nothing-ear / kde-headphones)
+    val NOTHING_SPP_UUID: UUID = UUID.fromString("AEAC4A03-DFF5-498F-843A-34487CF133EB")
+
+    // Samsung Galaxy Buds RFCOMM SPP UUIDs (kde-headphones / GalaxyBudsClient)
+    val GALAXY_SPP_UUID: UUID = UUID.fromString("2E73A4AD-332D-41FC-90E2-16BEF06523F2")
+    val GALAXY_LEGACY_SPP_UUID: UUID = UUID.fromString("00001102-0000-1000-8000-00805F9B34FD")
+
     val KNOWN_SPP_UUIDS = listOf(
+        REALME_VENDOR_SPP_UUID,
+        OPPO_ONEPLUS_SPP_UUID,
+        STANDARD_SPP_UUID,
+        ALT_VENDOR_SPP_UUID_1,
+        ALT_VENDOR_SPP_UUID_2
+    )
+
+    val OPPO_ONEPLUS_SPP_UUIDS = listOf(
+        OPPO_ONEPLUS_SPP_UUID,
         REALME_VENDOR_SPP_UUID,
         STANDARD_SPP_UUID,
         ALT_VENDOR_SPP_UUID_1,
@@ -41,6 +60,26 @@ object T300GattConfig {
     val HUAWEI_SPP_UUIDS_PORT16_FIRST = listOf(
         HUAWEI_VENDOR_SPP_UUID,
         STANDARD_SPP_UUID
+    )
+
+    val NOTHING_SPP_UUIDS = listOf(
+        NOTHING_SPP_UUID,
+        STANDARD_SPP_UUID
+    )
+
+    val GALAXY_MODERN_SPP_UUIDS = listOf(
+        GALAXY_SPP_UUID,
+        STANDARD_SPP_UUID
+    )
+
+    val GALAXY_LEGACY_SPP_UUIDS = listOf(
+        GALAXY_LEGACY_SPP_UUID,
+        STANDARD_SPP_UUID
+    )
+
+    val GALAXY_PLUS_SPP_UUIDS = listOf(
+        STANDARD_SPP_UUID,
+        GALAXY_SPP_UUID
     )
 
     /**

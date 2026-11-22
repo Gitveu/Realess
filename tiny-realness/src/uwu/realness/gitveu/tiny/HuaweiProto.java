@@ -13,7 +13,7 @@ final class HuaweiProto {
     static final int CMD_AUTOPAUSE_W = 0x2B10, CMD_AUTOPAUSE_R = 0x2B11;
     static final int CMD_LTAP_W = 0x2B16, CMD_LTAP_R = 0x2B17;
     static final int CMD_DC_W = 0x2B2E, CMD_DC_R = 0x2B2F, CMD_DC_ENUM = 0x2B31, CMD_DC_EV = 0x2B36;
-    static final int CMD_EQ_W = 0x2B49, CMD_EQ_R = 0x2B4A;
+    static final int CMD_EQ_W = 0x2B49, CMD_EQ_R = 0x2B4A, CMD_HONOR_EQ_W = 0x2701;
     static final int CMD_LOW_LAT = 0x2B6C;
     static final int CMD_SQP_W = 0x2BA2, CMD_SQP_R = 0x2BA3;
 
@@ -75,6 +75,16 @@ final class HuaweiProto {
 
     static byte[] writeAncLevel(byte lvl) {
         return build(CMD_ANC_W, new int[]{1}, new byte[][]{new byte[]{1, lvl}});
+    }
+
+    static byte[] writeHonorAnc(byte realmeMode) {
+        byte m = realmeMode == Protocol.ANC_ON ? (byte) 1 : (realmeMode == Protocol.ANC_TRANSPARENCY ? (byte) 2 : (byte) 0);
+        return writeByte(CMD_ANC_W, 1, m);
+    }
+
+    static byte[] writeHonorEq(byte realmeEqId) {
+        byte c = realmeEqId == 0 ? (byte) 0 : (realmeEqId == 2 ? (byte) 2 : (byte) 1);
+        return writeByte(CMD_HONOR_EQ_W, 1, c);
     }
 
     static byte[] parseStream(byte[] buf, List<Pkt> out) {

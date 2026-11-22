@@ -2,35 +2,29 @@
 
 [English](README.md) | **Русский**
 
-Автономное Android-приложение (**realness**, пакет `uwu.realness.gitveu`, Kotlin + Jetpack Compose) и документация протоколов для прямого управления наушниками **realme Buds** и **HUAWEI FreeBuds / FreeClip / FreeLace** — без **realme Link** и **HUAWEI AI Life**, без аккаунтов и облака, напрямую по Bluetooth.
+Автономное Android-приложение (**realness**, пакет `uwu.realness.gitveu`, Kotlin + Jetpack Compose) и документация протоколов для прямого управления наушниками **realme Buds**, **OnePlus Buds**, **OPPO Enco**, **HUAWEI FreeBuds**, **HONOR / HONOR CHOICE**, **Nothing / CMF** и **Samsung Galaxy Buds** — без фирменных комбайнов, без аккаунтов и облака, напрямую по Bluetooth.
 
-**Актуальная версия:** `v1.5 (build 6)` — release-сборки (`realness 1.5.apk` и `realness-tiny 1.5.apk`)  
-**Источники протоколов:** анализ `realme Link.apkm` (стек `com.realme.iot.headset.tl.*`) и протокол Huawei SPP из проекта [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds).
+**Актуальная версия:** `v1.6 (build 7)` — release-сборки (`realness 1.6.apk` и `realness-tiny 1.6.apk`)  
+**Источники протоколов:** `realme Link.apkm` (`com.realme.iot.headset.tl.*`), [QuickBuds](https://github.com/spizganed/QuickBuds), [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds), [noctalia/honor-earbuds](https://github.com/noctalia-dev/community-plugins/tree/main/honor-earbuds), [swift-nothing-ear](https://github.com/bestK1ngArthur/swift-nothing-ear), [omarchy-nothing-ear](https://github.com/r-witz/omarchy-nothing-ear) и [kde-headphones](https://github.com/RodiAda/kde-headphones).
 
 ---
 
 ## 📱 Поддерживаемые наушники
 
-Список поддерживаемых моделей активно развивается — **база наушников будет постепенно дополняться** новыми моделями по мере анализа протоколов и обратной связи от пользователей.
+Полный список поддерживаемых брендов, моделей, протоколов и функций вынесен в отдельный файл:
 
-### realme Buds (протокол TL + OPPOv1)
-| Модель | Основные функции | Модельные функции | Статус |
-|---|---|---|---|
-| **realme Buds T300** | Все основные функции | — | Подтверждено на устройстве |
-| **realme Buds T200** | Все основные функции | LDAC, Динамическое аудио, Подключение к двум устройствам + история подключений | Подтверждено на устройстве |
-| **realme Buds Air 7 Pro** | Все основные функции | LHDC 5.0, Динамическое аудио, Подключение к двум устройствам + история подключений, Автовоспроизведение/пауза, Автоответ | Подтверждено на устройстве |
+👉 **[SUPPORTED_DEVICES.ru.md](SUPPORTED_DEVICES.ru.md)** ([English](SUPPORTED_DEVICES.md))
 
-### HUAWEI / HONOR (протокол Huawei SPP, по базе [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds))
-| Модели | Поддерживаемые функции | Статус |
-|---|---|---|
-| **HUAWEI FreeBuds 5i / 6i / Pro / Pro 2 / Pro 3 / Pro 4 / Pro 5** | Батарея L/Кейс/R, ANC + уровни интенсивности (Комфорт / Обычный / Ультра / Динамический), EQ (+ кастомные), жесты, Автопауза, Приоритет качества звука, Low Latency, Подключение к двум устройствам + список устройств | Добавлено `[OpenFreebuds]` |
-| **HUAWEI FreeBuds 4i / SE / SE 2 / SE 4 ANC / 3** | Батарея, ANC (где поддерживается, + уровни на SE 4), EQ (SE 2 / SE 4), жесты, Автопауза (4i), Low Latency (SE 2 / SE 4) | Добавлено `[OpenFreebuds]` |
-| **HUAWEI FreeClip / FreeClip 2 / Studio / FreeLace Pro / FreeLace Pro 2** | Батарея, ANC + уровни (Studio / FreeLace), EQ, жесты, Автопауза, Приоритет качества, Low Latency, Dual-Connect (по возможностям модели) | Добавлено `[OpenFreebuds]` |
-| **HONOR Earbuds 2 / 2 SE / 2 Lite / S2** и прочие **HUAWEI FreeBuds** | Профиль Huawei SPP (батарея, ANC, настройки по модели) | Добавлено `[OpenFreebuds]` |
+Краткий обзор брендов:
+- **realme Buds** (T300, T200, T310, T100, Air 5 / 6 / 7 / Pro) — `TL + OPPOv1`
+- **OnePlus Buds** (Buds / 3 / 3V / 4 / Ace / Clip / N / Pro / Z / Nord Buds) — `TL + OPPOv1`
+- **OPPO Enco** (Air / Air2 / Air3 / Air4 / Buds / Free / X / X2 / X3) — `TL + OPPOv1`
+- **HUAWEI** (FreeBuds 3 / 4i / 5i / 6i / Pro..Pro 5 / SE..SE 4 / Studio / FreeClip / FreeLace) — `Huawei SPP`
+- **HONOR** (Earbuds 2 / S2, **HONOR CHOICE Earbuds X8** / X5 / X5 Pro / X3 / X2 / X) — `Huawei SPP` и `HONOR CHOICE SPP`
+- **Nothing и CMF** (Ear (1)/(2)/(a)/(3)/(stick)/(open), Headphone, CMF Buds / Pro / 2 / Neckband) — `Nothing SPP`
+- **Samsung Galaxy Buds** (Buds / Buds+ / Live / Pro / Buds2 / FE / Buds3 / Core / Buds4) — `Galaxy Buds SPP`
 
-> **Как помочь добавить новую модель:** откройте Issue / PR с точным Bluetooth-именем наушников и скриншотами настроек вашей модели из официального realme Link (и, по возможности, скопированным протокольным логом из приложения).
-
-Если к телефону подключена сторонняя гарнитура (например, Honor, Redmi, Galaxy Buds и др.), приложение определяет её и показывает понятное предупреждение о том, что устройство не поддерживается.
+В боковой панели **«Модель»** (`☰`) можно оставить **Автоматическое** определение или вручную выбрать любую модель/протокол. Когда наушники не подключены, приложение запоминает и показывает **последнее подключённое устройство**, а не подставляет жёстко T300.
 
 ---
 
@@ -181,19 +175,21 @@ Auto Answer ON:      AA 09 00 00 03 04 00 02 00 08 01
 ## 📁 Структура репозитория
 
 ```text
-realess-t300/
+Realess/
 ├── README.md                      # Обзор проекта (English)
 ├── README.ru.md                   # Обзор проекта (Русский)
+├── SUPPORTED_DEVICES.md           # Полный список поддерживаемых моделей (English)
+├── SUPPORTED_DEVICES.ru.md        # Полный список поддерживаемых моделей (Русский)
 ├── AGENTS.md                      # Подробная документация протокола и приложения (English)
 ├── AGENTS.ru.md                   # Подробная документация протокола и приложения (Русский)
 ├── .github/workflows/             # GitHub Actions для сборки и публикации подписанных APK в Releases
 ├── tiny-realness/                 # Исходники и build.sh на чистой Java 8 без Gradle и AndroidX
-└── BudsT300Controller/
+└── realness/
     ├── app/src/main/java/uwu/realness/gitveu/
-    │   ├── protocol/              # T300Protocol.kt — кадры TL + OPPOv1, модели BudsModel и capabilities
-    │   ├── ble/                   # T300BleManager.kt — SPP-сокет, GATT fallback, очередь, события
-    │   ├── viewmodel/             # BudsViewModel.kt — StateFlow, автоподключение, демо-плеер
-    │   └── ui/                    # MainActivity.kt — Material3 UI
+    │   ├── protocol/              # T300Protocol, HuaweiProtocol, NothingProtocol, GalaxyProtocol
+    │   ├── ble/                   # T300BleManager.kt — мультипротокольный SPP-сокет, GATT fallback
+    │   ├── viewmodel/             # BudsViewModel.kt — StateFlow, автоподключение, память последнего устройства
+    │   └── ui/                    # MainActivity.kt — Material3 UI + боковая панель выбора модели
     ├── app/src/main/res/          # values/, values-ru/, xml/locales_config.xml, raw/, иконки
     ├── build.gradle.kts
     └── settings.gradle.kts
@@ -223,7 +219,7 @@ git clone https://github.com/Gitveu/realess-t300.git
 cd realess-t300
 
 # Основная release-сборка (Gradle + R8):
-cd BudsT300Controller && ./gradlew assembleRelease
+cd realness && ./gradlew assembleRelease
 
 # Ультралёгкая release-сборка (pure Java, без Gradle):
 cd .. && ./tiny-realness/build.sh

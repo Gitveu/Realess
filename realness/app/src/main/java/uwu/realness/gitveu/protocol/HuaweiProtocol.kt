@@ -46,6 +46,7 @@ object HuaweiProtocol {
 
     const val CMD_EQ_WRITE: Int = 0x2B49
     const val CMD_EQ_READ: Int = 0x2B4A
+    const val CMD_HONOR_EQ_WRITE: Int = 0x2701
 
     const val CMD_LOW_LATENCY: Int = 0x2B6C
 
@@ -144,6 +145,32 @@ object HuaweiProtocol {
         }
         val second: Byte = if (modeByte.toInt() == 0) 0x00 else 0xFF.toByte()
         return buildPacket(CMD_ANC_WRITE, listOf(1 to byteArrayOf(modeByte, second)))
+    }
+
+    /**
+     * HONOR CHOICE Earbuds (X8 / X5 / X5 Pro / X3 / X2 / X):
+     * 1-байтовое значение режима ANC в param 1 команды 0x2B04.
+     */
+    fun buildHonorChoiceAncWrite(mode: T300Protocol.AncMode): ByteArray {
+        val modeByte: Byte = when (mode) {
+            T300Protocol.AncMode.OFF -> 0x00
+            T300Protocol.AncMode.NOISE_REDUCTION -> 0x01
+            T300Protocol.AncMode.TRANSPARENCY -> 0x02
+        }
+        return buildByteWrite(CMD_ANC_WRITE, 1, modeByte)
+    }
+
+    /**
+     * HONOR CHOICE Earbuds EQ write: команда 0x2701, param 1 = 1 байт (0=Balanced, 1=Bass, 2=Vocal).
+     */
+    fun buildHonorChoiceEqWrite(preset: T300Protocol.EqPreset): ByteArray {
+        val code: Byte = when (preset) {
+            T300Protocol.EqPreset.ORIGINAL_SOUND -> 0x00
+            T300Protocol.EqPreset.DEEP_BASS,
+            T300Protocol.EqPreset.PURE_BASS -> 0x01
+            T300Protocol.EqPreset.SERENADE -> 0x02
+        }
+        return buildByteWrite(CMD_HONOR_EQ_WRITE, 1, code)
     }
 
     fun buildAncLevelWrite(level: AncLevel): ByteArray =

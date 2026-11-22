@@ -50,10 +50,21 @@ public class MainActivity extends Activity implements BudsLink.Listener {
     private BluetoothAdapter adapter;
     private BluetoothA2dp a2dp;
 
-    private int sysStatus = ST_DISCONNECTED;
+    private static final String PREFS = "realness_tiny_prefs";
+    private static final String K_MANUAL = "manual_model";
+    private static final String K_LAST_MAC = "last_mac";
+    private static final String K_LAST_NAME = "last_name";
+    private static final String K_LAST_MODEL = "last_model";
+
+    private SharedPreferences prefs;
+    private int sysStatus = ST_NO_PAIRED;
     private int connState = BudsLink.CONN_DISCONNECTED;
+    private int autoDetectedModel = Protocol.MODEL_UNKNOWN;
+    private int manualModelOverride = Protocol.MODEL_UNKNOWN;
     private int detectedModel = Protocol.MODEL_UNKNOWN;
     private BluetoothDevice detectedDevice;
+    private String lastDeviceName, lastDeviceMac, activeConnMac;
+    private int activeConnModel = Protocol.MODEL_UNKNOWN;
     private String unsupportedName;
     private Protocol.State budsState = new Protocol.State();
     private final LinkedList<String> logs = new LinkedList<>();
@@ -95,20 +106,26 @@ public class MainActivity extends Activity implements BudsLink.Listener {
             if (a == null) return;
             if (BluetoothDevice.ACTION_ACL_CONNECTED.equals(a)) {
                 BluetoothDevice d = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                if (d != null && Protocol.detectModel(d.getName()) != Protocol.MODEL_UNKNOWN) {
-                    detectedDevice = d;
-                    detectedModel = Protocol.detectModel(d.getName());
-                    unsupportedName = null;
-                    sysStatus = ST_CONNECTED_OS;
-                    link.connect(d);
-                    render();
-                    return;
+                if (d != null) {
+                    int autoM = Protocol.detectModel(d.getName());
+                    int effM = manualModelOverride != Protocol.MODEL_UNKNOWN ? manualModelOverride : autoM;
+                    if (effM != Protocol.MODEL_UNKNOWN) {
+                        saveLastDevice(d, effM);
+                        detectedDevice = d;
+                        autoDetectedModel = autoM;
+                        detectedModel = effM;
+                        unsupportedName = null;
+                        sysStatus = ST_CONNECTED_OS;
+                        connectDevice(d, effM);
+                        render();
+                        return;
+                    }
                 }
             } else if (BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(a)) {
                 BluetoothDevice d = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                if (d != null && Protocol.detectModel(d.getName()) != Protocol.MODEL_UNKNOWN) {
-                    sysStatus = ST_DISCONNECTED;
+                if (d != null && d.getAddress() != null && d.getAddress().equals(activeConnMac)) {
                     link.disconnect();
+                    activeConnMac = null;
                 }
             }
             checkAndAutoConnect();
@@ -139,6 +156,12 @@ public class MainActivity extends Activity implements BudsLink.Listener {
 
         BluetoothManager bm = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
         if (bm != null) adapter = bm.getAdapter();
+        prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        manualModelOverride = prefs.getInt(K_MANUAL, Protocol.MODEL_UNKNOWN);
+        lastDeviceMac = prefs.getString(K_LAST_MAC, null);
+        lastDeviceName = prefs.getString(K_LAST_NAME, null);
+        int savedM = prefs.getInt(K_LAST_MODEL, Protocol.MODEL_UNKNOWN);
+        detectedModel = manualModelOverride != Protocol.MODEL_UNKNOWN ? manualModelOverride : savedM;
         link = new BudsLink(this, this);
 
         setContentView(buildUi());
@@ -210,49 +233,124 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         render();
     }
 
+    private void saveLastDevice(BluetoothDevice d, int model) {
+        String nm = d.getName() != null ? d.getName() : Protocol.modelTitle(model);
+        String mac = d.getAddress();
+        lastDeviceName = nm;
+        lastDeviceMac = mac;
+        prefs.edit()
+            .putString(K_LAST_MAC, mac)
+            .putString(K_LAST_NAME, nm)
+            .putInt(K_LAST_MODEL, model)
+            .apply();
+    }
+
+    private void connectDevice(BluetoothDevice d, int model) {
+        activeConnMac = d.getAddress();
+        activeConnModel = model;
+        link.connect(d, model);
+    }
+
+    private void showModelPicker() {
+        String[] labels = new String[Protocol.PICKER_MODELS.length];
+        int checked = 0;
+        for (int i = 0; i < Protocol.PICKER_MODELS.length; i++) {
+            int m = Protocol.PICKER_MODELS[i];
+            if (m == manualModelOverride) checked = i;
+            if (m == Protocol.MODEL_UNKNOWN) {
+                String det = autoDetectedModel != Protocol.MODEL_UNKNOWN
+                    ? Protocol.modelTitle(autoDetectedModel) : t("Not connected", "Не подключено");
+                labels[i] = t("Automatic", "Автоматически") + " (" + det + ")";
+            } else {
+                labels[i] = Protocol.modelTitle(m);
+            }
+        }
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(t("Model", "Модель"))
+            .setSingleChoiceItems(labels, checked, new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface dialog, int which) {
+                    manualModelOverride = Protocol.PICKER_MODELS[which];
+                    prefs.edit().putInt(K_MANUAL, manualModelOverride).apply();
+                    dialog.dismiss();
+                    link.disconnect();
+                    activeConnMac = null;
+                    checkAndAutoConnect();
+                }
+            })
+            .setNegativeButton(t("Cancel", "Отмена"), null)
+            .show();
+    }
+
     private void checkAndAutoConnect() {
         if (!hasPerms()) { sysStatus = ST_NO_PERM; render(); return; }
         try {
             List<BluetoothDevice> a2dpDevs = a2dp != null ? a2dp.getConnectedDevices() : Collections.<BluetoothDevice>emptyList();
             Set<BluetoothDevice> bonded = adapter != null ? adapter.getBondedDevices() : Collections.<BluetoothDevice>emptySet();
 
+            BluetoothDevice target = null;
             for (BluetoothDevice d : a2dpDevs) {
-                int m = Protocol.detectModel(d.getName());
-                if (m != Protocol.MODEL_UNKNOWN) {
-                    detectedDevice = d;
-                    detectedModel = m;
-                    unsupportedName = null;
-                    sysStatus = (connState == BudsLink.CONN_CONNECTED) ? ST_ACTIVE : ST_CONNECTED_OS;
-                    if (connState == BudsLink.CONN_DISCONNECTED) link.connect(d);
-                    render();
-                    return;
+                if (Protocol.detectModel(d.getName()) != Protocol.MODEL_UNKNOWN) {
+                    target = d;
+                    break;
                 }
             }
+            if (target == null && manualModelOverride != Protocol.MODEL_UNKNOWN && !a2dpDevs.isEmpty()) {
+                target = a2dpDevs.get(0);
+            }
+            if (target != null) {
+                int autoM = Protocol.detectModel(target.getName());
+                int effM = manualModelOverride != Protocol.MODEL_UNKNOWN ? manualModelOverride : autoM;
+                saveLastDevice(target, effM);
+                detectedDevice = target;
+                autoDetectedModel = autoM;
+                detectedModel = effM;
+                unsupportedName = null;
+                boolean needReconn = connState == BudsLink.CONN_DISCONNECTED
+                    || !target.getAddress().equals(activeConnMac)
+                    || effM != activeConnModel;
+                sysStatus = (!needReconn && connState == BudsLink.CONN_CONNECTED) ? ST_ACTIVE : ST_CONNECTED_OS;
+                if (needReconn) connectDevice(target, effM);
+                render();
+                return;
+            }
             if (connState != BudsLink.CONN_DISCONNECTED) link.disconnect();
+            activeConnMac = null;
             if (!a2dpDevs.isEmpty()) {
                 BluetoothDevice u = a2dpDevs.get(0);
                 detectedDevice = null;
+                autoDetectedModel = Protocol.MODEL_UNKNOWN;
                 detectedModel = Protocol.MODEL_UNKNOWN;
                 unsupportedName = u.getName() != null ? u.getName() : u.getAddress();
                 sysStatus = ST_UNSUPPORTED;
                 render();
                 return;
             }
-            for (BluetoothDevice d : bonded) {
-                int m = Protocol.detectModel(d.getName());
-                if (m != Protocol.MODEL_UNKNOWN) {
-                    detectedDevice = d;
-                    detectedModel = m;
-                    unsupportedName = null;
-                    sysStatus = ST_DISCONNECTED;
-                    render();
-                    return;
+            String sMac = prefs.getString(K_LAST_MAC, null);
+            String sName = prefs.getString(K_LAST_NAME, null);
+            int sModel = prefs.getInt(K_LAST_MODEL, Protocol.MODEL_UNKNOWN);
+            BluetoothDevice bondedLast = null;
+            if (sMac != null) {
+                for (BluetoothDevice d : bonded) {
+                    if (sMac.equals(d.getAddress())) { bondedLast = d; break; }
                 }
             }
-            detectedDevice = null;
-            detectedModel = Protocol.MODEL_UNKNOWN;
             unsupportedName = null;
-            sysStatus = ST_NO_PAIRED;
+            if (sMac != null && sName != null) {
+                detectedDevice = bondedLast;
+                lastDeviceName = (bondedLast != null && bondedLast.getName() != null) ? bondedLast.getName() : sName;
+                lastDeviceMac = sMac;
+                int autoFromSaved = Protocol.detectModel(lastDeviceName);
+                autoDetectedModel = autoFromSaved != Protocol.MODEL_UNKNOWN ? autoFromSaved : sModel;
+                detectedModel = manualModelOverride != Protocol.MODEL_UNKNOWN ? manualModelOverride : autoDetectedModel;
+                sysStatus = ST_DISCONNECTED;
+            } else {
+                detectedDevice = null;
+                lastDeviceName = null;
+                lastDeviceMac = null;
+                autoDetectedModel = Protocol.MODEL_UNKNOWN;
+                detectedModel = manualModelOverride;
+                sysStatus = ST_NO_PAIRED;
+            }
         } catch (Exception ignored) {}
         render();
     }
@@ -285,9 +383,18 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setBackgroundColor(C_SURFACE);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
-        topBar.setPadding(dp(16), dp(14), dp(12), dp(14));
+        topBar.setPadding(dp(8), dp(14), dp(12), dp(14));
+
+        TextView btnMenu = tv("☰", 21, Color.WHITE, true);
+        btnMenu.setPadding(dp(10), dp(4), dp(12), dp(4));
+        btnMenu.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showModelPicker(); }
+        });
+        topBar.addView(btnMenu);
 
         tvTopTitle = tv("realness tiny", 20, Color.WHITE, true);
+        tvTopTitle.setSingleLine(true);
+        tvTopTitle.setEllipsize(TextUtils.TruncateAt.END);
         topBar.addView(tvTopTitle, lpWeight(1));
 
         btnRefresh = tv("↻", 22, Color.WHITE, true);
@@ -365,7 +472,11 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         LinearLayout.LayoutParams rlp = lpMatchWrap();
         rlp.topMargin = dp(10);
         btnReconnect.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { if (detectedDevice != null) link.connect(detectedDevice); }
+            @Override public void onClick(View v) {
+                if (detectedDevice != null && detectedModel != Protocol.MODEL_UNKNOWN) {
+                    connectDevice(detectedDevice, detectedModel);
+                }
+            }
         });
         stCard.addView(btnReconnect, rlp);
         addSpaced(content, stCard, 16);
@@ -689,8 +800,11 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         updatingUi = true;
         boolean connected = (connState == BudsLink.CONN_CONNECTED);
 
-        tvTopTitle.setText(detectedDevice != null && detectedDevice.getName() != null
-            ? detectedDevice.getName() : "realness tiny");
+        String dispName = (detectedDevice != null && detectedDevice.getName() != null)
+            ? detectedDevice.getName() : lastDeviceName;
+        String dispMac = detectedDevice != null ? detectedDevice.getAddress() : lastDeviceMac;
+
+        tvTopTitle.setText(dispName != null ? dispName : "realness tiny");
         btnRefresh.setVisibility(connected ? View.VISIBLE : View.GONE);
 
         cardPerm.setVisibility(hasPerms() ? View.GONE : View.VISIBLE);
@@ -698,24 +812,28 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         cardUnsupported.setVisibility(showUnsup ? View.VISIBLE : View.GONE);
         if (showUnsup) {
             tvUnsupportedMsg.setText(t(
-                "\"" + unsupportedName + "\" is not supported. Supported: realme Buds & HUAWEI FreeBuds.",
-                "«" + unsupportedName + "» не поддерживается. Поддерживаются: realme Buds и HUAWEI FreeBuds."));
+                "\"" + unsupportedName + "\" was not recognized automatically. You can pick a model manually via ☰.",
+                "«" + unsupportedName + "» не определилось автоматически. Можно выбрать модель вручную через ☰."));
         }
 
         // Status Card
-        String name = detectedDevice != null && detectedDevice.getName() != null
-            ? detectedDevice.getName() : (unsupportedName != null ? unsupportedName : "realme Buds");
+        String name = dispName != null ? dispName
+            : (unsupportedName != null ? unsupportedName : t("No device connected", "Нет подключённых устройств"));
         tvDevName.setText(name);
-        tvDevSub.setText(detectedDevice != null ? detectedDevice.getAddress()
+        String subTxt = dispMac != null ? dispMac
             : (sysStatus == ST_UNSUPPORTED ? t("Unsupported device", "Устройство не поддерживается")
-            : t("Searching for paired device…", "Поиск сопряжённого устройства…")));
+            : t("Connect earbuds via Bluetooth", "Подключите наушники по Bluetooth"));
+        if (manualModelOverride != Protocol.MODEL_UNKNOWN) {
+            subTxt = subTxt + " · " + Protocol.modelTitle(manualModelOverride);
+        }
+        tvDevSub.setText(subTxt);
 
         String badgeTxt; int badgeCol;
         if (connected) { badgeTxt = t("Connected", "Подключено"); badgeCol = C_GREEN; }
         else if (connState == BudsLink.CONN_CONNECTING) { badgeTxt = t("Connecting…", "Подключение…"); badgeCol = C_ORANGE; }
         else if (sysStatus == ST_CONNECTED_OS) { badgeTxt = t("Online (connecting)", "В сети (подключение)"); badgeCol = C_ORANGE; }
         else if (sysStatus == ST_UNSUPPORTED) { badgeTxt = t("Unsupported", "Не поддерживается"); badgeCol = C_RED; }
-        else if (sysStatus == ST_NO_PAIRED) { badgeTxt = t("Not paired", "Не сопряжено"); badgeCol = C_RED; }
+        else if (sysStatus == ST_NO_PAIRED) { badgeTxt = t("Disconnected", "Отключено"); badgeCol = C_MUTED; }
         else if (sysStatus == ST_NO_PERM) { badgeTxt = t("No permissions", "Нет прав"); badgeCol = C_RED; }
         else { badgeTxt = t("In case / disconnected", "В кейсе / отключено"); badgeCol = C_MUTED; }
         tvBadge.setText(badgeTxt);
@@ -725,9 +843,9 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         String hint = null;
         if (connected) hint = null;
         else if (connState == BudsLink.CONN_CONNECTING) hint = t("Connecting via SPP/GATT…", "Установка соединения через SPP/GATT…");
-        else if (sysStatus == ST_UNSUPPORTED) hint = t("Supported: realme Buds & HUAWEI FreeBuds.", "Поддерживаются: realme Buds и HUAWEI FreeBuds.");
+        else if (sysStatus == ST_UNSUPPORTED) hint = t("Tap ☰ to try selecting a compatible protocol manually.", "Нажмите ☰, чтобы выбрать совместимый протокол вручную.");
         else if (sysStatus == ST_DISCONNECTED) hint = t("Open the case or put on the earbuds.", "Откройте кейс или наденьте наушники.");
-        else if (sysStatus == ST_NO_PAIRED) hint = t("No supported realme Buds or HUAWEI FreeBuds paired.", "Поддерживаемые realme Buds или HUAWEI FreeBuds не найдены.");
+        else if (sysStatus == ST_NO_PAIRED) hint = t("Connect earbuds via Bluetooth or pick a model via ☰.", "Подключите наушники по Bluetooth или выберите модель через ☰.");
         else if (sysStatus == ST_NO_PERM) hint = t("Grant Bluetooth permissions above.", "Предоставьте доступ к Bluetooth выше.");
         tvHint.setVisibility(hint != null ? View.VISIBLE : View.GONE);
         if (hint != null) tvHint.setText(hint);
@@ -741,6 +859,9 @@ public class MainActivity extends Activity implements BudsLink.Listener {
 
         boolean known = detectedModel != Protocol.MODEL_UNKNOWN;
         boolean isHw = Protocol.isHuawei(detectedModel);
+        boolean isHc = Protocol.isHonorChoice(detectedModel);
+        boolean isNo = Protocol.isNothing(detectedModel);
+        boolean isGx = Protocol.isGalaxy(detectedModel);
 
         // ANC
         int ancVis = (!known || Protocol.supportsAnc(detectedModel)) ? View.VISIBLE : View.GONE;
@@ -752,9 +873,13 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         boolean showAncLvl = Protocol.supportsAncLevel(detectedModel) && budsState.ancMode == Protocol.ANC_ON;
         rowAncLvl.setVisibility(showAncLvl ? View.VISIBLE : View.GONE);
         if (showAncLvl) {
+            String[] lvlNames = isNo
+                ? new String[]{t("Low", "Низк."), t("Mid", "Сред."), t("High", "Выс."), t("Adaptive", "Адапт.")}
+                : new String[]{t("Comfort", "Комфорт"), t("General", "Обычный"), t("Ultra", "Ультра"), t("Dynamic", "Динам.")};
             btnAncLvl[3].setVisibility(Protocol.supportsAncDynamic(detectedModel) ? View.VISIBLE : View.GONE);
             int[] lvlVals = {1, 0, 2, 3};
             for (int i = 0; i < 4; i++) {
+                btnAncLvl[i].setText(lvlNames[i]);
                 boolean sel = budsState.ancLevel == lvlVals[i];
                 btnAncLvl[i].setBackground(roundRect(sel ? 0x38FFCC00 : Color.TRANSPARENT, 8));
                 btnAncLvl[i].setTextColor(sel ? C_ACCENT : (connected ? 0xFFCCCCCC : C_MUTED));
@@ -765,11 +890,23 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         // EQ
         int eqVis = (!known || Protocol.supportsEq(detectedModel)) ? View.VISIBLE : View.GONE;
         secEq.setVisibility(eqVis); cardEq.setVisibility(eqVis);
-        String[] eqNames = isHw
-            ? new String[]{t("Voices", "Голоса"), t("Default", "По умолчанию"), t("Treble boost", "Высокие частоты"), t("Bass boost", "Усиление басов")}
-            : new String[]{t("Serenade", "Серенада"), t("Original sound", "Оригинальный звук"), t("Pure bass", "Чистые басы"), t("Deep bass", "Глубокие басы")};
+        String[] eqNames;
+        if (isHw) {
+            eqNames = new String[]{t("Voices", "Голоса"), t("Default", "По умолчанию"), t("Treble boost", "Высокие частоты"), t("Bass boost", "Усиление басов")};
+        } else if (isHc) {
+            eqNames = new String[]{t("Voices", "Голоса"), t("Balanced", "Баланс"), t("Bass boost", "Усиление басов"), t("Bass boost", "Усиление басов")};
+        } else if (isNo && detectedModel == Protocol.MODEL_CMF_LISTENING) {
+            eqNames = new String[]{t("Vocals", "Вокал"), t("Pop", "Поп"), t("Electronic", "Электроника"), t("Rock", "Рок")};
+        } else if (isNo) {
+            eqNames = new String[]{t("Voice", "Голос"), t("Balanced", "Баланс"), t("More treble", "Больше высоких"), t("More bass", "Больше басов")};
+        } else if (isGx) {
+            eqNames = new String[]{t("Clear", "Чёткий"), t("Normal", "Обычный"), t("Dynamic", "Динамичный"), t("Bass boost", "Усиление басов")};
+        } else {
+            eqNames = new String[]{t("Serenade", "Серенада"), t("Original sound", "Оригинальный звук"), t("Pure bass", "Чистые басы"), t("Deep bass", "Глубокие басы")};
+        }
         int[] eqIds = {2, 0, 3, 1};
         for (int i = 0; i < 4; i++) {
+            btnEq[i].setVisibility((isHc && i == 2) ? View.GONE : View.VISIBLE);
             btnEq[i].setText(eqNames[i]);
             boolean sel = (budsState.eqId == eqIds[i]) && budsState.customEqName == null;
             styleSeg(btnEq[i], sel, connected, C_SURFACE2);

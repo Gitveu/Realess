@@ -7,6 +7,14 @@
     <string name="dash">—</string>
     <string name="cancel">Отмена</string>
     <string name="refresh_state_desc">Обновить состояние</string>
+    <string name="drawer_menu_desc">Выбрать модель</string>
+
+    <!-- Model Picker Drawer -->
+    <string name="drawer_title_model">Модель</string>
+    <string name="drawer_auto_title">Автоматически</string>
+    <string name="drawer_auto_detected">Определено: %s</string>
+    <string name="drawer_auto_not_connected">Не подключено</string>
+    <string name="drawer_manual_badge">Вручную: %s</string>
 
     <!-- Battery Section -->
     <string name="section_battery">Уровень заряда</string>
@@ -15,27 +23,27 @@
     <string name="battery_right">Правый</string>
 
     <!-- Status & Device Card -->
-    <string name="default_device_name">realme Buds</string>
-    <string name="status_searching_paired">Поиск сопряжённого устройства…</string>
+    <string name="default_device_name">Нет подключённых устройств</string>
+    <string name="status_searching_paired">Подключите наушники по Bluetooth</string>
     <string name="status_connected">Подключено</string>
     <string name="status_connecting">Подключение…</string>
     <string name="status_online_connecting">В сети (подключение)</string>
-    <string name="status_not_paired">Не сопряжено</string>
+    <string name="status_not_paired">Отключено</string>
     <string name="status_unsupported">Не поддерживается</string>
     <string name="status_no_permissions">Нет прав</string>
     <string name="status_in_case_disconnected">В кейсе / отключено</string>
 
     <string name="hint_connecting">Установка соединения с наушниками через SPP/GATT…</string>
     <string name="hint_disconnected">Наушники не подключены к телефону по Bluetooth. Откройте кейс или наденьте наушники.</string>
-    <string name="hint_not_paired">Поддерживаемые наушники (realme Buds / HUAWEI FreeBuds) не найдены среди сопряжённых устройств.</string>
-    <string name="hint_unsupported">Подключённое устройство не поддерживается. Поддерживаются: realme Buds (T300, T200, Air 7 Pro) и HUAWEI FreeBuds / FreeClip / FreeLace.</string>
+    <string name="hint_not_paired">Подключите поддерживаемые наушники по Bluetooth или выберите модель вручную в боковой панели.</string>
+    <string name="hint_unsupported">Подключённое устройство не определилось автоматически. Вы можете попробовать выбрать совместимый протокол вручную в боковой панели.</string>
     <string name="hint_no_permissions">Предоставьте доступ к Bluetooth выше.</string>
     <string name="hint_waiting_activity">Ожидание активности устройства…</string>
     <string name="btn_reconnect">Повторить подключение к наушникам</string>
 
     <!-- Unsupported Device Warning -->
     <string name="unsupported_warning_title">Устройство не поддерживается</string>
-    <string name="unsupported_warning_message">«%s» не поддерживается этим приложением. Поддерживаются: realme Buds (T300, T200, Air 7 Pro) и HUAWEI FreeBuds / FreeClip / FreeLace.</string>
+    <string name="unsupported_warning_message">«%s» не определилось автоматически. Поддерживаются: realme, OnePlus, OPPO, HUAWEI, HONOR, Nothing / CMF, Samsung Galaxy Buds. Вы также можете выбрать модель вручную в боковой панели.</string>
 
     <!-- Permissions Banner -->
     <string name="perm_warning_title">Требуется доступ к Bluetooth</string>
@@ -52,6 +60,10 @@
     <string name="anc_level_general">Обычный</string>
     <string name="anc_level_ultra">Ультра</string>
     <string name="anc_level_dynamic">Динамический</string>
+    <string name="anc_level_nothing_low">Низкий</string>
+    <string name="anc_level_nothing_mid">Средний</string>
+    <string name="anc_level_nothing_high">Высокий</string>
+    <string name="anc_level_nothing_adaptive">Адаптивный</string>
 
     <!-- Sound Effects (EQ) -->
     <string name="section_eq">Звуковые эффекты</string>
@@ -63,6 +75,18 @@
     <string name="eq_huawei_default">По умолчанию</string>
     <string name="eq_huawei_treble">Высокие частоты</string>
     <string name="eq_huawei_bass">Усиление басов</string>
+    <string name="eq_nothing_voice">Голос</string>
+    <string name="eq_nothing_balanced">Сбалансированный</string>
+    <string name="eq_nothing_more_treble">Больше высоких</string>
+    <string name="eq_nothing_more_bass">Больше басов</string>
+    <string name="eq_cmf_vocals">Вокал</string>
+    <string name="eq_cmf_pop">Поп</string>
+    <string name="eq_cmf_electronic">Электроника</string>
+    <string name="eq_cmf_rock">Рок</string>
+    <string name="eq_galaxy_clear">Чёткий</string>
+    <string name="eq_galaxy_normal">Обычный</string>
+    <string name="eq_galaxy_dynamic">Динамичный</string>
+    <string name="eq_galaxy_bass">Усиление басов</string>
     <string name="eq_custom_active">Пользовательский: %s (активен)</string>
 
     <!-- Button Settings (Gestures) -->
@@ -104,22 +128,26 @@
     <string name="game_mode_title">Игровой режим</string>
     <string name="game_mode_desc">Обеспечивает плавный игровой процесс с минимальной задержкой звука.</string>
 
-    <!-- High-Definition Audio (LDAC / LHDC 5.0 / Huawei) & Dynamic Audio -->
+    <!-- High-Definition Audio (LDAC / LHDC 5.0 / Huawei) & Dynamic Audio / Ultra Bass -->
     <string name="high_quality_audio_title">Звук высокой чёткости</string>
     <string name="high_quality_audio_desc">Кодек LDAC, обеспечивающий превосходное качество звука.</string>
     <string name="high_quality_audio_desc_lhdc">Воспроизводите аудио в высоком разрешении LHDC 5.0.</string>
     <string name="high_quality_audio_desc_huawei">Приоритет качества звука над стабильностью соединения.</string>
     <string name="dynamic_audio_title">Динамическое аудио</string>
     <string name="dynamic_audio_desc">Динамически усиливает басы и глубину звучания.</string>
+    <string name="ultra_bass_title">Ultra Bass</string>
+    <string name="ultra_bass_desc">Усиливает низкие частоты на наушниках Nothing / CMF.</string>
 
     <!-- Dual-Device Connection -->
     <string name="dual_connection_title">Подключение к двум устройствам</string>
     <string name="dual_connection_desc">Подключите одновременно 2 устройства и легко переключайтесь между ними.</string>
+    <string name="dual_connection_galaxy_title">Бесшовное переключение</string>
+    <string name="dual_connection_galaxy_desc">Быстрое переключение между сопряжёнными устройствами без разрыва связи.</string>
     <string name="dual_connection_history">История подключений</string>
     <string name="dual_connection_device_connected">Подключено</string>
     <string name="dual_connection_device_disconnected">Отключено</string>
 
-    <!-- Auto Play/Pause & Auto Answer (Air 7 Pro) -->
+    <!-- Auto Play/Pause & Auto Answer -->
     <string name="auto_play_pause_title">Автовоспроизведение/пауза</string>
     <string name="auto_play_pause_desc">Чтобы приостановить воспроизведение, снимите любой наушник, а чтобы возобновить воспроизведение, наденьте его снова.</string>
     <string name="auto_answer_title">Автоответ</string>

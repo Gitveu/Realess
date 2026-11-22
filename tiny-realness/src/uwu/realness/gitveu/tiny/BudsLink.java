@@ -26,9 +26,15 @@ final class BudsLink {
 
     private static final UUID[] SPP_UUIDS = {
         UUID.fromString("0000079A-D102-11E1-9B23-00025B00A5A5"),
+        UUID.fromString("00001107-D102-11E1-9B23-00025B00A5A5"),
         UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"),
         UUID.fromString("db764ac8-4b08-7f25-aafe-59d03c27bae4"),
         UUID.fromString("db764ac8-4b08-7f25-aafe-59d03c27bae3")
+    };
+    private static final UUID[] OPPO_UUIDS = {
+        UUID.fromString("00001107-D102-11E1-9B23-00025B00A5A5"),
+        UUID.fromString("0000079A-D102-11E1-9B23-00025B00A5A5"),
+        UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
     };
     private static final UUID[] HW_UUIDS_P1 = {
         UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"),
@@ -36,6 +42,18 @@ final class BudsLink {
     };
     private static final UUID[] HW_UUIDS_P16 = {
         UUID.fromString("96cc203e-5068-46ad-b32d-e316f5e069ba"),
+        UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+    };
+    private static final UUID[] NOTHING_UUIDS = {
+        UUID.fromString("AEAC4A03-DFF5-498F-843A-34487CF133EB"),
+        UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+    };
+    private static final UUID[] GALAXY_MOD_UUIDS = {
+        UUID.fromString("2E73A4AD-332D-41FC-90E2-16BEF06523F2"),
+        UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+    };
+    private static final UUID[] GALAXY_LEG_UUIDS = {
+        UUID.fromString("00001102-0000-1000-8000-00805F9B34FD"),
         UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
     };
     private static final UUID CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
@@ -66,6 +84,8 @@ final class BudsLink {
 
     private final Protocol.State state = new Protocol.State();
     private final java.util.TreeMap<Integer, Protocol.MultiDevice> hwMultiMap = new java.util.TreeMap<>();
+    private boolean galaxyMgrSent = false;
+    private int nothingBassLvl = 3;
     private final Runnable pollTask;
     private final Runnable refreshTask;
 
@@ -91,12 +111,16 @@ final class BudsLink {
     int getConnState() { return connState; }
 
     void connect(final BluetoothDevice device) {
+        connect(device, Protocol.MODEL_UNKNOWN);
+    }
+
+    void connect(final BluetoothDevice device, final int overrideModel) {
         disconnect();
         final int gen = ++sessionGen;
-        activeModel = Protocol.detectModel(device.getName());
+        activeModel = overrideModel != Protocol.MODEL_UNKNOWN ? overrideModel : Protocol.detectModel(device.getName());
         connState = CONN_CONNECTING;
         notifyState();
-        log("Connecting to " + device.getName() + " (" + device.getAddress() + ")...");
+        log("Connecting to " + device.getName() + " (" + device.getAddress() + ", m=" + activeModel + ")...");
 
         io.execute(new Runnable() {
             @Override public void run() {
@@ -105,9 +129,21 @@ final class BudsLink {
                 if (bm != null && bm.getAdapter() != null) {
                     try { bm.getAdapter().cancelDiscovery(); } catch (Exception ignored) {}
                 }
-                UUID[] uuids = Protocol.isHuawei(activeModel)
-                    ? (Protocol.prefersHwPrivateUuid(activeModel) ? HW_UUIDS_P16 : HW_UUIDS_P1)
-                    : SPP_UUIDS;
+                UUID[] uuids;
+                if (Protocol.isHuawei(activeModel)) {
+                    uuids = Protocol.prefersHwPrivateUuid(activeModel) ? HW_UUIDS_P16 : HW_UUIDS_P1;
+                } else if (Protocol.isHonorChoice(activeModel)) {
+                    uuids = HW_UUIDS_P1;
+                } else if (Protocol.isNothing(activeModel)) {
+                    uuids = NOTHING_UUIDS;
+                } else if (Protocol.isGalaxy(activeModel)) {
+                    uuids = activeModel == Protocol.MODEL_GALAXY_BUDS ? GALAXY_LEG_UUIDS
+                        : (activeModel == Protocol.MODEL_GALAXY_PLUS ? HW_UUIDS_P1 : GALAXY_MOD_UUIDS);
+                } else if (Protocol.isOppoOrOnePlus(activeModel)) {
+                    uuids = OPPO_UUIDS;
+                } else {
+                    uuids = SPP_UUIDS;
+                }
                 for (UUID uuid : uuids) {
                     if (gen != sessionGen) return;
                     if (trySpp(device, uuid, false) || trySpp(device, uuid, true)) {
@@ -122,8 +158,8 @@ final class BudsLink {
                     }
                 }
                 if (gen != sessionGen) return;
-                if (Protocol.isHuawei(activeModel)) {
-                    log("Huawei SPP unavailable");
+                if (!Protocol.isRealme(activeModel)) {
+                    log("SPP unavailable");
                     main.post(new Runnable() { @Override public void run() { disconnect(); } });
                     return;
                 }
@@ -167,10 +203,18 @@ final class BudsLink {
                         byte[] merged = new byte[acc.length + n];
                         System.arraycopy(acc, 0, merged, 0, acc.length);
                         System.arraycopy(chunk, 0, merged, acc.length, n);
-                        if (Protocol.isHuawei(activeModel)) {
+                        if (Protocol.isHuawei(activeModel) || Protocol.isHonorChoice(activeModel)) {
                             List<HuaweiProto.Pkt> pkts = new ArrayList<>();
                             acc = HuaweiProto.parseStream(merged, pkts);
                             for (HuaweiProto.Pkt pkt : pkts) handleHwPacket(pkt);
+                        } else if (Protocol.isNothing(activeModel)) {
+                            List<NothingProto.Pkt> pkts = new ArrayList<>();
+                            acc = NothingProto.parseStream(merged, pkts);
+                            for (NothingProto.Pkt pkt : pkts) handleNothingPacket(pkt);
+                        } else if (Protocol.isGalaxy(activeModel)) {
+                            List<GalaxyProto.Pkt> pkts = new ArrayList<>();
+                            acc = GalaxyProto.parseStream(merged, pkts);
+                            for (GalaxyProto.Pkt pkt : pkts) handleGalaxyPacket(pkt);
                         } else {
                             List<Protocol.Frame> frames = new ArrayList<>();
                             acc = Protocol.parseStream(merged, frames);
@@ -289,6 +333,7 @@ final class BudsLink {
             for (int i = 0; i < 2; i++) Arrays.fill(state.touch[i], -1);
             state.multiDevices.clear();
             hwMultiMap.clear();
+            galaxyMgrSent = false;
         }
     }
 
@@ -298,8 +343,13 @@ final class BudsLink {
                 sleep(150);
                 if (gen != sessionGen) return;
                 log("Device ready, requesting state...");
+                if (Protocol.isGalaxy(activeModel)) return;
+                if (Protocol.isNothing(activeModel)) {
+                    sendRaw(NothingProto.build(NothingProto.CMD_HANDSHAKE_REQ, null));
+                    sleep(100);
+                }
                 requestFullState(true);
-                if (!Protocol.isHuawei(activeModel)) {
+                if (Protocol.isRealme(activeModel)) {
                     byte[] evs = Protocol.supportsDual(activeModel)
                         ? new byte[]{0x03, 0x05, 0x01, 0x02, 0x06}
                         : new byte[]{0x03, 0x05, 0x01, 0x02};
@@ -317,21 +367,35 @@ final class BudsLink {
         io.execute(new Runnable() {
             @Override public void run() {
                 if (connState != CONN_CONNECTED) return;
-                if (Protocol.isHuawei(activeModel)) {
+                if (Protocol.isGalaxy(activeModel)) return;
+                if (Protocol.isHuawei(activeModel) || Protocol.isHonorChoice(activeModel)) {
                     if (Protocol.supportsAnc(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_ANC_R, 1, 2)); sleep(70); }
-                    if (Protocol.supportsGameMode(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_LOW_LAT, 2)); sleep(70); }
-                    if (Protocol.supportsHqAudio(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_SQP_R, 1)); sleep(70); }
-                    if (Protocol.supportsDual(activeModel)) {
-                        sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_DC_R, 1)); sleep(70);
-                        hwMultiMap.clear();
-                        sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_DC_ENUM, 1)); sleep(70);
+                    if (Protocol.isHuawei(activeModel)) {
+                        if (Protocol.supportsGameMode(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_LOW_LAT, 2)); sleep(70); }
+                        if (Protocol.supportsHqAudio(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_SQP_R, 1)); sleep(70); }
+                        if (Protocol.supportsDual(activeModel)) {
+                            sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_DC_R, 1)); sleep(70);
+                            hwMultiMap.clear();
+                            sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_DC_ENUM, 1)); sleep(70);
+                        }
+                        if (Protocol.supportsAutoPlayPause(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_AUTOPAUSE_R, 1)); sleep(70); }
+                        if (Protocol.supportsEq(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_EQ_R, 1, 2, 3, 4, 5, 6, 7, 8)); sleep(70); }
                     }
-                    if (Protocol.supportsAutoPlayPause(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_AUTOPAUSE_R, 1)); sleep(70); }
-                    if (Protocol.supportsEq(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_EQ_R, 1, 2, 3, 4, 5, 6, 7, 8)); sleep(70); }
                     sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_BAT_READ, 1, 2, 3)); sleep(70);
-                    if (Protocol.supportsDoubleTap(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_DTAP_R, 1, 2)); sleep(70); }
-                    if (Protocol.supportsTripleTap(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_TTAP_R, 1, 2)); sleep(70); }
-                    if (Protocol.supportsLongTap(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_LTAP_R, 1, 2)); }
+                    if (Protocol.isHuawei(activeModel)) {
+                        if (Protocol.supportsDoubleTap(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_DTAP_R, 1, 2)); sleep(70); }
+                        if (Protocol.supportsTripleTap(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_TTAP_R, 1, 2)); sleep(70); }
+                        if (Protocol.supportsLongTap(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_LTAP_R, 1, 2)); }
+                    }
+                    return;
+                }
+                if (Protocol.isNothing(activeModel)) {
+                    if (Protocol.supportsAnc(activeModel)) { sendRaw(NothingProto.build(NothingProto.CMD_ANC_REQ, null)); sleep(70); }
+                    sendRaw(NothingProto.build(activeModel == Protocol.MODEL_CMF_LISTENING ? NothingProto.CMD_EQ_L_REQ : NothingProto.CMD_EQ_C_REQ, null)); sleep(70);
+                    sendRaw(NothingProto.build(NothingProto.CMD_INEAR_REQ, null)); sleep(70);
+                    sendRaw(NothingProto.build(NothingProto.CMD_LAT_REQ, null)); sleep(70);
+                    sendRaw(NothingProto.build(NothingProto.CMD_BASS_REQ, null)); sleep(70);
+                    sendRaw(NothingProto.build(NothingProto.CMD_BAT_REQ, null));
                     return;
                 }
                 sendTl(Protocol.CMD_ANC_STATE_REQ, new byte[]{0x01, 0x01}); sleep(70);
@@ -365,15 +429,22 @@ final class BudsLink {
     private void pollCycle() {
         io.execute(new Runnable() {
             @Override public void run() {
-                if (connState != CONN_CONNECTED) return;
-                if (Protocol.isHuawei(activeModel)) {
+                if (connState != CONN_CONNECTED || Protocol.isGalaxy(activeModel)) return;
+                if (Protocol.isHuawei(activeModel) || Protocol.isHonorChoice(activeModel)) {
                     if (Protocol.supportsAnc(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_ANC_R, 1, 2)); sleep(55); }
-                    if (Protocol.supportsGameMode(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_LOW_LAT, 2)); sleep(55); }
-                    if (Protocol.supportsHqAudio(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_SQP_R, 1)); sleep(55); }
-                    if (Protocol.supportsDual(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_DC_R, 1)); sleep(55); }
-                    if (Protocol.supportsAutoPlayPause(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_AUTOPAUSE_R, 1)); sleep(55); }
-                    if (Protocol.supportsEq(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_EQ_R, 1, 2, 3, 4, 5, 6, 7, 8)); sleep(55); }
+                    if (Protocol.isHuawei(activeModel)) {
+                        if (Protocol.supportsGameMode(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_LOW_LAT, 2)); sleep(55); }
+                        if (Protocol.supportsHqAudio(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_SQP_R, 1)); sleep(55); }
+                        if (Protocol.supportsDual(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_DC_R, 1)); sleep(55); }
+                        if (Protocol.supportsAutoPlayPause(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_AUTOPAUSE_R, 1)); sleep(55); }
+                        if (Protocol.supportsEq(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_EQ_R, 1, 2, 3, 4, 5, 6, 7, 8)); sleep(55); }
+                    }
                     sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_BAT_READ, 1, 2, 3));
+                    return;
+                }
+                if (Protocol.isNothing(activeModel)) {
+                    if (Protocol.supportsAnc(activeModel)) { sendRaw(NothingProto.build(NothingProto.CMD_ANC_REQ, null)); sleep(55); }
+                    sendRaw(NothingProto.build(NothingProto.CMD_BAT_REQ, null));
                     return;
                 }
                 sendTl(Protocol.CMD_ANC_STATE_REQ, new byte[]{0x01, 0x01}); sleep(55);
@@ -412,6 +483,25 @@ final class BudsLink {
                     sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_ANC_R, 1, 2));
                     return;
                 }
+                if (Protocol.isHonorChoice(activeModel)) {
+                    log("TX HonorChoice ANC [" + Protocol.ancName(mode & 0xFF) + "]");
+                    sendRaw(HuaweiProto.writeHonorAnc(mode));
+                    sleep(180);
+                    sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_ANC_R, 1, 2));
+                    return;
+                }
+                if (Protocol.isNothing(activeModel)) {
+                    log("TX Nothing ANC [" + Protocol.ancName(mode & 0xFF) + "]");
+                    sendRaw(NothingProto.writeAncMode(mode, state.ancLevel));
+                    sleep(180);
+                    sendRaw(NothingProto.build(NothingProto.CMD_ANC_REQ, null));
+                    return;
+                }
+                if (Protocol.isGalaxy(activeModel)) {
+                    log("TX Galaxy ANC [" + Protocol.ancName(mode & 0xFF) + "]");
+                    sendRaw(GalaxyProto.writeAnc(mode, activeModel));
+                    return;
+                }
                 log("TX ANC [" + Protocol.ancName(mode & 0xFF) + "]");
                 sendTl(Protocol.CMD_ANC_SET, new byte[]{0x01, 0x01, mode});
             }
@@ -419,11 +509,18 @@ final class BudsLink {
     }
 
     void setAncLevel(final byte lvl) {
-        if (!Protocol.isHuawei(activeModel)) return;
+        if (!Protocol.supportsAncLevel(activeModel)) return;
         synchronized (state) { state.ancMode = Protocol.ANC_ON; state.ancLevel = lvl & 0xFF; }
         notifyState();
         io.execute(new Runnable() {
             @Override public void run() {
+                if (Protocol.isNothing(activeModel)) {
+                    log("TX Nothing ANC Level [" + (lvl & 0xFF) + "]");
+                    sendRaw(NothingProto.writeAncLevel(lvl));
+                    sleep(180);
+                    sendRaw(NothingProto.build(NothingProto.CMD_ANC_REQ, null));
+                    return;
+                }
                 log("TX Huawei ANC Level [" + (lvl & 0xFF) + "]");
                 sendRaw(HuaweiProto.writeAncLevel(lvl));
                 sleep(180);
@@ -443,6 +540,24 @@ final class BudsLink {
                     sendRaw(HuaweiProto.writeByte(HuaweiProto.CMD_EQ_W, 1, hw));
                     sleep(180);
                     sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_EQ_R, 1, 2, 3, 4, 5, 6, 7, 8));
+                    return;
+                }
+                if (Protocol.isHonorChoice(activeModel)) {
+                    log("TX HonorChoice EQ [id=" + (eqId & 0xFF) + "]");
+                    sendRaw(HuaweiProto.writeHonorEq(eqId));
+                    return;
+                }
+                if (Protocol.isNothing(activeModel)) {
+                    boolean listening = activeModel == Protocol.MODEL_CMF_LISTENING;
+                    log("TX Nothing EQ [id=" + (eqId & 0xFF) + "]");
+                    sendRaw(NothingProto.writeEq(eqId, listening));
+                    sleep(180);
+                    sendRaw(NothingProto.build(listening ? NothingProto.CMD_EQ_L_REQ : NothingProto.CMD_EQ_C_REQ, null));
+                    return;
+                }
+                if (Protocol.isGalaxy(activeModel)) {
+                    log("TX Galaxy EQ [id=" + (eqId & 0xFF) + "]");
+                    sendRaw(GalaxyProto.writeEq(eqId, activeModel == Protocol.MODEL_GALAXY_BUDS));
                     return;
                 }
                 log("TX EQ [id=" + (eqId & 0xFF) + "]");
@@ -482,6 +597,28 @@ final class BudsLink {
                         sendRaw(HuaweiProto.writeByte(HuaweiProto.CMD_AUTOPAUSE_W, 1, v));
                         sleep(180);
                         sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_AUTOPAUSE_R, 1));
+                    }
+                    return;
+                }
+                if (Protocol.isNothing(activeModel)) {
+                    if (featId == Protocol.FEAT_GAME_MODE) {
+                        sendRaw(NothingProto.build(NothingProto.CMD_LAT_SET, new byte[]{on ? (byte) 1 : (byte) 2}));
+                        sleep(200);
+                        sendRaw(NothingProto.build(NothingProto.CMD_LAT_REQ, null));
+                    } else if (featId == Protocol.FEAT_AUTO_PLAY_PAUSE) {
+                        sendRaw(NothingProto.build(NothingProto.CMD_INEAR_SET, new byte[]{1, 1, (byte) (on ? 1 : 0)}));
+                        sleep(200);
+                        sendRaw(NothingProto.build(NothingProto.CMD_INEAR_REQ, null));
+                    } else if (featId == Protocol.FEAT_DYNAMIC) {
+                        sendRaw(NothingProto.build(NothingProto.CMD_BASS_SET, new byte[]{(byte) (on ? 1 : 0), (byte) nothingBassLvl}));
+                        sleep(200);
+                        sendRaw(NothingProto.build(NothingProto.CMD_BASS_REQ, null));
+                    }
+                    return;
+                }
+                if (Protocol.isGalaxy(activeModel)) {
+                    if (featId == Protocol.FEAT_DUAL_CONN) {
+                        sendRaw(GalaxyProto.build(GalaxyProto.MSG_SEAMLESS_SET, new byte[]{(byte) (on ? 0 : 1)}, activeModel == Protocol.MODEL_GALAXY_BUDS));
                     }
                     return;
                 }
@@ -805,12 +942,12 @@ final class BudsLink {
             }
             case HuaweiProto.CMD_ANC_R: {
                 byte[] d = pkt.get(1);
-                if (d != null && d.length >= 2) {
-                    int m = d[1] & 0xFF;
+                if (d != null && d.length >= 1) {
+                    int m = d[d.length - 1] & 0xFF;
                     int anc = m == 1 ? Protocol.ANC_ON : (m == 2 ? Protocol.ANC_TRANSPARENCY : Protocol.ANC_OFF);
                     synchronized (state) {
                         state.ancMode = anc;
-                        state.ancLevel = (m == 1) ? (d[0] & 0xFF) : -1;
+                        state.ancLevel = (!Protocol.isHonorChoice(activeModel) && d.length >= 2 && m == 1) ? (d[0] & 0xFF) : -1;
                     }
                     notifyState();
                 }
@@ -912,6 +1049,191 @@ final class BudsLink {
                     if (r != null && r.length > 0) state.touch[1][gi] = HuaweiProto.hwTapToFn(r[0], gi, fb3);
                 }
                 notifyState();
+                break;
+            }
+        }
+    }
+
+    private void handleNothingPacket(NothingProto.Pkt pkt) {
+        byte[] p = pkt.payload;
+        switch (pkt.cmd) {
+            case NothingProto.CMD_BAT_RSP:
+            case NothingProto.CMD_BAT_EV: {
+                if (p.length < 1) break;
+                int count = p[0] & 0xFF;
+                synchronized (state) {
+                    for (int i = 0, off = 1; i < count && off + 1 < p.length; i++, off += 2) {
+                        int part = p[off] & 0xFF;
+                        int val = p[off + 1] & 0xFF;
+                        int lvl = val & 0x7F;
+                        boolean chg = (val & 0x80) != 0;
+                        int eff = lvl <= 100 ? lvl : -1;
+                        if (part == 2) { state.leftBat = eff; state.leftChg = chg; }
+                        else if (part == 3) { state.rightBat = eff; state.rightChg = chg; }
+                        else if (part == 4) { state.caseBat = (eff == 0 && !chg) ? -1 : eff; state.caseChg = chg; }
+                        else if (part == 6) { state.leftBat = state.rightBat = eff; state.leftChg = state.rightChg = chg; }
+                    }
+                }
+                notifyState();
+                break;
+            }
+            case NothingProto.CMD_ANC_RSP:
+            case NothingProto.CMD_ANC_EV: {
+                for (int off = 0; off + 1 < p.length; off += 3) {
+                    if ((p[off] & 0xFF) == 1) {
+                        int v = p[off + 1] & 0xFF;
+                        synchronized (state) {
+                            if (v == 5) { state.ancMode = Protocol.ANC_OFF; }
+                            else if (v == 7) { state.ancMode = Protocol.ANC_TRANSPARENCY; }
+                            else if (v >= 1 && v <= 4) {
+                                state.ancMode = Protocol.ANC_ON;
+                                state.ancLevel = v == 3 ? 1 : (v == 2 ? 0 : (v == 4 ? 3 : 2));
+                            }
+                        }
+                        notifyState();
+                        break;
+                    }
+                }
+                break;
+            }
+            case NothingProto.CMD_EQ_C_RSP:
+            case NothingProto.CMD_EQ_L_RSP: {
+                if (p.length < 1) break;
+                int id = p[0] & 0xFF;
+                boolean listening = pkt.cmd == NothingProto.CMD_EQ_L_RSP;
+                synchronized (state) {
+                    state.eqId = -1; state.customEqName = null;
+                    if (listening) {
+                        if (id == 3) state.eqId = 0;
+                        else if (id == 4) state.eqId = 2;
+                        else if (id == 2) state.eqId = 3;
+                        else if (id == 1) state.eqId = 1;
+                        else state.customEqName = id == 7 ? "Dirac Opteo" : (id == 5 ? "Classical" : "Custom");
+                    } else {
+                        if (id == 0) state.eqId = 0;
+                        else if (id == 1) state.eqId = 2;
+                        else if (id == 2) state.eqId = 3;
+                        else if (id == 3) state.eqId = 1;
+                        else state.customEqName = "Custom";
+                    }
+                }
+                notifyState();
+                break;
+            }
+            case NothingProto.CMD_INEAR_RSP: {
+                if (p.length >= 3) {
+                    synchronized (state) { state.autoPlayPause = (p[2] & 0xFF) == 1; }
+                    notifyState();
+                }
+                break;
+            }
+            case NothingProto.CMD_LAT_RSP: {
+                if (p.length >= 1) {
+                    synchronized (state) { state.gameMode = (p[0] & 0xFF) == 1; }
+                    notifyState();
+                }
+                break;
+            }
+            case NothingProto.CMD_BASS_RSP: {
+                if (p.length >= 1) {
+                    if (p.length >= 2) {
+                        int lvl = p[1] & 0xFF;
+                        if (lvl >= 1 && lvl <= 5) nothingBassLvl = lvl;
+                    }
+                    synchronized (state) { state.dynamicAudio = (p[0] & 0xFF) == 1; }
+                    notifyState();
+                }
+                break;
+            }
+        }
+    }
+
+    private void handleGalaxyPacket(GalaxyProto.Pkt pkt) {
+        byte[] p = pkt.payload;
+        switch (pkt.msgId) {
+            case GalaxyProto.MSG_EXT_STATUS: {
+                if (p.length >= 8) {
+                    int rev = p[0] & 0xFF;
+                    int bl = p[2] & 0xFF, br = p[3] & 0xFF, pl = p[6] & 0xFF, bc = p[7] & 0xFF;
+                    int lp = (pl >>> 4) & 0x0F, rp = pl & 0x0F;
+                    boolean lc = false, rc = false, cc = false;
+                    if (p.length > 36 && rev >= 10) {
+                        int ch = p[36] & 0xFF;
+                        lc = (ch & 0x10) != 0; rc = (ch & 0x04) != 0; cc = (ch & 0x01) != 0;
+                    }
+                    synchronized (state) {
+                        state.leftBat = (bl >= 1 && bl <= 100) || (bl == 0 && lp != 0) ? bl : -1;
+                        state.rightBat = (br >= 1 && br <= 100) || (br == 0 && rp != 0) ? br : -1;
+                        state.caseBat = (bc >= 1 && bc <= 100) ? bc : -1;
+                        state.leftChg = lc; state.rightChg = rc; state.caseChg = cc;
+                        int eqIdx = activeModel == Protocol.MODEL_GALAXY_PLUS ? 11 : 9;
+                        if (p.length > eqIdx) {
+                            int eq = p[eqIdx] & 0xFF;
+                            state.eqId = -1; state.customEqName = null;
+                            if (eq == 0) state.eqId = 0;
+                            else if (eq == 1) state.eqId = 1;
+                            else if (eq == 3) state.eqId = 3;
+                            else if (eq == 4) state.eqId = 2;
+                            else if (eq == 2) state.customEqName = "Soft";
+                            else if (eq == 5) state.customEqName = "Treble Boost";
+                        }
+                        if (p.length > 12) {
+                            int nc = p[12] & 0xFF;
+                            if (activeModel == Protocol.MODEL_GALAXY_LIVE) {
+                                state.ancMode = nc == 1 ? Protocol.ANC_ON : Protocol.ANC_OFF;
+                            } else if (activeModel == Protocol.MODEL_GALAXY_MODERN) {
+                                state.ancMode = (nc == 1 || nc == 3) ? Protocol.ANC_ON : (nc == 2 ? Protocol.ANC_TRANSPARENCY : Protocol.ANC_OFF);
+                            }
+                        }
+                        if (p.length > 19) state.dualConn = (p[19] & 0xFF) == 0;
+                    }
+                    notifyState();
+                }
+                if (!galaxyMgrSent) {
+                    galaxyMgrSent = true;
+                    io.execute(new Runnable() {
+                        @Override public void run() {
+                            sendRaw(GalaxyProto.build(GalaxyProto.MSG_MGR_INFO, new byte[]{1, 2, 0x22}, activeModel == Protocol.MODEL_GALAXY_BUDS));
+                        }
+                    });
+                }
+                break;
+            }
+            case GalaxyProto.MSG_STATUS: {
+                if (p.length >= 7) {
+                    int bl = p[1] & 0xFF, br = p[2] & 0xFF, pl = p[5] & 0xFF, bc = p[6] & 0xFF;
+                    int lp = (pl >>> 4) & 0x0F, rp = pl & 0x0F;
+                    synchronized (state) {
+                        state.leftBat = (bl >= 1 && bl <= 100) || (bl == 0 && lp != 0) ? bl : -1;
+                        state.rightBat = (br >= 1 && br <= 100) || (br == 0 && rp != 0) ? br : -1;
+                        state.caseBat = (bc >= 1 && bc <= 100) ? bc : -1;
+                    }
+                    notifyState();
+                }
+                break;
+            }
+            case GalaxyProto.MSG_NC_UPD: {
+                if (p.length >= 1) {
+                    int nc = p[0] & 0xFF;
+                    synchronized (state) {
+                        state.ancMode = (nc == 1 || nc == 3) ? Protocol.ANC_ON : (nc == 2 ? Protocol.ANC_TRANSPARENCY : Protocol.ANC_OFF);
+                    }
+                    notifyState();
+                }
+                break;
+            }
+            case GalaxyProto.MSG_AMB_UPD: {
+                if (p.length >= 1) {
+                    synchronized (state) { state.ancMode = (p[0] & 0xFF) == 1 ? Protocol.ANC_TRANSPARENCY : Protocol.ANC_OFF; }
+                    notifyState();
+                }
+                break;
+            }
+            case GalaxyProto.MSG_NR_UPD: {
+                if (p.length >= 1) {
+                    synchronized (state) { state.ancMode = (p[0] & 0xFF) == 1 ? Protocol.ANC_ON : Protocol.ANC_OFF; }
+                    notifyState();
+                }
                 break;
             }
         }

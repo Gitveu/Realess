@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'BudsT300Controller/**'
+      - 'realness/**'
       - 'tiny-realness/**'
       - '.github/workflows/build-release.yml'
 
@@ -41,7 +41,7 @@ jobs:
           printf '%s' "$REALNESS_KEYSTORE_BASE64" | tr -d '\r\n' | base64 --decode > realness-release.keystore
 
       - name: Build realness (Gradle Release)
-        working-directory: BudsT300Controller
+        working-directory: realness
         env:
           REALNESS_KEYSTORE_PATH: ${{ github.workspace }}/realness-release.keystore
           REALNESS_KEYSTORE_PASSWORD: ${{ secrets.REALNESS_KEYSTORE_PASSWORD }}
@@ -64,7 +64,7 @@ jobs:
       - name: Collect APKs
         run: |
           mkdir -p dist
-          cp BudsT300Controller/app/build/outputs/apk/release/realness\ *.apk dist/
+          cp realness/app/build/outputs/apk/release/realness\ *.apk dist/
           cp realness-tiny\ *.apk dist/
           ls -lh dist/
 
@@ -78,7 +78,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' BudsT300Controller/app/build.gradle.kts | head -n 1)
+          VERSION=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' realness/app/build.gradle.kts | head -n 1)
           TAG="v${VERSION}"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/*.apk --clobber
