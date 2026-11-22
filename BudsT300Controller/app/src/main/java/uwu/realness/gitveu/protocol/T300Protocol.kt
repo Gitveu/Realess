@@ -68,29 +68,183 @@ object T300Protocol {
     // CCCD UUID для включения notify/indicate
     const val CCCD_UUID_STRING = "00002902-0000-1000-8000-00805f9b34fb"
 
-    enum class BudsModel {
-        UNKNOWN,
-        BUDS_T300,
-        BUDS_T200,
-        BUDS_AIR_7_PRO;
+    enum class ProtocolFamily {
+        NONE,
+        REALME_TL,
+        HUAWEI_SPP
+    }
+
+    enum class BudsModel(val protocolFamily: ProtocolFamily) {
+        UNKNOWN(ProtocolFamily.NONE),
+        // realme Buds (TL + OPPOv1)
+        BUDS_T300(ProtocolFamily.REALME_TL),
+        BUDS_T200(ProtocolFamily.REALME_TL),
+        BUDS_AIR_7_PRO(ProtocolFamily.REALME_TL),
+        // Huawei / Honor (Huawei SPP, по базе OpenFreebuds)
+        HUAWEI_FREEBUDS_3(ProtocolFamily.HUAWEI_SPP),
+        HUAWEI_FREEBUDS_4I(ProtocolFamily.HUAWEI_SPP),
+        HUAWEI_FREEBUDS_5I(ProtocolFamily.HUAWEI_SPP),
+        HUAWEI_FREEBUDS_6I(ProtocolFamily.HUAWEI_SPP),
+        HUAWEI_FREEBUDS_PRO(ProtocolFamily.HUAWEI_SPP),
+        HUAWEI_FREEBUDS_PRO_2(ProtocolFamily.HUAWEI_SPP),
+        HUAWEI_FREEBUDS_PRO_3(ProtocolFamily.HUAWEI_SPP),
+        HUAWEI_FREEBUDS_PRO_5(ProtocolFamily.HUAWEI_SPP),
+        HUAWEI_FREECLIP(ProtocolFamily.HUAWEI_SPP),
+        HUAWEI_FREECLIP_2(ProtocolFamily.HUAWEI_SPP),
+        HUAWEI_FREEBUDS_SE(ProtocolFamily.HUAWEI_SPP),
+        HUAWEI_FREEBUDS_SE_2(ProtocolFamily.HUAWEI_SPP),
+        HUAWEI_FREEBUDS_SE_4(ProtocolFamily.HUAWEI_SPP),
+        HUAWEI_FREEBUDS_STUDIO(ProtocolFamily.HUAWEI_SPP),
+        HUAWEI_FREELACE_PRO(ProtocolFamily.HUAWEI_SPP),
+        HUAWEI_FREELACE_PRO_2(ProtocolFamily.HUAWEI_SPP),
+        HONOR_EARBUDS_S2(ProtocolFamily.HUAWEI_SPP),
+        HUAWEI_GENERIC(ProtocolFamily.HUAWEI_SPP);
 
         val isSupported: Boolean get() = this != UNKNOWN
-        val supportsHighQualityAudio: Boolean get() = this == BUDS_T200 || this == BUDS_AIR_7_PRO
+        val isRealme: Boolean get() = protocolFamily == ProtocolFamily.REALME_TL
+        val isHuawei: Boolean get() = protocolFamily == ProtocolFamily.HUAWEI_SPP
+
+        val prefersHuaweiPrivateUuid: Boolean
+            get() = this in setOf(
+                HUAWEI_FREEBUDS_4I, HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_SE, HUAWEI_FREELACE_PRO
+            )
+
+        val supportsAnc: Boolean
+            get() = isRealme || this !in setOf(
+                UNKNOWN, HUAWEI_FREEBUDS_3, HUAWEI_FREEBUDS_SE, HUAWEI_FREEBUDS_SE_2,
+                HUAWEI_FREECLIP, HUAWEI_FREECLIP_2
+            )
+
+        val supportsAncLevel: Boolean
+            get() = isHuawei && supportsAnc && this != HUAWEI_FREEBUDS_4I
+
+        val supportsAncDynamic: Boolean
+            get() = this in setOf(
+                HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I, HUAWEI_FREEBUDS_PRO,
+                HUAWEI_FREEBUDS_PRO_3, HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREEBUDS_SE_4,
+                HUAWEI_FREEBUDS_STUDIO, HUAWEI_FREELACE_PRO_2, HUAWEI_GENERIC
+            )
+
+        val supportsEq: Boolean
+            get() = isRealme || this in setOf(
+                HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I, HUAWEI_FREEBUDS_PRO_2,
+                HUAWEI_FREEBUDS_PRO_3, HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREECLIP,
+                HUAWEI_FREECLIP_2, HUAWEI_FREEBUDS_SE_2, HUAWEI_FREEBUDS_SE_4,
+                HUAWEI_FREEBUDS_STUDIO, HUAWEI_FREELACE_PRO_2, HUAWEI_GENERIC
+            )
+
+        val huaweiEqUsesPro3Ids: Boolean
+            get() = this in setOf(HUAWEI_FREEBUDS_PRO_3, HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREECLIP)
+
+        val supportsDoubleTap: Boolean
+            get() = isRealme || this in setOf(
+                HUAWEI_FREEBUDS_3, HUAWEI_FREEBUDS_4I, HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I,
+                HUAWEI_FREEBUDS_PRO_3, HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREECLIP, HUAWEI_FREECLIP_2,
+                HUAWEI_FREEBUDS_SE, HUAWEI_FREEBUDS_SE_2, HUAWEI_FREEBUDS_SE_4, HUAWEI_GENERIC
+            )
+
+        val supportsTripleTap: Boolean
+            get() = isRealme || this in setOf(
+                HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I, HUAWEI_FREECLIP_2,
+                HUAWEI_FREEBUDS_SE_2, HUAWEI_FREEBUDS_SE_4, HUAWEI_GENERIC
+            )
+
+        val supportsLongPress: Boolean
+            get() = isRealme || this in setOf(
+                HUAWEI_FREEBUDS_4I, HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I,
+                HUAWEI_FREEBUDS_PRO, HUAWEI_FREEBUDS_PRO_2, HUAWEI_FREEBUDS_PRO_3,
+                HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREECLIP, HUAWEI_FREECLIP_2,
+                HUAWEI_FREEBUDS_SE_4, HUAWEI_FREELACE_PRO_2, HUAWEI_GENERIC
+            )
+
+        val supportsTouchSettings: Boolean
+            get() = supportsDoubleTap || supportsTripleTap || supportsLongPress
+
+        val supportsSpatialAudio: Boolean get() = isRealme
+
+        val supportsGameMode: Boolean
+            get() = isRealme || this in setOf(
+                HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I, HUAWEI_FREEBUDS_PRO_3,
+                HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREECLIP, HUAWEI_FREECLIP_2,
+                HUAWEI_FREEBUDS_SE_2, HUAWEI_FREEBUDS_SE_4, HUAWEI_FREELACE_PRO_2,
+                HUAWEI_GENERIC
+            )
+
+        val supportsHighQualityAudio: Boolean
+            get() = this in setOf(
+                BUDS_T200, BUDS_AIR_7_PRO,
+                HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I, HUAWEI_FREEBUDS_PRO_2,
+                HUAWEI_FREEBUDS_PRO_3, HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREECLIP,
+                HUAWEI_FREECLIP_2, HUAWEI_FREELACE_PRO_2, HUAWEI_GENERIC
+            )
+
         val usesLhdc: Boolean get() = this == BUDS_AIR_7_PRO
+
         val supportsDynamicAudio: Boolean get() = this == BUDS_T200 || this == BUDS_AIR_7_PRO
-        val supportsDualConnection: Boolean get() = this == BUDS_T200 || this == BUDS_AIR_7_PRO
-        val supportsAutoPlayPause: Boolean get() = this == BUDS_AIR_7_PRO
+
+        val supportsDualConnection: Boolean
+            get() = this in setOf(
+                BUDS_T200, BUDS_AIR_7_PRO,
+                HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I, HUAWEI_FREEBUDS_PRO,
+                HUAWEI_FREEBUDS_PRO_2, HUAWEI_FREEBUDS_PRO_3, HUAWEI_FREEBUDS_PRO_5,
+                HUAWEI_FREECLIP, HUAWEI_FREECLIP_2, HUAWEI_FREELACE_PRO_2, HUAWEI_GENERIC
+            )
+
+        val supportsAutoPlayPause: Boolean
+            get() = this in setOf(
+                BUDS_AIR_7_PRO,
+                HUAWEI_FREEBUDS_4I, HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I,
+                HUAWEI_FREEBUDS_PRO_2, HUAWEI_FREEBUDS_PRO_3, HUAWEI_FREEBUDS_PRO_5,
+                HUAWEI_FREECLIP, HUAWEI_FREECLIP_2, HUAWEI_FREEBUDS_STUDIO, HUAWEI_GENERIC
+            )
+
         val supportsAutoAnswer: Boolean get() = this == BUDS_AIR_7_PRO
+        val supportsUseTime: Boolean get() = isRealme
 
         companion object {
             fun fromDeviceName(name: String?): BudsModel {
                 if (name.isNullOrBlank()) return UNKNOWN
-                val normalized = name.lowercase().replace(Regex("\\s+"), " ")
-                val isRealmeOrBuds = normalized.contains("realme") || normalized.contains("buds")
+                val n = name.lowercase().replace(Regex("\\s+"), " ").trim()
+
+                // 1. Huawei / Honor (OpenFreebuds DEVICE_TO_DRIVER_MAP)
+                val isHuaweiBrand = n.contains("huawei") || n.contains("freebuds") ||
+                    n.contains("freeclip") || n.contains("freelace")
+                if (isHuaweiBrand) {
+                    return when {
+                        n.contains("freeclip 2") || n.contains("freeclip2") -> HUAWEI_FREECLIP_2
+                        n.contains("freeclip") -> HUAWEI_FREECLIP
+                        n.contains("freelace pro 2") || n.contains("freelace pro2") -> HUAWEI_FREELACE_PRO_2
+                        n.contains("freelace pro") -> HUAWEI_FREELACE_PRO
+                        n.contains("studio") -> HUAWEI_FREEBUDS_STUDIO
+                        n.contains("pro 5") || n.contains("pro5") -> HUAWEI_FREEBUDS_PRO_5
+                        n.contains("pro 4") || n.contains("pro4") -> HUAWEI_FREEBUDS_PRO_3
+                        n.contains("pro 3") || n.contains("pro3") -> HUAWEI_FREEBUDS_PRO_3
+                        n.contains("pro 2") || n.contains("pro2") -> HUAWEI_FREEBUDS_PRO_2
+                        n.contains("freebuds pro") -> HUAWEI_FREEBUDS_PRO
+                        n.contains("6i") -> HUAWEI_FREEBUDS_6I
+                        n.contains("5i") -> HUAWEI_FREEBUDS_5I
+                        n.contains("4i") -> HUAWEI_FREEBUDS_4I
+                        n.contains("se 4") || n.contains("se4") -> HUAWEI_FREEBUDS_SE_4
+                        n.contains("se 2") || n.contains("se2") -> HUAWEI_FREEBUDS_SE_2
+                        n.contains("freebuds se") -> HUAWEI_FREEBUDS_SE
+                        n.contains("freebuds 3") -> HUAWEI_FREEBUDS_3
+                        else -> HUAWEI_GENERIC
+                    }
+                }
+                if (n.contains("honor") || n.contains("荣耀")) {
+                    return when {
+                        n.contains("earbuds s2") -> HONOR_EARBUDS_S2
+                        n.contains("earbuds 2") -> HUAWEI_FREEBUDS_4I
+                        else -> UNKNOWN
+                    }
+                }
+
+                // 2. realme Buds (TL TWS)
+                val isRealmeOrBuds = n.contains("realme") || n.contains("buds")
                 return when {
-                    isRealmeOrBuds && (normalized.contains("air 7 pro") || normalized.contains("air7 pro")) -> BUDS_AIR_7_PRO
-                    isRealmeOrBuds && normalized.contains("t200") -> BUDS_T200
-                    isRealmeOrBuds && normalized.contains("t300") -> BUDS_T300
+                    isRealmeOrBuds && (n.contains("air 7 pro") || n.contains("air7 pro")) -> BUDS_AIR_7_PRO
+                    isRealmeOrBuds && n.contains("t200") -> BUDS_T200
+                    isRealmeOrBuds && n.contains("t300") -> BUDS_T300
                     else -> UNKNOWN
                 }
             }
@@ -226,6 +380,7 @@ object T300Protocol {
         val rightBattery: BatteryInfo = BatteryInfo(ComponentRole.RIGHT_EAR, -1, false),
         val caseBattery: BatteryInfo = BatteryInfo(ComponentRole.CASE, -1, false),
         val ancMode: AncMode? = null,
+        val ancLevel: HuaweiProtocol.AncLevel? = null,
         val gameMode: Boolean? = null,
         val spatialAudio: Boolean? = null,
         val highQualityAudio: Boolean? = null,

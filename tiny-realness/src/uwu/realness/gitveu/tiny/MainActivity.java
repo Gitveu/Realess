@@ -68,14 +68,20 @@ public class MainActivity extends Activity implements BudsLink.Listener {
     private TextView tvDevName, tvDevSub, tvBadge, tvHint, btnReconnect;
     private TextView tvBatL, tvBatC, tvBatR;
     private View barBatL, barBatC, barBatR;
+    private View secAnc, cardAnc, rowAncLvl;
     private final TextView[] btnAnc = new TextView[3];
+    private final TextView[] btnAncLvl = new TextView[4];
+    private View secEq, cardEq;
     private final TextView[] btnEq = new TextView[4];
     private TextView tvCustomEq;
+    private View secTouch, cardTouch;
+    private final View[] rowGest = new View[3];
     private final TextView[] btnSide = new TextView[2];
     private final TextView[] tvGestVal = new TextView[3];
+    private View secSpatial, cardSpatial;
     private final TextView[] btnSpatial = new TextView[2];
 
-    private View cardHq, cardDynamic, cardDual, cardAutoPlay, cardAutoAns, cardUseTime;
+    private View cardHq, cardDynamic, secOther, cardGame, cardDual, cardAutoPlay, cardAutoAns, cardUseTime;
     private TextView tvHqDesc;
     private Switch swHq, swDynamic, swGame, swDual, swAutoPlay, swAutoAns;
     private LinearLayout multiListBox;
@@ -381,7 +387,7 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         addSpaced(content, batRow, 16);
 
         // 5. ANC Section
-        addSection(content, t("Noise cancellation", "Шумоподавление"));
+        secAnc = addSection(content, t("Noise cancellation", "Шумоподавление"));
         LinearLayout ancCard = card(C_SURFACE, 16);
         ancCard.setPadding(dp(6), dp(6), dp(6), dp(6));
         LinearLayout ancRow = hbox();
@@ -403,10 +409,34 @@ public class MainActivity extends Activity implements BudsLink.Listener {
             if (i < 2) ancRow.addView(spaceW(4));
         }
         ancCard.addView(ancRow, lpMatchWrap());
+
+        // Huawei ANC intensity level sub-row
+        LinearLayout lvlRow = hbox();
+        lvlRow.setBackground(roundRect(0xFF262626, 10));
+        lvlRow.setPadding(dp(4), dp(4), dp(4), dp(4));
+        String[] lvlNames = {t("Comfort", "Комфорт"), t("General", "Обычный"), t("Ultra", "Ультра"), t("Dynamic", "Динам.")};
+        final byte[] lvlBytes = {1, 0, 2, 3};
+        for (int i = 0; i < 4; i++) {
+            final byte lb = lvlBytes[i];
+            TextView b = segBtn(lvlNames[i], 11);
+            b.setPadding(dp(3), dp(8), dp(3), dp(8));
+            b.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { if (connState == BudsLink.CONN_CONNECTED) link.setAncLevel(lb); }
+            });
+            btnAncLvl[i] = b;
+            lvlRow.addView(b, lpWeight(1));
+            if (i < 3) lvlRow.addView(spaceW(4));
+        }
+        LinearLayout.LayoutParams lvllp = lpMatchWrap();
+        lvllp.topMargin = dp(6);
+        lvlRow.setVisibility(View.GONE);
+        ancCard.addView(lvlRow, lvllp);
+        rowAncLvl = lvlRow;
+        cardAnc = ancCard;
         addSpaced(content, ancCard, 16);
 
         // 6. EQ Section
-        addSection(content, t("Sound effects", "Звуковые эффекты"));
+        secEq = addSection(content, t("Sound effects", "Звуковые эффекты"));
         LinearLayout eqCard = card(C_SURFACE, 16);
         String[] eqLabels = {
             t("Serenade", "Серенада"),
@@ -437,10 +467,11 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         LinearLayout.LayoutParams clp = lpMatchWrap();
         clp.topMargin = dp(8);
         eqCard.addView(tvCustomEq, clp);
+        cardEq = eqCard;
         addSpaced(content, eqCard, 16);
 
         // 7. Button Settings
-        addSection(content, t("Button settings", "Настройка кнопок"));
+        secTouch = addSection(content, t("Button settings", "Настройка кнопок"));
         LinearLayout keyCard = card(C_SURFACE, 16);
         LinearLayout sideBar = hbox();
         sideBar.setBackground(roundRect(C_SURFACE2, 10));
@@ -480,17 +511,14 @@ public class MainActivity extends Activity implements BudsLink.Listener {
                     if (connState == BudsLink.CONN_CONNECTED) showGestureDialog(selectedSide, gi);
                 }
             });
+            rowGest[g] = row;
             keyCard.addView(row, lpMatchWrap());
-            if (g < 2) {
-                View div = new View(this);
-                div.setBackgroundColor(C_SURFACE2);
-                keyCard.addView(div, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)));
-            }
         }
+        cardTouch = keyCard;
         addSpaced(content, keyCard, 16);
 
         // 8. Spatial Audio
-        addSection(content, t("Spatial audio", "Пространственное аудио"));
+        secSpatial = addSection(content, t("Spatial audio", "Пространственное аудио"));
         LinearLayout spCard = card(C_SURFACE, 16);
         spCard.addView(tv(t("Creates a cinematic 3D audio experience around you.",
             "Создаёт кинематографичный трёхмерный звук вокруг вас."), 12, C_MUTED, false));
@@ -513,9 +541,10 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         LinearLayout.LayoutParams splp = lpMatchWrap();
         splp.topMargin = dp(10);
         spCard.addView(spRow, splp);
+        cardSpatial = spCard;
         addSpaced(content, spCard, 14);
 
-        // 9. High-Definition Audio (LDAC / LHDC 5.0)
+        // 9. High-Definition Audio (LDAC / LHDC 5.0 / Huawei)
         Object[] hq = makeSwitchCard(
             t("High-definition audio", "Звук высокой чёткости"),
             t("LDAC codec for superior audio quality.", "Кодек LDAC, обеспечивающий превосходное качество звука."),
@@ -532,15 +561,16 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         addSpaced(content, cardDynamic, 16);
 
         // 11. Other Section
-        addSection(content, t("Other", "Другое"));
+        secOther = addSection(content, t("Other", "Другое"));
 
         // Game Mode
         Object[] gm = makeSwitchCard(
             t("Game mode", "Игровой режим"),
             t("Provides smooth gameplay with ultra-low audio latency.", "Обеспечивает плавный игровой процесс с минимальной задержкой звука."),
             Protocol.FEAT_GAME_MODE);
+        cardGame = (View) gm[0];
         swGame = (Switch) gm[1];
-        addSpaced(content, (View) gm[0], 12);
+        addSpaced(content, cardGame, 12);
 
         // Dual-Device Connection + History
         Object[] dc = makeSwitchCard(
@@ -668,8 +698,8 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         cardUnsupported.setVisibility(showUnsup ? View.VISIBLE : View.GONE);
         if (showUnsup) {
             tvUnsupportedMsg.setText(t(
-                "\"" + unsupportedName + "\" is not supported. Supported: realme Buds T300, T200, Air 7 Pro.",
-                "«" + unsupportedName + "» не поддерживается. Поддерживаются: realme Buds T300, T200, Air 7 Pro."));
+                "\"" + unsupportedName + "\" is not supported. Supported: realme Buds & HUAWEI FreeBuds.",
+                "«" + unsupportedName + "» не поддерживается. Поддерживаются: realme Buds и HUAWEI FreeBuds."));
         }
 
         // Status Card
@@ -695,9 +725,9 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         String hint = null;
         if (connected) hint = null;
         else if (connState == BudsLink.CONN_CONNECTING) hint = t("Connecting via SPP/GATT…", "Установка соединения через SPP/GATT…");
-        else if (sysStatus == ST_UNSUPPORTED) hint = t("Only realme Buds T300, T200, Air 7 Pro are supported.", "Поддерживаются только realme Buds T300, T200, Air 7 Pro.");
+        else if (sysStatus == ST_UNSUPPORTED) hint = t("Supported: realme Buds & HUAWEI FreeBuds.", "Поддерживаются: realme Buds и HUAWEI FreeBuds.");
         else if (sysStatus == ST_DISCONNECTED) hint = t("Open the case or put on the earbuds.", "Откройте кейс или наденьте наушники.");
-        else if (sysStatus == ST_NO_PAIRED) hint = t("No supported realme Buds (T300, T200, Air 7 Pro) paired.", "Поддерживаемые realme Buds (T300, T200, Air 7 Pro) не найдены.");
+        else if (sysStatus == ST_NO_PAIRED) hint = t("No supported realme Buds or HUAWEI FreeBuds paired.", "Поддерживаемые realme Buds или HUAWEI FreeBuds не найдены.");
         else if (sysStatus == ST_NO_PERM) hint = t("Grant Bluetooth permissions above.", "Предоставьте доступ к Bluetooth выше.");
         tvHint.setVisibility(hint != null ? View.VISIBLE : View.GONE);
         if (hint != null) tvHint.setText(hint);
@@ -709,15 +739,38 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         updateBat(tvBatC, barBatC, budsState.caseBat, budsState.caseChg);
         updateBat(tvBatR, barBatR, budsState.rightBat, budsState.rightChg);
 
+        boolean known = detectedModel != Protocol.MODEL_UNKNOWN;
+        boolean isHw = Protocol.isHuawei(detectedModel);
+
         // ANC
+        int ancVis = (!known || Protocol.supportsAnc(detectedModel)) ? View.VISIBLE : View.GONE;
+        secAnc.setVisibility(ancVis); cardAnc.setVisibility(ancVis);
         int[] ancVals = {Protocol.ANC_ON, Protocol.ANC_OFF, Protocol.ANC_TRANSPARENCY};
         for (int i = 0; i < 3; i++) {
             styleSeg(btnAnc[i], budsState.ancMode == ancVals[i], connected, Color.TRANSPARENT);
         }
+        boolean showAncLvl = Protocol.supportsAncLevel(detectedModel) && budsState.ancMode == Protocol.ANC_ON;
+        rowAncLvl.setVisibility(showAncLvl ? View.VISIBLE : View.GONE);
+        if (showAncLvl) {
+            btnAncLvl[3].setVisibility(Protocol.supportsAncDynamic(detectedModel) ? View.VISIBLE : View.GONE);
+            int[] lvlVals = {1, 0, 2, 3};
+            for (int i = 0; i < 4; i++) {
+                boolean sel = budsState.ancLevel == lvlVals[i];
+                btnAncLvl[i].setBackground(roundRect(sel ? 0x38FFCC00 : Color.TRANSPARENT, 8));
+                btnAncLvl[i].setTextColor(sel ? C_ACCENT : (connected ? 0xFFCCCCCC : C_MUTED));
+                btnAncLvl[i].setTypeface(null, sel ? Typeface.BOLD : Typeface.NORMAL);
+            }
+        }
 
         // EQ
+        int eqVis = (!known || Protocol.supportsEq(detectedModel)) ? View.VISIBLE : View.GONE;
+        secEq.setVisibility(eqVis); cardEq.setVisibility(eqVis);
+        String[] eqNames = isHw
+            ? new String[]{t("Voices", "Голоса"), t("Default", "По умолчанию"), t("Treble boost", "Высокие частоты"), t("Bass boost", "Усиление басов")}
+            : new String[]{t("Serenade", "Серенада"), t("Original sound", "Оригинальный звук"), t("Pure bass", "Чистые басы"), t("Deep bass", "Глубокие басы")};
         int[] eqIds = {2, 0, 3, 1};
         for (int i = 0; i < 4; i++) {
+            btnEq[i].setText(eqNames[i]);
             boolean sel = (budsState.eqId == eqIds[i]) && budsState.customEqName == null;
             styleSeg(btnEq[i], sel, connected, C_SURFACE2);
         }
@@ -728,6 +781,11 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         }
 
         // Touch settings
+        int touchVis = (!known || Protocol.supportsTouch(detectedModel)) ? View.VISIBLE : View.GONE;
+        secTouch.setVisibility(touchVis); cardTouch.setVisibility(touchVis);
+        rowGest[0].setVisibility((!known || Protocol.supportsDoubleTap(detectedModel)) ? View.VISIBLE : View.GONE);
+        rowGest[1].setVisibility((!known || Protocol.supportsTripleTap(detectedModel)) ? View.VISIBLE : View.GONE);
+        rowGest[2].setVisibility((!known || Protocol.supportsLongTap(detectedModel)) ? View.VISIBLE : View.GONE);
         for (int i = 0; i < 2; i++) styleSeg(btnSide[i], selectedSide == i, connected, Color.TRANSPARENT);
         for (int g = 0; g < 3; g++) {
             int fn = budsState.touch[selectedSide][g];
@@ -736,31 +794,41 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         }
 
         // Spatial
+        int spVis = (!known || Protocol.supportsSpatial(detectedModel)) ? View.VISIBLE : View.GONE;
+        secSpatial.setVisibility(spVis); cardSpatial.setVisibility(spVis);
         styleSeg(btnSpatial[0], Boolean.FALSE.equals(budsState.spatialAudio), connected, Color.TRANSPARENT);
         styleSeg(btnSpatial[1], Boolean.TRUE.equals(budsState.spatialAudio), connected, Color.TRANSPARENT);
 
         // Model-gated cards
         cardHq.setVisibility(Protocol.supportsHqAudio(detectedModel) ? View.VISIBLE : View.GONE);
         if (Protocol.supportsHqAudio(detectedModel)) {
-            tvHqDesc.setText(Protocol.usesLhdc(detectedModel)
-                ? t("Play high-resolution LHDC 5.0 audio.", "Воспроизводите аудио в высоком разрешении LHDC 5.0.")
-                : t("LDAC codec for superior audio quality.", "Кодек LDAC, обеспечивающий превосходное качество звука."));
+            tvHqDesc.setText(isHw
+                ? t("Prioritize sound quality over connection stability.", "Приоритет качества звука над стабильностью соединения.")
+                : (Protocol.usesLhdc(detectedModel)
+                    ? t("Play high-resolution LHDC 5.0 audio.", "Воспроизводите аудио в высоком разрешении LHDC 5.0.")
+                    : t("LDAC codec for superior audio quality.", "Кодек LDAC, обеспечивающий превосходное качество звука.")));
         }
         setSwitchUi(swHq, budsState.hqAudio, connected);
 
         cardDynamic.setVisibility(Protocol.supportsDynamic(detectedModel) ? View.VISIBLE : View.GONE);
         setSwitchUi(swDynamic, budsState.dynamicAudio, connected);
 
+        boolean showGame = !known || Protocol.supportsGameMode(detectedModel);
+        boolean showDual = Protocol.supportsDual(detectedModel);
+        boolean showAp = Protocol.supportsAutoPlayPause(detectedModel);
+        boolean showAa = Protocol.supportsAutoAnswer(detectedModel);
+        secOther.setVisibility((showGame || showDual || showAp || showAa) ? View.VISIBLE : View.GONE);
+        cardGame.setVisibility(showGame ? View.VISIBLE : View.GONE);
         setSwitchUi(swGame, budsState.gameMode, connected);
 
-        cardDual.setVisibility(Protocol.supportsDual(detectedModel) ? View.VISIBLE : View.GONE);
+        cardDual.setVisibility(showDual ? View.VISIBLE : View.GONE);
         setSwitchUi(swDual, budsState.dualConn, connected);
         renderMultiDevices();
 
-        cardAutoPlay.setVisibility(Protocol.supportsAutoPlayPause(detectedModel) ? View.VISIBLE : View.GONE);
+        cardAutoPlay.setVisibility(showAp ? View.VISIBLE : View.GONE);
         setSwitchUi(swAutoPlay, budsState.autoPlayPause, connected);
 
-        cardAutoAns.setVisibility(Protocol.supportsAutoAnswer(detectedModel) ? View.VISIBLE : View.GONE);
+        cardAutoAns.setVisibility(showAa ? View.VISIBLE : View.GONE);
         setSwitchUi(swAutoAns, budsState.autoAnswer, connected);
 
         // Usage time
@@ -803,8 +871,18 @@ public class MainActivity extends Activity implements BudsLink.Listener {
     }
 
     private void showGestureDialog(final int side, final int gest) {
-        final byte[] allowed = gest == 0 ? Protocol.ACTIONS_DOUBLE
-            : (gest == 1 ? Protocol.ACTIONS_TRIPLE : Protocol.ACTIONS_HOLD);
+        final byte[] allowed;
+        if (Protocol.isHuawei(detectedModel)) {
+            if (gest == 2) {
+                allowed = (detectedModel == Protocol.MODEL_HW_CLIP2 || detectedModel == Protocol.MODEL_HW_SE4)
+                    ? Protocol.HW_ACTIONS_HOLD_EXTRA : Protocol.HW_ACTIONS_HOLD;
+            } else {
+                allowed = detectedModel == Protocol.MODEL_HW_3 ? Protocol.HW_ACTIONS_FB3 : Protocol.HW_ACTIONS_TAP;
+            }
+        } else {
+            allowed = gest == 0 ? Protocol.ACTIONS_DOUBLE
+                : (gest == 1 ? Protocol.ACTIONS_TRIPLE : Protocol.ACTIONS_HOLD);
+        }
         String[] labels = new String[allowed.length];
         for (int i = 0; i < allowed.length; i++) labels[i] = actionLabel(allowed[i] & 0xFF);
         String title = (side == 0 ? t("Left", "Левый") : t("Right", "Правый")) + ": " +
@@ -936,10 +1014,11 @@ public class MainActivity extends Activity implements BudsLink.Listener {
 
     private String t(String en, String r) { return ru ? r : en; }
 
-    private void addSection(LinearLayout parent, String title) {
+    private TextView addSection(LinearLayout parent, String title) {
         TextView tv = tv(title, 15, Color.WHITE, true);
         tv.setPadding(dp(2), 0, 0, dp(8));
         parent.addView(tv, lpMatchWrap());
+        return tv;
     }
 
     private void addSpaced(LinearLayout parent, View v, int bottomDp) {

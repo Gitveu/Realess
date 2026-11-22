@@ -23,11 +23,24 @@ object T300GattConfig {
     val ALT_VENDOR_SPP_UUID_1: UUID = UUID.fromString("db764ac8-4b08-7f25-aafe-59d03c27bae4")
     val ALT_VENDOR_SPP_UUID_2: UUID = UUID.fromString("db764ac8-4b08-7f25-aafe-59d03c27bae3")
 
+    // Huawei / Honor приватный SPP UUID (RFCOMM channel 16 на FreeBuds 4i / 5i / SE / FreeLace Pro)
+    val HUAWEI_VENDOR_SPP_UUID: UUID = UUID.fromString("96cc203e-5068-46ad-b32d-e316f5e069ba")
+
     val KNOWN_SPP_UUIDS = listOf(
         REALME_VENDOR_SPP_UUID,
         STANDARD_SPP_UUID,
         ALT_VENDOR_SPP_UUID_1,
         ALT_VENDOR_SPP_UUID_2
+    )
+
+    val HUAWEI_SPP_UUIDS_PORT1_FIRST = listOf(
+        STANDARD_SPP_UUID,
+        HUAWEI_VENDOR_SPP_UUID
+    )
+
+    val HUAWEI_SPP_UUIDS_PORT16_FIRST = listOf(
+        HUAWEI_VENDOR_SPP_UUID,
+        STANDARD_SPP_UUID
     )
 
     /**

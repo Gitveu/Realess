@@ -30,6 +30,14 @@ final class BudsLink {
         UUID.fromString("db764ac8-4b08-7f25-aafe-59d03c27bae4"),
         UUID.fromString("db764ac8-4b08-7f25-aafe-59d03c27bae3")
     };
+    private static final UUID[] HW_UUIDS_P1 = {
+        UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"),
+        UUID.fromString("96cc203e-5068-46ad-b32d-e316f5e069ba")
+    };
+    private static final UUID[] HW_UUIDS_P16 = {
+        UUID.fromString("96cc203e-5068-46ad-b32d-e316f5e069ba"),
+        UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+    };
     private static final UUID CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
 
     interface Listener {
@@ -57,6 +65,7 @@ final class BudsLink {
     private boolean useGatt;
 
     private final Protocol.State state = new Protocol.State();
+    private final java.util.TreeMap<Integer, Protocol.MultiDevice> hwMultiMap = new java.util.TreeMap<>();
     private final Runnable pollTask;
     private final Runnable refreshTask;
 
@@ -96,7 +105,10 @@ final class BudsLink {
                 if (bm != null && bm.getAdapter() != null) {
                     try { bm.getAdapter().cancelDiscovery(); } catch (Exception ignored) {}
                 }
-                for (UUID uuid : SPP_UUIDS) {
+                UUID[] uuids = Protocol.isHuawei(activeModel)
+                    ? (Protocol.prefersHwPrivateUuid(activeModel) ? HW_UUIDS_P16 : HW_UUIDS_P1)
+                    : SPP_UUIDS;
+                for (UUID uuid : uuids) {
                     if (gen != sessionGen) return;
                     if (trySpp(device, uuid, false) || trySpp(device, uuid, true)) {
                         if (gen != sessionGen) { disconnect(); return; }
@@ -110,6 +122,11 @@ final class BudsLink {
                     }
                 }
                 if (gen != sessionGen) return;
+                if (Protocol.isHuawei(activeModel)) {
+                    log("Huawei SPP unavailable");
+                    main.post(new Runnable() { @Override public void run() { disconnect(); } });
+                    return;
+                }
                 log("SPP unavailable, falling back to GATT...");
                 connectGatt(device);
             }
@@ -150,9 +167,15 @@ final class BudsLink {
                         byte[] merged = new byte[acc.length + n];
                         System.arraycopy(acc, 0, merged, 0, acc.length);
                         System.arraycopy(chunk, 0, merged, acc.length, n);
-                        List<Protocol.Frame> frames = new ArrayList<>();
-                        acc = Protocol.parseStream(merged, frames);
-                        for (Protocol.Frame f : frames) handleFrame(f);
+                        if (Protocol.isHuawei(activeModel)) {
+                            List<HuaweiProto.Pkt> pkts = new ArrayList<>();
+                            acc = HuaweiProto.parseStream(merged, pkts);
+                            for (HuaweiProto.Pkt pkt : pkts) handleHwPacket(pkt);
+                        } else {
+                            List<Protocol.Frame> frames = new ArrayList<>();
+                            acc = Protocol.parseStream(merged, frames);
+                            for (Protocol.Frame f : frames) handleFrame(f);
+                        }
                     }
                 } catch (IOException e) {
                     if (gen == sessionGen) log("SPP closed: " + e.getMessage());
@@ -257,6 +280,7 @@ final class BudsLink {
             state.leftBat = state.rightBat = state.caseBat = -1;
             state.leftChg = state.rightChg = state.caseChg = false;
             state.ancMode = -1;
+            state.ancLevel = -1;
             state.gameMode = state.spatialAudio = state.hqAudio = state.dynamicAudio = null;
             state.dualConn = state.autoPlayPause = state.autoAnswer = null;
             state.eqId = -1;
@@ -264,6 +288,7 @@ final class BudsLink {
             state.leftUseMin = state.rightUseMin = -1;
             for (int i = 0; i < 2; i++) Arrays.fill(state.touch[i], -1);
             state.multiDevices.clear();
+            hwMultiMap.clear();
         }
     }
 
@@ -274,12 +299,14 @@ final class BudsLink {
                 if (gen != sessionGen) return;
                 log("Device ready, requesting state...");
                 requestFullState(true);
-                byte[] evs = Protocol.supportsDual(activeModel)
-                    ? new byte[]{0x03, 0x05, 0x01, 0x02, 0x06}
-                    : new byte[]{0x03, 0x05, 0x01, 0x02};
-                for (byte e : evs) {
-                    sendTl(Protocol.CMD_NOTIFY_REG, new byte[]{e});
-                    sleep(50);
+                if (!Protocol.isHuawei(activeModel)) {
+                    byte[] evs = Protocol.supportsDual(activeModel)
+                        ? new byte[]{0x03, 0x05, 0x01, 0x02, 0x06}
+                        : new byte[]{0x03, 0x05, 0x01, 0x02};
+                    for (byte e : evs) {
+                        sendTl(Protocol.CMD_NOTIFY_REG, new byte[]{e});
+                        sleep(50);
+                    }
                 }
                 main.postDelayed(pollTask, 2000L);
             }
@@ -290,6 +317,23 @@ final class BudsLink {
         io.execute(new Runnable() {
             @Override public void run() {
                 if (connState != CONN_CONNECTED) return;
+                if (Protocol.isHuawei(activeModel)) {
+                    if (Protocol.supportsAnc(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_ANC_R, 1, 2)); sleep(70); }
+                    if (Protocol.supportsGameMode(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_LOW_LAT, 2)); sleep(70); }
+                    if (Protocol.supportsHqAudio(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_SQP_R, 1)); sleep(70); }
+                    if (Protocol.supportsDual(activeModel)) {
+                        sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_DC_R, 1)); sleep(70);
+                        hwMultiMap.clear();
+                        sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_DC_ENUM, 1)); sleep(70);
+                    }
+                    if (Protocol.supportsAutoPlayPause(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_AUTOPAUSE_R, 1)); sleep(70); }
+                    if (Protocol.supportsEq(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_EQ_R, 1, 2, 3, 4, 5, 6, 7, 8)); sleep(70); }
+                    sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_BAT_READ, 1, 2, 3)); sleep(70);
+                    if (Protocol.supportsDoubleTap(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_DTAP_R, 1, 2)); sleep(70); }
+                    if (Protocol.supportsTripleTap(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_TTAP_R, 1, 2)); sleep(70); }
+                    if (Protocol.supportsLongTap(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_LTAP_R, 1, 2)); }
+                    return;
+                }
                 sendTl(Protocol.CMD_ANC_STATE_REQ, new byte[]{0x01, 0x01}); sleep(70);
                 sendTl(Protocol.CMD_SWITCH_REQ, new byte[]{0x01, Protocol.FEAT_GAME_MODE}); sleep(70);
                 sendTl(Protocol.CMD_SWITCH_REQ, new byte[]{0x01, Protocol.FEAT_SPATIAL}); sleep(70);
@@ -322,6 +366,16 @@ final class BudsLink {
         io.execute(new Runnable() {
             @Override public void run() {
                 if (connState != CONN_CONNECTED) return;
+                if (Protocol.isHuawei(activeModel)) {
+                    if (Protocol.supportsAnc(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_ANC_R, 1, 2)); sleep(55); }
+                    if (Protocol.supportsGameMode(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_LOW_LAT, 2)); sleep(55); }
+                    if (Protocol.supportsHqAudio(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_SQP_R, 1)); sleep(55); }
+                    if (Protocol.supportsDual(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_DC_R, 1)); sleep(55); }
+                    if (Protocol.supportsAutoPlayPause(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_AUTOPAUSE_R, 1)); sleep(55); }
+                    if (Protocol.supportsEq(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_EQ_R, 1, 2, 3, 4, 5, 6, 7, 8)); sleep(55); }
+                    sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_BAT_READ, 1, 2, 3));
+                    return;
+                }
                 sendTl(Protocol.CMD_ANC_STATE_REQ, new byte[]{0x01, 0x01}); sleep(55);
                 sendTl(Protocol.CMD_SWITCH_REQ, new byte[]{0x01, Protocol.FEAT_GAME_MODE}); sleep(55);
                 sendTl(Protocol.CMD_SWITCH_REQ, new byte[]{0x01, Protocol.FEAT_SPATIAL}); sleep(55);
@@ -351,8 +405,29 @@ final class BudsLink {
         notifyState();
         io.execute(new Runnable() {
             @Override public void run() {
+                if (Protocol.isHuawei(activeModel)) {
+                    log("TX Huawei ANC [" + Protocol.ancName(mode & 0xFF) + "]");
+                    sendRaw(HuaweiProto.writeAncMode(mode));
+                    sleep(180);
+                    sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_ANC_R, 1, 2));
+                    return;
+                }
                 log("TX ANC [" + Protocol.ancName(mode & 0xFF) + "]");
                 sendTl(Protocol.CMD_ANC_SET, new byte[]{0x01, 0x01, mode});
+            }
+        });
+    }
+
+    void setAncLevel(final byte lvl) {
+        if (!Protocol.isHuawei(activeModel)) return;
+        synchronized (state) { state.ancMode = Protocol.ANC_ON; state.ancLevel = lvl & 0xFF; }
+        notifyState();
+        io.execute(new Runnable() {
+            @Override public void run() {
+                log("TX Huawei ANC Level [" + (lvl & 0xFF) + "]");
+                sendRaw(HuaweiProto.writeAncLevel(lvl));
+                sleep(180);
+                sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_ANC_R, 1, 2));
             }
         });
     }
@@ -362,6 +437,14 @@ final class BudsLink {
         notifyState();
         io.execute(new Runnable() {
             @Override public void run() {
+                if (Protocol.isHuawei(activeModel)) {
+                    byte hw = HuaweiProto.eqToHw(eqId, Protocol.hwEqPro3(activeModel));
+                    log("TX Huawei EQ [id=" + hw + "]");
+                    sendRaw(HuaweiProto.writeByte(HuaweiProto.CMD_EQ_W, 1, hw));
+                    sleep(180);
+                    sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_EQ_R, 1, 2, 3, 4, 5, 6, 7, 8));
+                    return;
+                }
                 log("TX EQ [id=" + (eqId & 0xFF) + "]");
                 sendTl(Protocol.CMD_EQ_SET, new byte[]{eqId});
             }
@@ -381,6 +464,27 @@ final class BudsLink {
         notifyState();
         io.execute(new Runnable() {
             @Override public void run() {
+                if (Protocol.isHuawei(activeModel)) {
+                    byte v = (byte) (on ? 1 : 0);
+                    if (featId == Protocol.FEAT_GAME_MODE) {
+                        sendRaw(HuaweiProto.writeByte(HuaweiProto.CMD_LOW_LAT, 1, v));
+                        sleep(400);
+                        sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_LOW_LAT, 2));
+                    } else if (featId == Protocol.FEAT_HQ_AUDIO) {
+                        sendRaw(HuaweiProto.writeByte(HuaweiProto.CMD_SQP_W, 1, v));
+                        sleep(180);
+                        sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_SQP_R, 1));
+                    } else if (featId == Protocol.FEAT_DUAL_CONN) {
+                        sendRaw(HuaweiProto.writeByte(HuaweiProto.CMD_DC_W, 1, v));
+                        sleep(200);
+                        sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_DC_R, 1));
+                    } else if (featId == Protocol.FEAT_AUTO_PLAY_PAUSE) {
+                        sendRaw(HuaweiProto.writeByte(HuaweiProto.CMD_AUTOPAUSE_W, 1, v));
+                        sleep(180);
+                        sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_AUTOPAUSE_R, 1));
+                    }
+                    return;
+                }
                 log(String.format("TX Switch 0x%02X -> %s", featId & 0xFF, on ? "ON" : "OFF"));
                 sendTl(Protocol.CMD_SWITCH_SET, new byte[]{featId, (byte) (on ? 1 : 0)});
             }
@@ -394,6 +498,13 @@ final class BudsLink {
         final byte actionId = (byte) (gestureIdx + 2);
         io.execute(new Runnable() {
             @Override public void run() {
+                if (Protocol.isHuawei(activeModel)) {
+                    int cmd = gestureIdx == 0 ? HuaweiProto.CMD_DTAP_W
+                        : (gestureIdx == 1 ? HuaweiProto.CMD_TTAP_W : HuaweiProto.CMD_LTAP_W);
+                    byte code = HuaweiProto.fnToHwTap(funcId, gestureIdx, activeModel == Protocol.MODEL_HW_3);
+                    sendRaw(HuaweiProto.writeByte(cmd, sideIdx == 0 ? 1 : 2, code));
+                    return;
+                }
                 log(String.format("TX Key [side=%d act=%d -> 0x%02X]", devType, actionId, funcId & 0xFF));
                 sendTl(Protocol.CMD_KEY_SET, new byte[]{0x01, devType, 0x01, actionId, funcId});
             }
@@ -401,8 +512,10 @@ final class BudsLink {
     }
 
     private void sendTl(int cmd, byte[] payload) {
-        byte[] tl = Protocol.buildFrame(cmd, payload);
-        byte[] wire = Protocol.wrapOppo(tl);
+        sendRaw(Protocol.wrapOppo(Protocol.buildFrame(cmd, payload)));
+    }
+
+    private void sendRaw(byte[] wire) {
         log("TX Wire [" + Protocol.hex(wire) + "]");
         synchronized (writeLock) {
             try {
@@ -661,5 +774,146 @@ final class BudsLink {
 
     private static void sleep(long ms) {
         try { Thread.sleep(ms); } catch (InterruptedException ignored) {}
+    }
+
+    private void handleHwPacket(HuaweiProto.Pkt pkt) {
+        switch (pkt.cmd) {
+            case HuaweiProto.CMD_BAT_READ:
+            case HuaweiProto.CMD_BAT_NOTIFY: {
+                byte[] p1 = pkt.get(1), p2 = pkt.get(2), p3 = pkt.get(3);
+                synchronized (state) {
+                    if (p2 != null && p2.length >= 3) {
+                        boolean lc = p3 != null && p3.length >= 3 && p3[0] == 1;
+                        boolean rc = p3 != null && p3.length >= 3 && p3[1] == 1;
+                        boolean cc = p3 != null && p3.length >= 3 && p3[2] == 1;
+                        int l = p2[0] & 0xFF, r = p2[1] & 0xFF, c = p2[2] & 0xFF;
+                        state.leftBat = (l >= 1 && l <= 100) || (l == 0 && lc) ? l : -1;
+                        state.rightBat = (r >= 1 && r <= 100) || (r == 0 && rc) ? r : -1;
+                        state.caseBat = (c >= 1 && c <= 100) || (c == 0 && cc) ? c : -1;
+                        state.leftChg = lc; state.rightChg = rc; state.caseChg = cc;
+                    } else if (p1 != null && p1.length >= 1) {
+                        int g = p1[0] & 0xFF;
+                        boolean chg = false;
+                        if (p3 != null) for (byte b : p3) if (b == 1) chg = true;
+                        state.leftBat = state.rightBat = g <= 100 ? g : -1;
+                        state.caseBat = -1;
+                        state.leftChg = state.rightChg = chg; state.caseChg = false;
+                    }
+                }
+                notifyState();
+                break;
+            }
+            case HuaweiProto.CMD_ANC_R: {
+                byte[] d = pkt.get(1);
+                if (d != null && d.length >= 2) {
+                    int m = d[1] & 0xFF;
+                    int anc = m == 1 ? Protocol.ANC_ON : (m == 2 ? Protocol.ANC_TRANSPARENCY : Protocol.ANC_OFF);
+                    synchronized (state) {
+                        state.ancMode = anc;
+                        state.ancLevel = (m == 1) ? (d[0] & 0xFF) : -1;
+                    }
+                    notifyState();
+                }
+                break;
+            }
+            case HuaweiProto.CMD_ANC_EV: {
+                io.execute(new Runnable() {
+                    @Override public void run() { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_ANC_R, 1, 2)); }
+                });
+                break;
+            }
+            case HuaweiProto.CMD_LOW_LAT: {
+                byte[] v = pkt.get(2);
+                if (v != null && v.length > 0) {
+                    synchronized (state) { state.gameMode = (v[0] & 0xFF) == 1; }
+                    notifyState();
+                }
+                break;
+            }
+            case HuaweiProto.CMD_AUTOPAUSE_R: {
+                byte[] v = pkt.get(1);
+                if (v != null && v.length > 0) {
+                    synchronized (state) { state.autoPlayPause = (v[0] & 0xFF) == 1; }
+                    notifyState();
+                }
+                break;
+            }
+            case HuaweiProto.CMD_SQP_R: {
+                byte[] v = pkt.get(2);
+                if (v != null && v.length > 0) {
+                    synchronized (state) { state.hqAudio = (v[0] & 0xFF) == 1; }
+                    notifyState();
+                }
+                break;
+            }
+            case HuaweiProto.CMD_EQ_R: {
+                byte[] v = pkt.get(2);
+                if (v != null && v.length > 0) {
+                    int id = v[0];
+                    int eq = HuaweiProto.hwToEq(id, Protocol.hwEqPro3(activeModel));
+                    synchronized (state) {
+                        if (eq >= 0) {
+                            state.eqId = eq; state.customEqName = null;
+                        } else {
+                            state.eqId = -1;
+                            String cn = HuaweiProto.findCustomEqName(pkt.get(8), id);
+                            state.customEqName = cn != null ? cn : ("EQ #" + id);
+                        }
+                    }
+                    notifyState();
+                }
+                break;
+            }
+            case HuaweiProto.CMD_DC_R: {
+                byte[] v = pkt.get(1);
+                if (v != null && v.length > 0) {
+                    synchronized (state) { state.dualConn = (v[0] & 0xFF) == 1; }
+                    notifyState();
+                }
+                break;
+            }
+            case HuaweiProto.CMD_DC_ENUM: {
+                byte[] macB = pkt.get(4), idxB = pkt.get(3), stB = pkt.get(5), nmB = pkt.get(9);
+                if (macB != null && macB.length >= 6) {
+                    StringBuilder mac = new StringBuilder();
+                    for (int i = 0; i < 6; i++) {
+                        if (i > 0) mac.append(':');
+                        mac.append(String.format("%02X", macB[i] & 0xFF));
+                    }
+                    int idx = (idxB != null && idxB.length > 0) ? (idxB[0] & 0xFF) : hwMultiMap.size();
+                    int st = (stB != null && stB.length > 0) ? (stB[0] & 0xFF) : 0;
+                    String nm = (nmB != null && nmB.length > 0)
+                        ? new String(nmB, StandardCharsets.UTF_8).replace("\0", "") : mac.toString();
+                    synchronized (state) {
+                        hwMultiMap.put(idx, new Protocol.MultiDevice(mac.toString(), nm, st));
+                        state.multiDevices = new ArrayList<>(hwMultiMap.values());
+                    }
+                    notifyState();
+                }
+                break;
+            }
+            case HuaweiProto.CMD_DC_EV: {
+                io.execute(new Runnable() {
+                    @Override public void run() {
+                        hwMultiMap.clear();
+                        sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_DC_ENUM, 1));
+                    }
+                });
+                break;
+            }
+            case HuaweiProto.CMD_DTAP_R:
+            case HuaweiProto.CMD_TTAP_R:
+            case HuaweiProto.CMD_LTAP_R: {
+                int gi = pkt.cmd == HuaweiProto.CMD_DTAP_R ? 0 : (pkt.cmd == HuaweiProto.CMD_TTAP_R ? 1 : 2);
+                boolean fb3 = activeModel == Protocol.MODEL_HW_3;
+                byte[] l = pkt.get(1), r = pkt.get(2);
+                synchronized (state) {
+                    if (l != null && l.length > 0) state.touch[0][gi] = HuaweiProto.hwTapToFn(l[0], gi, fb3);
+                    if (r != null && r.length > 0) state.touch[1][gi] = HuaweiProto.hwTapToFn(r[0], gi, fb3);
+                }
+                notifyState();
+                break;
+            }
+        }
     }
 }

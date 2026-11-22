@@ -14,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import uwu.realness.gitveu.R
 import uwu.realness.gitveu.ble.BleConnectionState
 import uwu.realness.gitveu.ble.T300BleManager
+import uwu.realness.gitveu.protocol.HuaweiProtocol
 import uwu.realness.gitveu.protocol.T300Protocol.AncMode
 import uwu.realness.gitveu.protocol.T300Protocol.BudsModel
 import uwu.realness.gitveu.protocol.T300Protocol.EqPreset
@@ -250,6 +251,10 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         bleManager.setAncMode(mode)
     }
 
+    fun setAncLevel(level: HuaweiProtocol.AncLevel) {
+        bleManager.setAncLevel(level)
+    }
+
     fun setGameMode(enabled: Boolean) {
         bleManager.setGameMode(enabled)
     }
@@ -378,9 +383,9 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshAll() {
         if (connectionState.value == BleConnectionState.CONNECTED) {
             val model = _detectedModel.value
-            bleManager.refreshAncState()
-            bleManager.refreshGameMode()
-            bleManager.refreshSpatialAudio()
+            if (model.supportsAnc) bleManager.refreshAncState()
+            if (model.supportsGameMode) bleManager.refreshGameMode()
+            if (model.supportsSpatialAudio) bleManager.refreshSpatialAudio()
             if (model.supportsHighQualityAudio) bleManager.refreshHighQualityAudio()
             if (model.supportsDynamicAudio) bleManager.refreshDynamicAudio()
             if (model.supportsDualConnection) {
@@ -389,9 +394,9 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
             }
             if (model.supportsAutoPlayPause) bleManager.refreshAutoPlayPause()
             if (model.supportsAutoAnswer) bleManager.refreshAutoAnswer()
-            bleManager.refreshEq()
-            bleManager.refreshKeySettings()
-            bleManager.refreshUseTime()
+            if (model.supportsEq) bleManager.refreshEq()
+            if (model.supportsTouchSettings) bleManager.refreshKeySettings()
+            if (model.supportsUseTime) bleManager.refreshUseTime()
             bleManager.refreshBattery()
         }
     }

@@ -3,7 +3,7 @@
 [English](AGENTS.md) | **Русский**
 
 Дата обновления: 2026-11-22  
-Статус: поддерживаются **realme Buds T300**, **realme Buds T200** и **realme Buds Air 7 Pro**; приложение **realness** (`uwu.realness.gitveu`, версия `1.4`, `build 5`, release-сборки).
+Статус: поддерживаются **realme Buds T300 / T200 / Air 7 Pro** (TL + OPPOv1) и **HUAWEI FreeBuds / FreeClip / FreeLace / HONOR Earbuds 2 & S2** (Huawei SPP по базе OpenFreebuds); приложение **realness** (`uwu.realness.gitveu`, версия `1.5`, `build 6`, release-сборки).
 
 ---
 
@@ -309,19 +309,39 @@ Payload: `[status (0x00), count (N), (componentId, value)...]`
 
 ---
 
-## 13. Архитектура приложения realness
+## 13. Протокол Huawei SPP (по базе OpenFreebuds)
 
-1. **Стек**: Kotlin, Jetpack Compose (Material3), Coroutines/Flow, MinSdk 26, TargetSdk 34, пакет `uwu.realness.gitveu`. Также доступна облегчённая сборка `tiny-realness/` (`uwu.realness.gitveu.tiny`) на чистой Java 8 без Gradle/AndroidX (`aapt2 -> javac -> R8 -> zipalign -> apksigner`, ~33 КБ).
+Реализован в `HuaweiProtocol.kt` (`realness`) и `HuaweiProto.java` (`tiny-realness`) по спецификации [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds):
+
+* **Транспорт RFCOMM SPP**:
+  * Стандартный SPP UUID: `00001101-0000-1000-8000-00805F9B34FB` (channel 1: FreeBuds 3 / 6i / Pro / Pro 2 / Pro 3 / Pro 4 / Pro 5 / FreeClip / FreeClip 2 / SE 2 / SE 4 / Studio / FreeLace Pro 2 / Honor Earbuds S2);
+  * Приватный Huawei SPP UUID: `96cc203e-5068-46ad-b32d-e316f5e069ba` (channel 16: FreeBuds 4i / 5i / SE / FreeLace Pro / Honor Earbuds 2).
+* **Формат кадра**: `[0x5A, lenHi, lenLo, 0x00, cmdHi, cmdLo, TLV(type, len, value)..., crcHi, crcLo]` (`CRC16-XMODEM`, полная длина = `length + 5`).
+* **Основные команды**:
+  * Батарея: запрос `0x0108` (params `1, 2, 3`), уведомление `0x0127` (param 2 = `[L, R, Case]`, param 3 = флаги зарядки, param 1 = общий заряд для Studio/FreeLace);
+  * ANC и уровни шумоподавления: чтение `0x2B2A`, запись `0x2B04` (режим `0=Off, 1=ANC, 2=Transparency`; уровни ANC `1=Comfort, 0=General, 2=Ultra, 3=Dynamic`), событие `0x2B03`;
+  * Low Latency (Игровой режим): `0x2B6C` (чтение param 2, запись param 1);
+  * Автовоспроизведение/пауза: чтение `0x2B11`, запись `0x2B10`;
+  * Приоритет качества звука: чтение `0x2BA3` (param 2), запись `0x2BA2` (param 1);
+  * Эквалайзер: чтение `0x2B4A` (param 2 = активный ID, param 8 = кастомные профили по 36 байт), запись `0x2B49` (param 1);
+  * Dual-Device Connection: чтение `0x2B2F`, запись `0x2B2E`, список устройств `0x2B31`, событие `0x2B36`;
+  * Жесты кнопок: двойное касание `0x0120`/`0x011F`, тройное `0x0126`/`0x0125`, долгое нажатие `0x2B17`/`0x2B16`.
+
+---
+
+## 14. Архитектура приложения realness
+
+1. **Стек**: Kotlin, Jetpack Compose (Material3), Coroutines/Flow, MinSdk 26, TargetSdk 34, пакет `uwu.realness.gitveu`. Также доступна облегчённая сборка `tiny-realness/` (`uwu.realness.gitveu.tiny`) на чистой Java 8 без Gradle/AndroidX (`aapt2 -> javac -> R8 -> zipalign -> apksigner`, ~41 КБ).
 2. **Версионирование и release-сборки**:
-   * Обязательно увеличивать `versionCode` и `versionName` после каждого изменения в `BudsT300Controller/app/build.gradle.kts` и `tiny-realness/AndroidManifest.xml` (текущая: `versionName = "1.4"`, `versionCode = 5`).
+   * Обязательно увеличивать `versionCode` и `versionName` после каждого изменения в `BudsT300Controller/app/build.gradle.kts` и `tiny-realness/AndroidManifest.xml` (текущая: `versionName = "1.5"`, `versionCode = 6`).
    * Все сборки выполняются в режиме **release** (`./gradlew assembleRelease` с R8 minify + shrinkResources, а также `./tiny-realness/build.sh`).
    * Ключ подписи (`realness-release.keystore`) **не хранится в git** (добавлен в `.gitignore` вместе с `keystore.properties`) — хранится в **GitHub Actions Secrets** (`REALNESS_KEYSTORE_BASE64`, `REALNESS_KEYSTORE_PASSWORD`, `REALNESS_KEY_ALIAS`, `REALNESS_KEY_PASSWORD`) и локально на машине разработчика.
    * Скомпилированные `.apk` **не коммитятся в git** (`*.apk` добавлен в `.gitignore`). Workflow `.github/workflows/build-release.yml` автоматически собирает подписанные `realness <versionName>.apk` и `realness-tiny <versionName>.apk` и публикует их в **GitHub Releases** с тегом `v<versionName>`.
 3. **Структура исходного кода**:
-   * `T300Protocol.kt`: построение и разбор кадров TL + OPPOv1, `BudsModel` с capability-флагами (`BUDS_T300`, `BUDS_T200`, `BUDS_AIR_7_PRO`).
-   * `T300BleManager.kt`: управление сокетом RFCOMM SPP (и GATT fallback), потоковый считыватель пакетов, очередь команд, подписка на уведомления `0x0201`/`0x0204`, дебаунс-синхронизация.
+   * `T300Protocol.kt` и `HuaweiProtocol.kt`: построение и разбор кадров realme TL + OPPOv1 и Huawei SPP (`0x5A` + CRC16-XMODEM), `BudsModel` с capability-флагами для всех моделей realme и Huawei/Honor.
+   * `T300BleManager.kt`: управление сокетом RFCOMM SPP (и GATT fallback для realme), потоковые парсеры обоих протоколов, очередь команд, события и опрос.
    * `BudsViewModel.kt`: реактивное состояние `StateFlow`, автоподключение по событиям Bluetooth, определение неподдерживаемых устройств, управление демо-плеером `MediaPlayer`.
-   * `MainActivity.kt`: Material3 UI — баннер неподдерживаемого устройства, карточки батареи, селектор ANC, пресеты эквалайзера, редактор жестов кнопок, переключатели Spatial Audio, LDAC/LHDC 5.0, Dynamic Audio, Game Mode, Dual-Device Connection, Auto Play/Pause, Auto Answer, статистика использования L/R, сворачиваемая панель логов, динамическая версия и номер билда.
+   * `MainActivity.kt`: Material3 UI — баннер неподдерживаемого устройства, карточки батареи, селектор ANC (+ уровни интенсивности для Huawei), пресеты эквалайзера (+ кастомные профили), редактор жестов кнопок, переключатели Spatial Audio, LDAC/LHDC 5.0/Качество звука, Dynamic Audio, Game Mode, Dual-Device Connection + история, Auto Play/Pause, Auto Answer, статистика использования L/R, сворачиваемая панель логов, динамическая версия и номер билда.
 4. **Локализация**:
    * Язык по умолчанию — английский (`values/strings.xml`), полная русская локализация (`values-ru/strings.xml`), `res/xml/locales_config.xml`.
    * Технические логи протокола выводятся на английском языке.

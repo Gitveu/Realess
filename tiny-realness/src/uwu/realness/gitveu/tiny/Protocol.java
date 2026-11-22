@@ -55,6 +55,25 @@ final class Protocol {
     static final int MODEL_T300 = 1;
     static final int MODEL_T200 = 2;
     static final int MODEL_AIR_7_PRO = 3;
+    // Huawei / Honor (OpenFreebuds)
+    static final int MODEL_HW_3 = 10;
+    static final int MODEL_HW_4I = 11;
+    static final int MODEL_HW_5I = 12;
+    static final int MODEL_HW_6I = 13;
+    static final int MODEL_HW_PRO = 14;
+    static final int MODEL_HW_PRO2 = 15;
+    static final int MODEL_HW_PRO3 = 16;
+    static final int MODEL_HW_PRO5 = 17;
+    static final int MODEL_HW_CLIP = 18;
+    static final int MODEL_HW_CLIP2 = 19;
+    static final int MODEL_HW_SE = 20;
+    static final int MODEL_HW_SE2 = 21;
+    static final int MODEL_HW_SE4 = 22;
+    static final int MODEL_HW_STUDIO = 23;
+    static final int MODEL_HW_LACE = 24;
+    static final int MODEL_HW_LACE2 = 25;
+    static final int MODEL_HONOR_S2 = 26;
+    static final int MODEL_HW_GENERIC = 27;
 
     static final byte[] KEY_REQ_PAYLOAD = {
         0x0E, 0x01, 0x03, 0x04, 0x05, 0x06, 0x0B, 0x0C, 0x08, 0x0D, 0x11, 0x1F, 0x1A, 0x1B, 0x00
@@ -64,9 +83,38 @@ final class Protocol {
     static final byte[] ACTIONS_TRIPLE = {0x05, 0x06, 0x0B, 0x0C, 0x0D, 0x03, 0x11, 0x00};
     static final byte[] ACTIONS_HOLD = {0x08, 0x03, 0x11, 0x00};
 
+    static final byte[] HW_ACTIONS_TAP = {0x01, 0x06, 0x05, 0x03, 0x00};
+    static final byte[] HW_ACTIONS_FB3 = {0x01, 0x06, 0x08, 0x03, 0x00};
+    static final byte[] HW_ACTIONS_HOLD = {0x08, 0x00};
+    static final byte[] HW_ACTIONS_HOLD_EXTRA = {0x08, 0x03, 0x0B, 0x0C, 0x00};
+
     static int detectModel(String name) {
         if (name == null) return MODEL_UNKNOWN;
         String n = name.toLowerCase().replaceAll("\\s+", " ").trim();
+        if (n.contains("huawei") || n.contains("freebuds") || n.contains("freeclip") || n.contains("freelace")) {
+            if (n.contains("freeclip 2") || n.contains("freeclip2")) return MODEL_HW_CLIP2;
+            if (n.contains("freeclip")) return MODEL_HW_CLIP;
+            if (n.contains("freelace pro 2") || n.contains("freelace pro2")) return MODEL_HW_LACE2;
+            if (n.contains("freelace pro")) return MODEL_HW_LACE;
+            if (n.contains("studio")) return MODEL_HW_STUDIO;
+            if (n.contains("pro 5") || n.contains("pro5")) return MODEL_HW_PRO5;
+            if (n.contains("pro 4") || n.contains("pro4") || n.contains("pro 3") || n.contains("pro3")) return MODEL_HW_PRO3;
+            if (n.contains("pro 2") || n.contains("pro2")) return MODEL_HW_PRO2;
+            if (n.contains("freebuds pro")) return MODEL_HW_PRO;
+            if (n.contains("6i")) return MODEL_HW_6I;
+            if (n.contains("5i")) return MODEL_HW_5I;
+            if (n.contains("4i")) return MODEL_HW_4I;
+            if (n.contains("se 4") || n.contains("se4")) return MODEL_HW_SE4;
+            if (n.contains("se 2") || n.contains("se2")) return MODEL_HW_SE2;
+            if (n.contains("freebuds se")) return MODEL_HW_SE;
+            if (n.contains("freebuds 3")) return MODEL_HW_3;
+            return MODEL_HW_GENERIC;
+        }
+        if (n.contains("honor") || n.contains("荣耀")) {
+            if (n.contains("earbuds s2")) return MODEL_HONOR_S2;
+            if (n.contains("earbuds 2")) return MODEL_HW_4I;
+            return MODEL_UNKNOWN;
+        }
         boolean isRealmeOrBuds = n.contains("realme") || n.contains("buds");
         if (!isRealmeOrBuds) return MODEL_UNKNOWN;
         if (n.contains("air 7 pro") || n.contains("air7 pro")) return MODEL_AIR_7_PRO;
@@ -75,12 +123,68 @@ final class Protocol {
         return MODEL_UNKNOWN;
     }
 
-    static boolean supportsHqAudio(int m) { return m == MODEL_T200 || m == MODEL_AIR_7_PRO; }
+    static boolean isHuawei(int m) { return m >= MODEL_HW_3; }
+    static boolean isRealme(int m) { return m >= MODEL_T300 && m <= MODEL_AIR_7_PRO; }
+    static boolean prefersHwPrivateUuid(int m) {
+        return m == MODEL_HW_4I || m == MODEL_HW_5I || m == MODEL_HW_SE || m == MODEL_HW_LACE;
+    }
+    static boolean supportsAnc(int m) {
+        return isRealme(m) || (isHuawei(m) && m != MODEL_HW_3 && m != MODEL_HW_SE
+            && m != MODEL_HW_SE2 && m != MODEL_HW_CLIP && m != MODEL_HW_CLIP2);
+    }
+    static boolean supportsAncLevel(int m) { return isHuawei(m) && supportsAnc(m) && m != MODEL_HW_4I; }
+    static boolean supportsAncDynamic(int m) {
+        return m == MODEL_HW_5I || m == MODEL_HW_6I || m == MODEL_HW_PRO || m == MODEL_HW_PRO3
+            || m == MODEL_HW_PRO5 || m == MODEL_HW_SE4 || m == MODEL_HW_STUDIO
+            || m == MODEL_HW_LACE2 || m == MODEL_HW_GENERIC;
+    }
+    static boolean supportsEq(int m) {
+        return isRealme(m) || m == MODEL_HW_5I || m == MODEL_HW_6I || m == MODEL_HW_PRO2
+            || m == MODEL_HW_PRO3 || m == MODEL_HW_PRO5 || m == MODEL_HW_CLIP || m == MODEL_HW_CLIP2
+            || m == MODEL_HW_SE2 || m == MODEL_HW_SE4 || m == MODEL_HW_STUDIO
+            || m == MODEL_HW_LACE2 || m == MODEL_HW_GENERIC;
+    }
+    static boolean hwEqPro3(int m) { return m == MODEL_HW_PRO3 || m == MODEL_HW_PRO5 || m == MODEL_HW_CLIP; }
+    static boolean supportsDoubleTap(int m) {
+        return isRealme(m) || m == MODEL_HW_3 || m == MODEL_HW_4I || m == MODEL_HW_5I || m == MODEL_HW_6I
+            || m == MODEL_HW_PRO3 || m == MODEL_HW_PRO5 || m == MODEL_HW_CLIP || m == MODEL_HW_CLIP2
+            || m == MODEL_HW_SE || m == MODEL_HW_SE2 || m == MODEL_HW_SE4 || m == MODEL_HW_GENERIC;
+    }
+    static boolean supportsTripleTap(int m) {
+        return isRealme(m) || m == MODEL_HW_5I || m == MODEL_HW_6I || m == MODEL_HW_CLIP2
+            || m == MODEL_HW_SE2 || m == MODEL_HW_SE4 || m == MODEL_HW_GENERIC;
+    }
+    static boolean supportsLongTap(int m) {
+        return isRealme(m) || m == MODEL_HW_4I || m == MODEL_HW_5I || m == MODEL_HW_6I || m == MODEL_HW_PRO
+            || m == MODEL_HW_PRO2 || m == MODEL_HW_PRO3 || m == MODEL_HW_PRO5 || m == MODEL_HW_CLIP
+            || m == MODEL_HW_CLIP2 || m == MODEL_HW_SE4 || m == MODEL_HW_LACE2 || m == MODEL_HW_GENERIC;
+    }
+    static boolean supportsTouch(int m) { return supportsDoubleTap(m) || supportsTripleTap(m) || supportsLongTap(m); }
+    static boolean supportsSpatial(int m) { return isRealme(m); }
+    static boolean supportsGameMode(int m) {
+        return isRealme(m) || m == MODEL_HW_5I || m == MODEL_HW_6I || m == MODEL_HW_PRO3 || m == MODEL_HW_PRO5
+            || m == MODEL_HW_CLIP || m == MODEL_HW_CLIP2 || m == MODEL_HW_SE2 || m == MODEL_HW_SE4
+            || m == MODEL_HW_LACE2 || m == MODEL_HW_GENERIC;
+    }
+    static boolean supportsHqAudio(int m) {
+        return m == MODEL_T200 || m == MODEL_AIR_7_PRO || m == MODEL_HW_5I || m == MODEL_HW_6I
+            || m == MODEL_HW_PRO2 || m == MODEL_HW_PRO3 || m == MODEL_HW_PRO5 || m == MODEL_HW_CLIP
+            || m == MODEL_HW_CLIP2 || m == MODEL_HW_LACE2 || m == MODEL_HW_GENERIC;
+    }
     static boolean usesLhdc(int m) { return m == MODEL_AIR_7_PRO; }
     static boolean supportsDynamic(int m) { return m == MODEL_T200 || m == MODEL_AIR_7_PRO; }
-    static boolean supportsDual(int m) { return m == MODEL_T200 || m == MODEL_AIR_7_PRO; }
-    static boolean supportsAutoPlayPause(int m) { return m == MODEL_AIR_7_PRO; }
+    static boolean supportsDual(int m) {
+        return m == MODEL_T200 || m == MODEL_AIR_7_PRO || m == MODEL_HW_5I || m == MODEL_HW_6I
+            || m == MODEL_HW_PRO || m == MODEL_HW_PRO2 || m == MODEL_HW_PRO3 || m == MODEL_HW_PRO5
+            || m == MODEL_HW_CLIP || m == MODEL_HW_CLIP2 || m == MODEL_HW_LACE2 || m == MODEL_HW_GENERIC;
+    }
+    static boolean supportsAutoPlayPause(int m) {
+        return m == MODEL_AIR_7_PRO || m == MODEL_HW_4I || m == MODEL_HW_5I || m == MODEL_HW_6I
+            || m == MODEL_HW_PRO2 || m == MODEL_HW_PRO3 || m == MODEL_HW_PRO5 || m == MODEL_HW_CLIP
+            || m == MODEL_HW_CLIP2 || m == MODEL_HW_STUDIO || m == MODEL_HW_GENERIC;
+    }
     static boolean supportsAutoAnswer(int m) { return m == MODEL_AIR_7_PRO; }
+    static boolean supportsUseTime(int m) { return isRealme(m); }
 
     static final class Frame {
         final int cmd;
@@ -106,6 +210,7 @@ final class Protocol {
         int leftBat = -1, rightBat = -1, caseBat = -1;
         boolean leftChg, rightChg, caseChg;
         int ancMode = -1; // -1 unknown, 0x08, 0x01, 0x02
+        int ancLevel = -1; // Huawei ANC level: 0=General, 1=Comfort, 2=Ultra, 3=Dynamic
         Boolean gameMode;
         Boolean spatialAudio;
         Boolean hqAudio;
@@ -125,6 +230,7 @@ final class Protocol {
             s.leftBat = leftBat; s.rightBat = rightBat; s.caseBat = caseBat;
             s.leftChg = leftChg; s.rightChg = rightChg; s.caseChg = caseChg;
             s.ancMode = ancMode;
+            s.ancLevel = ancLevel;
             s.gameMode = gameMode;
             s.spatialAudio = spatialAudio;
             s.hqAudio = hqAudio;

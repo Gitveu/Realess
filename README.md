@@ -2,22 +2,31 @@
 
 **English** | [Русский](README.ru.md)
 
-Standalone Android app (**realness**, package `uwu.realness.gitveu`, Kotlin + Jetpack Compose) and **TL TWS** protocol documentation for direct control of **realme Buds** earbuds — no **realme Link**, no accounts, no cloud, directly over Bluetooth.
+Standalone Android app (**realness**, package `uwu.realness.gitveu`, Kotlin + Jetpack Compose) and protocol documentation for direct control of **realme Buds** and **HUAWEI FreeBuds / FreeClip / FreeLace** earbuds — no **realme Link** or **HUAWEI AI Life**, no accounts, no cloud, directly over Bluetooth.
 
-**Latest version:** `v1.4 (build 5)` — release builds (`realness 1.4.apk` and `realness-tiny 1.4.apk`)  
-**Reverse-engineering source:** `realme Link.apkm` (package `com.realme.link`, stack `com.realme.iot.headset.tl.*`).
+**Latest version:** `v1.5 (build 6)` — release builds (`realness 1.5.apk` and `realness-tiny 1.5.apk`)  
+**Protocol references:** `realme Link.apkm` (stack `com.realme.iot.headset.tl.*`) and Huawei SPP from [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds).
 
 ---
 
 ## 📱 Supported Earbuds
 
-The list of supported models is actively growing — **new realme Buds models will be added gradually** based on protocol analysis and user feedback.
+The list of supported models is actively growing — **new earbud models will be added gradually** based on protocol analysis and user feedback.
 
+### realme Buds (TL + OPPOv1)
 | Model | Core Features | Model-Specific Features | Status |
 |---|---|---|---|
 | **realme Buds T300** | All core features | — | Verified on device |
 | **realme Buds T200** | All core features | LDAC, Dynamic Audio, Dual-Device Connection + connection history | Verified on device |
 | **realme Buds Air 7 Pro** | All core features | LHDC 5.0, Dynamic Audio, Dual-Device Connection + connection history, Auto Play/Pause, Auto Answer | Verified on device |
+
+### HUAWEI / HONOR (Huawei SPP, based on [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds))
+| Models | Supported Features | Status |
+|---|---|---|
+| **HUAWEI FreeBuds 5i / 6i / Pro / Pro 2 / Pro 3 / Pro 4 / Pro 5** | Battery L/Case/R, ANC + intensity levels (Comfort / General / Ultra / Dynamic), EQ (+ custom detection), Touch gestures, Auto Play/Pause, Sound quality priority, Low latency, Dual-Device Connection + device list | Added `[OpenFreebuds]` |
+| **HUAWEI FreeBuds 4i / SE / SE 2 / SE 4 ANC / 3** | Battery, ANC (where supported, + levels on SE 4), EQ (SE 2 / SE 4), Touch gestures, Auto Play/Pause (4i), Low latency (SE 2 / SE 4) | Added `[OpenFreebuds]` |
+| **HUAWEI FreeClip / FreeClip 2 / Studio / FreeLace Pro / FreeLace Pro 2** | Battery, ANC + levels (Studio / FreeLace), EQ, Touch gestures, Auto Play/Pause, Sound quality priority, Low latency, Dual-Device Connection (per model) | Added `[OpenFreebuds]` |
+| **HONOR Earbuds 2 / 2 SE / 2 Lite / S2** & other **HUAWEI FreeBuds** | Huawei SPP profile (battery, ANC, model-supported toggles) | Added `[OpenFreebuds]` |
 
 > **How to help add a new model:** open an Issue / PR with the exact Bluetooth name of your earbuds and screenshots of your model's settings from the official realme Link app (and, if possible, the copied protocol log from the app).
 

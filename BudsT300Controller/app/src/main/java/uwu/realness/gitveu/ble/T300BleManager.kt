@@ -5,6 +5,7 @@ import android.bluetooth.*
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import uwu.realness.gitveu.protocol.HuaweiProtocol
 import uwu.realness.gitveu.protocol.T300Protocol
 import uwu.realness.gitveu.protocol.T300Protocol.AncMode
 import uwu.realness.gitveu.protocol.T300Protocol.ComponentRole
@@ -70,6 +71,7 @@ class T300BleManager(private val context: Context) {
 
     private var activeTransport = ActiveTransport.NONE
     private var activeModel = T300Protocol.BudsModel.UNKNOWN
+    private val huaweiMultiDevices = mutableMapOf<Int, T300Protocol.ConnectedDeviceInfo>()
 
     private val _connectionState = MutableStateFlow(BleConnectionState.DISCONNECTED)
     val connectionState: StateFlow<BleConnectionState> = _connectionState.asStateFlow()
@@ -95,12 +97,18 @@ class T300BleManager(private val context: Context) {
         eventRefreshJob = scope.launch {
             delay(EVENT_REFRESH_DELAY_MS)
             log("Auto-refreshing state ($reason)")
-            refreshAncState()
-            delay(80)
-            refreshGameMode()
-            delay(80)
-            refreshSpatialAudio()
-            delay(80)
+            if (activeModel.supportsAnc) {
+                refreshAncState()
+                delay(80)
+            }
+            if (activeModel.supportsGameMode) {
+                refreshGameMode()
+                delay(80)
+            }
+            if (activeModel.supportsSpatialAudio) {
+                refreshSpatialAudio()
+                delay(80)
+            }
             if (activeModel.supportsHighQualityAudio) {
                 refreshHighQualityAudio()
                 delay(80)
@@ -123,24 +131,28 @@ class T300BleManager(private val context: Context) {
                 refreshAutoAnswer()
                 delay(80)
             }
-            refreshEq()
-            delay(80)
+            if (activeModel.supportsEq) {
+                refreshEq()
+                delay(80)
+            }
             refreshBattery()
             delay(80)
-            refreshKeySettings()
+            if (activeModel.supportsTouchSettings) {
+                refreshKeySettings()
+            }
         }
     }
 
     /**
-     * Connect to Buds T300:
-     * 1. Try direct RFCOMM SPP socket first (as in realme Link).
-     * 2. Fall back to BLE GATT if SPP fails.
+     * Connect to supported headset (realme Buds / HUAWEI FreeBuds / Honor):
+     * 1. Try direct RFCOMM SPP socket first.
+     * 2. Fall back to BLE GATT for realme models if SPP fails.
      */
     fun connect(device: BluetoothDevice) {
         disconnect()
         activeModel = T300Protocol.BudsModel.fromDeviceName(device.name)
         _connectionState.value = BleConnectionState.CONNECTING
-        val name = device.name ?: "realme Buds"
+        val name = device.name ?: "Headset"
         log("Starting connection to $name (${device.address}, model=$activeModel)...")
 
         scope.launch {
@@ -150,7 +162,13 @@ class T300BleManager(private val context: Context) {
                 return@launch
             }
 
-            // Attempt 2: BLE GATT Fallback
+            if (activeModel.isHuawei) {
+                log("Huawei SPP socket unavailable")
+                disconnect()
+                return@launch
+            }
+
+            // Attempt 2: BLE GATT Fallback (realme)
             log("SPP sockets unavailable. Falling back to BLE GATT...")
             connectGatt(device)
         }
@@ -162,9 +180,19 @@ class T300BleManager(private val context: Context) {
     private suspend fun tryConnectSpp(device: BluetoothDevice): Boolean {
         bluetoothAdapter?.cancelDiscovery()
 
-        for (uuid in T300GattConfig.KNOWN_SPP_UUIDS) {
-            val isRealmeDefault = (uuid == T300GattConfig.REALME_VENDOR_SPP_UUID)
-            val uuidLabel = if (isRealmeDefault) "Realme Vendor SPP" else "SPP $uuid"
+        val candidateUuids = when {
+            activeModel.isHuawei && activeModel.prefersHuaweiPrivateUuid -> T300GattConfig.HUAWEI_SPP_UUIDS_PORT16_FIRST
+            activeModel.isHuawei -> T300GattConfig.HUAWEI_SPP_UUIDS_PORT1_FIRST
+            else -> T300GattConfig.KNOWN_SPP_UUIDS
+        }
+
+        for (uuid in candidateUuids) {
+            val uuidLabel = when (uuid) {
+                T300GattConfig.REALME_VENDOR_SPP_UUID -> "Realme Vendor SPP"
+                T300GattConfig.HUAWEI_VENDOR_SPP_UUID -> "Huawei Private SPP"
+                T300GattConfig.STANDARD_SPP_UUID -> "Standard SPP"
+                else -> "SPP $uuid"
+            }
             log("Attempting SPP ($uuidLabel)...")
 
             val success = tryConnectSingleSocket(device, uuid, insecure = false) ||
@@ -232,11 +260,18 @@ class T300BleManager(private val context: Context) {
                     log("RX raw [${incoming.joinToString(" ") { "%02X".format(it) }}]")
                     accumulated += incoming
 
-                    val (frames, remaining) = T300Protocol.parseFramesFromStreamBuffer(accumulated)
-                    accumulated = remaining
-
-                    for (frame in frames) {
-                        handleIncomingFrame(frame)
+                    if (activeModel.isHuawei) {
+                        val (packets, remaining) = HuaweiProtocol.parsePacketsFromStreamBuffer(accumulated)
+                        accumulated = remaining
+                        for (pkg in packets) {
+                            handleIncomingHuaweiPacket(pkg)
+                        }
+                    } else {
+                        val (frames, remaining) = T300Protocol.parseFramesFromStreamBuffer(accumulated)
+                        accumulated = remaining
+                        for (frame in frames) {
+                            handleIncomingFrame(frame)
+                        }
                     }
                 }
             } catch (e: IOException) {
@@ -301,6 +336,7 @@ class T300BleManager(private val context: Context) {
 
         activeTransport = ActiveTransport.NONE
         activeModel = T300Protocol.BudsModel.UNKNOWN
+        huaweiMultiDevices.clear()
         _connectionState.value = BleConnectionState.DISCONNECTED
         _t300State.value = T300Protocol.T300State()
         log("Connection closed")
@@ -310,6 +346,14 @@ class T300BleManager(private val context: Context) {
      * Set ANC Mode
      */
     fun setAncMode(mode: AncMode) {
+        if (activeModel.isHuawei) {
+            val pkt = HuaweiProtocol.buildAncModeWrite(mode)
+            log("TX Huawei ANC [${mode.name}]")
+            sendRawBytes(pkt)
+            _t300State.value = _t300State.value.copy(ancMode = mode)
+            scope.launch { delay(180); refreshAncState() }
+            return
+        }
         val frame = T300Protocol.buildAncCommandFrame(mode)
         log("TX ANC [${mode.name}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
@@ -317,9 +361,26 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
+     * Set Huawei ANC intensity level (Comfort / General / Ultra / Dynamic)
+     */
+    fun setAncLevel(level: HuaweiProtocol.AncLevel) {
+        if (!activeModel.isHuawei) return
+        val pkt = HuaweiProtocol.buildAncLevelWrite(level)
+        log("TX Huawei ANC Level [${level.name}]")
+        sendRawBytes(pkt)
+        _t300State.value = _t300State.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
+        scope.launch { delay(180); refreshAncState() }
+    }
+
+    /**
      * Request battery levels
      */
     fun refreshBattery() {
+        if (activeModel.isHuawei) {
+            log("TX Huawei Battery Req")
+            sendRawBytes(HuaweiProtocol.buildBatteryRequest())
+            return
+        }
         val frame = T300Protocol.buildBatteryRequestFrame()
         log("TX Battery Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
@@ -329,24 +390,41 @@ class T300BleManager(private val context: Context) {
      * Request current ANC mode
      */
     fun refreshAncState() {
+        if (activeModel.isHuawei) {
+            log("TX Huawei ANC Req")
+            sendRawBytes(HuaweiProtocol.buildAncReadRequest())
+            return
+        }
         val frame = T300Protocol.buildAncStateRequestFrame()
         log("TX ANC State Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
     }
 
     /**
-     * Request Game Mode state
+     * Request Game Mode / Low Latency state
      */
     fun refreshGameMode() {
+        if (activeModel.isHuawei) {
+            log("TX Huawei LowLatency Req")
+            sendRawBytes(HuaweiProtocol.buildLowLatencyRead())
+            return
+        }
         val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_GAME_MODE)
         log("TX GameMode Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
     }
 
     /**
-     * Set Game Mode (ON / OFF)
+     * Set Game Mode / Low Latency (ON / OFF)
      */
     fun setGameMode(enabled: Boolean) {
+        if (activeModel.isHuawei) {
+            log("TX Huawei LowLatency [${if (enabled) "ON" else "OFF"}]")
+            sendRawBytes(HuaweiProtocol.buildLowLatencyWrite(enabled))
+            _t300State.value = _t300State.value.copy(gameMode = enabled)
+            scope.launch { delay(500); refreshGameMode() }
+            return
+        }
         val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_GAME_MODE, enabled)
         log("TX GameMode [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
@@ -357,6 +435,7 @@ class T300BleManager(private val context: Context) {
      * Request Spatial Audio state (Feature 27 / 0x1B)
      */
     fun refreshSpatialAudio() {
+        if (activeModel.isHuawei) return
         val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_SPATIAL_AUDIO)
         log("TX SpatialAudio Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
@@ -366,6 +445,7 @@ class T300BleManager(private val context: Context) {
      * Set Spatial Audio (ON / OFF)
      */
     fun setSpatialAudio(enabled: Boolean) {
+        if (activeModel.isHuawei) return
         val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_SPATIAL_AUDIO, enabled)
         log("TX SpatialAudio [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
@@ -373,18 +453,30 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
-     * Request High-Definition Audio / LDAC state (Feature 24 / 0x18)
+     * Request High-Definition Audio (realme LDAC/LHDC 5.0 or Huawei Sound Quality Preference)
      */
     fun refreshHighQualityAudio() {
+        if (activeModel.isHuawei) {
+            log("TX Huawei SoundQuality Req")
+            sendRawBytes(HuaweiProtocol.buildSoundQualityRead())
+            return
+        }
         val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_HIGH_QUALITY_AUDIO)
         log("TX HighQualityAudio Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
     }
 
     /**
-     * Set High-Definition Audio / LDAC (ON / OFF)
+     * Set High-Definition Audio (ON / OFF)
      */
     fun setHighQualityAudio(enabled: Boolean) {
+        if (activeModel.isHuawei) {
+            log("TX Huawei SoundQuality [${if (enabled) "QUALITY" else "CONNECTIVITY"}]")
+            sendRawBytes(HuaweiProtocol.buildSoundQualityWrite(enabled))
+            _t300State.value = _t300State.value.copy(highQualityAudio = enabled)
+            scope.launch { delay(200); refreshHighQualityAudio() }
+            return
+        }
         val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_HIGH_QUALITY_AUDIO, enabled)
         log("TX HighQualityAudio [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
@@ -395,6 +487,7 @@ class T300BleManager(private val context: Context) {
      * Request Dynamic Audio state (Feature 29 / 0x1D)
      */
     fun refreshDynamicAudio() {
+        if (activeModel.isHuawei) return
         val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_DYNAMIC_AUDIO)
         log("TX DynamicAudio Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
@@ -404,6 +497,7 @@ class T300BleManager(private val context: Context) {
      * Set Dynamic Audio (ON / OFF)
      */
     fun setDynamicAudio(enabled: Boolean) {
+        if (activeModel.isHuawei) return
         val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_DYNAMIC_AUDIO, enabled)
         log("TX DynamicAudio [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
@@ -411,9 +505,14 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
-     * Request Dual-Device Connection state (Feature 17 / 0x11)
+     * Request Dual-Device Connection state
      */
     fun refreshDualConnection() {
+        if (activeModel.isHuawei) {
+            log("TX Huawei DualConnect Req")
+            sendRawBytes(HuaweiProtocol.buildDualConnectRead())
+            return
+        }
         val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_DUAL_CONNECTION)
         log("TX DualConnection Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
@@ -423,6 +522,13 @@ class T300BleManager(private val context: Context) {
      * Set Dual-Device Connection (ON / OFF)
      */
     fun setDualConnection(enabled: Boolean) {
+        if (activeModel.isHuawei) {
+            log("TX Huawei DualConnect [${if (enabled) "ON" else "OFF"}]")
+            sendRawBytes(HuaweiProtocol.buildDualConnectWrite(enabled))
+            _t300State.value = _t300State.value.copy(dualConnection = enabled)
+            scope.launch { delay(250); refreshDualConnection() }
+            return
+        }
         val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_DUAL_CONNECTION, enabled)
         log("TX DualConnection [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
@@ -430,18 +536,29 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
-     * Request Multi-Connect device list (Opcode 0x0112)
+     * Request Multi-Connect device list
      */
     fun refreshMultiConnectInfo() {
+        if (activeModel.isHuawei) {
+            huaweiMultiDevices.clear()
+            log("TX Huawei DualConnect Enum")
+            sendRawBytes(HuaweiProtocol.buildDualConnectEnumerate())
+            return
+        }
         val frame = T300Protocol.buildMultiConnectInfoRequestFrame()
         log("TX MultiConnect Info Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
     }
 
     /**
-     * Request Auto Play/Pause (Wear Detection) state (Feature 4 / 0x04)
+     * Request Auto Play/Pause (Wear Detection) state
      */
     fun refreshAutoPlayPause() {
+        if (activeModel.isHuawei) {
+            log("TX Huawei AutoPause Req")
+            sendRawBytes(HuaweiProtocol.buildAutoPauseRead())
+            return
+        }
         val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_AUTO_PLAY_PAUSE)
         log("TX AutoPlayPause Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
@@ -451,6 +568,13 @@ class T300BleManager(private val context: Context) {
      * Set Auto Play/Pause (ON / OFF)
      */
     fun setAutoPlayPause(enabled: Boolean) {
+        if (activeModel.isHuawei) {
+            log("TX Huawei AutoPause [${if (enabled) "ON" else "OFF"}]")
+            sendRawBytes(HuaweiProtocol.buildAutoPauseWrite(enabled))
+            _t300State.value = _t300State.value.copy(autoPlayPause = enabled)
+            scope.launch { delay(200); refreshAutoPlayPause() }
+            return
+        }
         val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_AUTO_PLAY_PAUSE, enabled)
         log("TX AutoPlayPause [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
@@ -461,6 +585,7 @@ class T300BleManager(private val context: Context) {
      * Request Auto Answer state (Feature 8 / 0x08)
      */
     fun refreshAutoAnswer() {
+        if (activeModel.isHuawei) return
         val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_AUTO_ANSWER)
         log("TX AutoAnswer Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
@@ -470,6 +595,7 @@ class T300BleManager(private val context: Context) {
      * Set Auto Answer (ON / OFF)
      */
     fun setAutoAnswer(enabled: Boolean) {
+        if (activeModel.isHuawei) return
         val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_AUTO_ANSWER, enabled)
         log("TX AutoAnswer [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
@@ -477,36 +603,51 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
-     * Request total usage time for Left/Right earbuds (Opcode 0x0128)
+     * Request total usage time for Left/Right earbuds (realme Opcode 0x0128)
      */
     fun refreshUseTime() {
+        if (activeModel.isHuawei) return
         val frame = T300Protocol.buildUseTimeRequestFrame()
         log("TX UseTime Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
     }
 
     /**
-     * Request current EQ preset (Opcode 0x010F)
+     * Request current EQ preset
      */
     fun refreshEq() {
+        if (activeModel.isHuawei) {
+            log("TX Huawei EQ Req")
+            sendRawBytes(HuaweiProtocol.buildEqRead())
+            return
+        }
         val frame = T300Protocol.buildEqRequestFrame()
         log("TX EQ Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
     }
 
     /**
-     * Request custom EQ curves (Opcode 0x0122)
+     * Request custom EQ curves (realme Opcode 0x0122)
      */
     fun refreshAllEq() {
+        if (activeModel.isHuawei) return
         val frame = T300Protocol.buildAllEqRequestFrame()
         log("TX All EQ Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
     }
 
     /**
-     * Set EQ preset (Opcode 0x0406)
+     * Set EQ preset
      */
     fun setEqPreset(preset: EqPreset) {
+        if (activeModel.isHuawei) {
+            val hwId = HuaweiProtocol.eqPresetToHuaweiId(preset, activeModel.huaweiEqUsesPro3Ids)
+            log("TX Huawei EQ [${preset.name} -> id=$hwId]")
+            sendRawBytes(HuaweiProtocol.buildEqWrite(hwId))
+            _t300State.value = _t300State.value.copy(eqPreset = preset, activeCustomEqName = null)
+            scope.launch { delay(200); refreshEq() }
+            return
+        }
         val frame = T300Protocol.buildEqCommandFrame(preset)
         log("TX EQ [${preset.name}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
@@ -517,18 +658,44 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
-     * Request touch button settings (Opcode 0x0108)
+     * Request touch button settings
      */
     fun refreshKeySettings() {
+        if (activeModel.isHuawei) {
+            scope.launch {
+                if (activeModel.supportsDoubleTap) {
+                    sendRawBytes(HuaweiProtocol.buildDoubleTapRead())
+                    delay(70)
+                }
+                if (activeModel.supportsTripleTap) {
+                    sendRawBytes(HuaweiProtocol.buildTripleTapRead())
+                    delay(70)
+                }
+                if (activeModel.supportsLongPress) {
+                    sendRawBytes(HuaweiProtocol.buildLongTapRead())
+                }
+            }
+            return
+        }
         val frame = T300Protocol.buildKeyFunctionRequestFrame()
         log("TX KeySettings Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
     }
 
     /**
-     * Set touch button setting (Opcode 0x0401)
+     * Set touch button setting
      */
     fun setKeySetting(side: TouchSide, gesture: TouchGesture, action: TouchAction) {
+        if (activeModel.isHuawei) {
+            val isFb3 = activeModel == T300Protocol.BudsModel.HUAWEI_FREEBUDS_3
+            val code = HuaweiProtocol.actionToHuaweiTapCode(action, gesture, isFb3)
+            log("TX Huawei Key [${side.name} ${gesture.name} -> ${action.name} (code=$code)]")
+            sendRawBytes(HuaweiProtocol.buildKeyWrite(gesture, side, code))
+            val currentMap = _t300State.value.touchSettings.toMutableMap()
+            currentMap[Pair(side, gesture)] = action
+            _t300State.value = _t300State.value.copy(touchSettings = currentMap)
+            return
+        }
         val frame = T300Protocol.buildKeyFunctionCommandFrame(side, gesture, action)
         log("TX KeySetting [${side.name} ${gesture.name} -> ${action.name}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
@@ -540,11 +707,16 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
-     * Отправка массива байтов в активный транспорт (SPP или GATT).
-     * Кадры TL оборачиваются в транспортный формат OPPOv1 (SOF 0xAA).
+     * Отправка TL-кадра (оборачивается в OPPOv1 SOF 0xAA).
      */
     private fun sendData(data: ByteArray) {
-        val wireData = T300Protocol.wrapOppoFrame(data)
+        sendRawBytes(T300Protocol.wrapOppoFrame(data))
+    }
+
+    /**
+     * Отправка готового wire-массива байтов в активный транспорт (SPP или GATT).
+     */
+    private fun sendRawBytes(wireData: ByteArray) {
         log("TX Wire [${wireData.joinToString(" ") { "%02X".format(it) }}]")
 
         scope.launch {
@@ -605,12 +777,18 @@ class T300BleManager(private val context: Context) {
         scope.launch {
             delay(150)
             log("✓ Device ready! Requesting state...")
-            refreshAncState()
-            delay(80)
-            refreshGameMode()
-            delay(80)
-            refreshSpatialAudio()
-            delay(80)
+            if (activeModel.supportsAnc) {
+                refreshAncState()
+                delay(80)
+            }
+            if (activeModel.supportsGameMode) {
+                refreshGameMode()
+                delay(80)
+            }
+            if (activeModel.supportsSpatialAudio) {
+                refreshSpatialAudio()
+                delay(80)
+            }
             if (activeModel.supportsHighQualityAudio) {
                 refreshHighQualityAudio()
                 delay(80)
@@ -633,17 +811,27 @@ class T300BleManager(private val context: Context) {
                 refreshAutoAnswer()
                 delay(80)
             }
-            refreshEq()
-            delay(80)
-            refreshAllEq()
-            delay(80)
+            if (activeModel.supportsEq) {
+                refreshEq()
+                delay(80)
+                if (!activeModel.isHuawei) {
+                    refreshAllEq()
+                    delay(80)
+                }
+            }
             refreshBattery()
             delay(80)
-            refreshKeySettings()
-            delay(80)
-            refreshUseTime()
-            delay(80)
-            registerNotifications()
+            if (activeModel.supportsTouchSettings) {
+                refreshKeySettings()
+                delay(80)
+            }
+            if (activeModel.supportsUseTime) {
+                refreshUseTime()
+                delay(80)
+            }
+            if (!activeModel.isHuawei) {
+                registerNotifications()
+            }
             startPolling()
         }
     }
@@ -666,12 +854,18 @@ class T300BleManager(private val context: Context) {
         pollJob = scope.launch {
             while (isActive && _connectionState.value == BleConnectionState.CONNECTED) {
                 delay(POLL_INTERVAL_MS)
-                refreshAncState()
-                delay(60)
-                refreshGameMode()
-                delay(60)
-                refreshSpatialAudio()
-                delay(60)
+                if (activeModel.supportsAnc) {
+                    refreshAncState()
+                    delay(60)
+                }
+                if (activeModel.supportsGameMode) {
+                    refreshGameMode()
+                    delay(60)
+                }
+                if (activeModel.supportsSpatialAudio) {
+                    refreshSpatialAudio()
+                    delay(60)
+                }
                 if (activeModel.supportsHighQualityAudio) {
                     refreshHighQualityAudio()
                     delay(60)
@@ -692,8 +886,10 @@ class T300BleManager(private val context: Context) {
                     refreshAutoAnswer()
                     delay(60)
                 }
-                refreshEq()
-                delay(60)
+                if (activeModel.supportsEq) {
+                    refreshEq()
+                    delay(60)
+                }
                 refreshBattery()
             }
         }
@@ -1083,5 +1279,176 @@ class T300BleManager(private val context: Context) {
             }
         }
         _t300State.value = current
+    }
+
+    /**
+     * Обработка входящего пакета Huawei SPP (SOF 0x5A, по базе OpenFreebuds)
+     */
+    private fun handleIncomingHuaweiPacket(pkg: HuaweiProtocol.Packet) {
+        val hexCmd = "0x" + pkg.commandId.toString(16).uppercase().padStart(4, '0')
+        when (pkg.commandId) {
+            HuaweiProtocol.CMD_BATTERY_READ,
+            HuaweiProtocol.CMD_BATTERY_NOTIFY -> {
+                val p1 = pkg.param(1) // global (1B)
+                val p2 = pkg.param(2) // TWS [L, R, Case] (3B)
+                val p3 = pkg.param(3) // charging flags (1B or 3B)
+                val batteries = mutableListOf<T300Protocol.BatteryInfo>()
+
+                if (p2 != null && p2.size >= 3) {
+                    val leftChg = p3 != null && p3.size >= 3 && p3[0].toInt() == 1
+                    val rightChg = p3 != null && p3.size >= 3 && p3[1].toInt() == 1
+                    val caseChg = p3 != null && p3.size >= 3 && p3[2].toInt() == 1
+                    val lRaw = p2[0].toInt() and 0xFF
+                    val rRaw = p2[1].toInt() and 0xFF
+                    val cRaw = p2[2].toInt() and 0xFF
+                    val lLvl = if (lRaw in 1..100 || (lRaw == 0 && leftChg)) lRaw else -1
+                    val rLvl = if (rRaw in 1..100 || (rRaw == 0 && rightChg)) rRaw else -1
+                    val cLvl = if (cRaw in 1..100 || (cRaw == 0 && caseChg)) cRaw else -1
+                    batteries.add(T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, lLvl, leftChg))
+                    batteries.add(T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, rLvl, rightChg))
+                    batteries.add(T300Protocol.BatteryInfo(ComponentRole.CASE, cLvl, caseChg))
+                } else if (p1 != null && p1.isNotEmpty()) {
+                    val gLvl = (p1[0].toInt() and 0xFF).let { if (it in 0..100) it else -1 }
+                    val gChg = p3 != null && p3.any { it.toInt() == 1 }
+                    batteries.add(T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, gLvl, gChg))
+                    batteries.add(T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, gLvl, gChg))
+                    batteries.add(T300Protocol.BatteryInfo(ComponentRole.CASE, -1, false))
+                }
+
+                if (batteries.isNotEmpty()) {
+                    val valid = batteries.filter { it.level >= 0 }.map {
+                        val roleName = when (it.role) {
+                            ComponentRole.LEFT_EAR -> "Left"
+                            ComponentRole.RIGHT_EAR -> "Right"
+                            ComponentRole.CASE -> "Case"
+                        }
+                        "$roleName: ${it.level}%${if (it.isCharging) " ⚡" else ""}"
+                    }
+                    log("RX Huawei Battery ($hexCmd) -> $valid")
+                    updateBatteryState(batteries, isSnapshot = true)
+                }
+            }
+            HuaweiProtocol.CMD_ANC_READ -> {
+                val data = pkg.param(1)
+                if (data != null && data.size >= 2) {
+                    val levelByte = data[0]
+                    val modeByte = data[1].toInt() and 0xFF
+                    val ancMode = when (modeByte) {
+                        0 -> AncMode.OFF
+                        1 -> AncMode.NOISE_REDUCTION
+                        2 -> AncMode.TRANSPARENCY
+                        else -> null
+                    }
+                    val ancLevel = if (modeByte == 1) HuaweiProtocol.AncLevel.fromByte(levelByte) else null
+                    if (ancMode != null) {
+                        log("RX Huawei ANC: ${ancMode.name}${if (ancLevel != null) " (${ancLevel.name})" else ""}")
+                        _t300State.value = _t300State.value.copy(ancMode = ancMode, ancLevel = ancLevel)
+                    }
+                }
+            }
+            HuaweiProtocol.CMD_ANC_LEGACY_EVENT -> {
+                log("RX Huawei ANC Event ($hexCmd)")
+                refreshAncState()
+            }
+            HuaweiProtocol.CMD_LOW_LATENCY -> {
+                val v = pkg.param(2)
+                if (v != null && v.isNotEmpty()) {
+                    val on = (v[0].toInt() and 0xFF) == 1
+                    log("RX Huawei LowLatency: ${if (on) "ON" else "OFF"}")
+                    _t300State.value = _t300State.value.copy(gameMode = on)
+                }
+            }
+            HuaweiProtocol.CMD_AUTO_PAUSE_READ -> {
+                val v = pkg.param(1)
+                if (v != null && v.isNotEmpty()) {
+                    val on = (v[0].toInt() and 0xFF) == 1
+                    log("RX Huawei AutoPause: ${if (on) "ON" else "OFF"}")
+                    _t300State.value = _t300State.value.copy(autoPlayPause = on)
+                }
+            }
+            HuaweiProtocol.CMD_SOUND_QUALITY_READ -> {
+                val v = pkg.param(2)
+                if (v != null && v.isNotEmpty()) {
+                    val hq = (v[0].toInt() and 0xFF) == 1
+                    log("RX Huawei SoundQuality: ${if (hq) "QUALITY" else "CONNECTIVITY"}")
+                    _t300State.value = _t300State.value.copy(highQualityAudio = hq)
+                }
+            }
+            HuaweiProtocol.CMD_EQ_READ -> {
+                val cur = pkg.param(2)
+                val customRaw = pkg.param(8)
+                val customNames = if (customRaw != null && customRaw.isNotEmpty()) {
+                    HuaweiProtocol.parseCustomEqNames(customRaw)
+                } else emptyMap()
+                if (cur != null && cur.isNotEmpty()) {
+                    val modeId = cur[0].toInt() // signed byte
+                    val preset = HuaweiProtocol.huaweiIdToEqPreset(modeId, activeModel.huaweiEqUsesPro3Ids)
+                    if (preset != null) {
+                        log("RX Huawei EQ: ${preset.name} (id=$modeId)")
+                        _t300State.value = _t300State.value.copy(eqPreset = preset, activeCustomEqName = null)
+                    } else {
+                        val customName = customNames[modeId] ?: "EQ #$modeId"
+                        log("RX Huawei EQ Custom: $customName (id=$modeId)")
+                        _t300State.value = _t300State.value.copy(eqPreset = null, activeCustomEqName = customName)
+                    }
+                }
+            }
+            HuaweiProtocol.CMD_DUAL_CONNECT_READ -> {
+                val v = pkg.param(1)
+                if (v != null && v.isNotEmpty()) {
+                    val on = (v[0].toInt() and 0xFF) == 1
+                    log("RX Huawei DualConnect: ${if (on) "ON" else "OFF"}")
+                    _t300State.value = _t300State.value.copy(dualConnection = on)
+                }
+            }
+            HuaweiProtocol.CMD_DUAL_CONNECT_ENUMERATE -> {
+                val macBytes = pkg.param(4)
+                val idxBytes = pkg.param(3)
+                val stateBytes = pkg.param(5)
+                val nameBytes = pkg.param(9)
+                if (macBytes != null && macBytes.size >= 6) {
+                    val mac = macBytes.take(6).joinToString(":") { "%02X".format(it) }
+                    val idx = if (idxBytes != null && idxBytes.isNotEmpty()) idxBytes[0].toInt() and 0xFF else huaweiMultiDevices.size
+                    val connState = if (stateBytes != null && stateBytes.isNotEmpty()) stateBytes[0].toInt() and 0xFF else 0
+                    val name = if (nameBytes != null && nameBytes.isNotEmpty()) {
+                        String(nameBytes, Charsets.UTF_8).trimEnd('\u0000')
+                    } else mac
+                    huaweiMultiDevices[idx] = T300Protocol.ConnectedDeviceInfo(mac, name, connState, 0)
+                    val sorted = huaweiMultiDevices.entries.sortedBy { it.key }.map { it.value }
+                    log("RX Huawei DualConnect Device: $name ($mac, state=$connState)")
+                    _t300State.value = _t300State.value.copy(connectedDevices = sorted)
+                }
+            }
+            HuaweiProtocol.CMD_DUAL_CONNECT_CHANGE_EVENT -> {
+                log("RX Huawei DualConnect Change Event")
+                refreshMultiConnectInfo()
+            }
+            HuaweiProtocol.CMD_DUAL_TAP_READ,
+            HuaweiProtocol.CMD_TRIPLE_TAP_READ,
+            HuaweiProtocol.CMD_LONG_TAP_READ -> {
+                val gesture = when (pkg.commandId) {
+                    HuaweiProtocol.CMD_DUAL_TAP_READ -> TouchGesture.DOUBLE_TAP
+                    HuaweiProtocol.CMD_TRIPLE_TAP_READ -> TouchGesture.TRIPLE_TAP
+                    else -> TouchGesture.LONG_PRESS
+                }
+                val isFb3 = activeModel == T300Protocol.BudsModel.HUAWEI_FREEBUDS_3
+                val left = pkg.param(1)
+                val right = pkg.param(2)
+                val map = _t300State.value.touchSettings.toMutableMap()
+                if (left != null && left.isNotEmpty()) {
+                    map[Pair(TouchSide.LEFT, gesture)] =
+                        HuaweiProtocol.huaweiTapCodeToAction(left[0].toInt(), gesture, isFb3)
+                }
+                if (right != null && right.isNotEmpty()) {
+                    map[Pair(TouchSide.RIGHT, gesture)] =
+                        HuaweiProtocol.huaweiTapCodeToAction(right[0].toInt(), gesture, isFb3)
+                }
+                log("RX Huawei Key [${gesture.name}] updated")
+                _t300State.value = _t300State.value.copy(touchSettings = map)
+            }
+            else -> {
+                log("RX Huawei $hexCmd (${pkg.params.size} params)")
+            }
+        }
     }
 }

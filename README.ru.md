@@ -2,22 +2,31 @@
 
 [English](README.md) | **Русский**
 
-Автономное Android-приложение (**realness**, пакет `uwu.realness.gitveu`, Kotlin + Jetpack Compose) и документация протокола **TL TWS** для прямого управления наушниками **realme Buds** — без **realme Link**, без аккаунтов и облака, напрямую по Bluetooth.
+Автономное Android-приложение (**realness**, пакет `uwu.realness.gitveu`, Kotlin + Jetpack Compose) и документация протоколов для прямого управления наушниками **realme Buds** и **HUAWEI FreeBuds / FreeClip / FreeLace** — без **realme Link** и **HUAWEI AI Life**, без аккаунтов и облака, напрямую по Bluetooth.
 
-**Актуальная версия:** `v1.4 (build 5)` — release-сборки (`realness 1.4.apk` и `realness-tiny 1.4.apk`)  
-**Исходный артефакт анализа:** `realme Link.apkm` (пакет `com.realme.link`, стек `com.realme.iot.headset.tl.*`).
+**Актуальная версия:** `v1.5 (build 6)` — release-сборки (`realness 1.5.apk` и `realness-tiny 1.5.apk`)  
+**Источники протоколов:** анализ `realme Link.apkm` (стек `com.realme.iot.headset.tl.*`) и протокол Huawei SPP из проекта [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds).
 
 ---
 
 ## 📱 Поддерживаемые наушники
 
-Список поддерживаемых моделей активно развивается — **база наушников будет постепенно дополняться** новыми моделями realme Buds по мере анализа протокола и обратной связи от пользователей.
+Список поддерживаемых моделей активно развивается — **база наушников будет постепенно дополняться** новыми моделями по мере анализа протоколов и обратной связи от пользователей.
 
+### realme Buds (протокол TL + OPPOv1)
 | Модель | Основные функции | Модельные функции | Статус |
 |---|---|---|---|
 | **realme Buds T300** | Все основные функции | — | Подтверждено на устройстве |
 | **realme Buds T200** | Все основные функции | LDAC, Динамическое аудио, Подключение к двум устройствам + история подключений | Подтверждено на устройстве |
 | **realme Buds Air 7 Pro** | Все основные функции | LHDC 5.0, Динамическое аудио, Подключение к двум устройствам + история подключений, Автовоспроизведение/пауза, Автоответ | Подтверждено на устройстве |
+
+### HUAWEI / HONOR (протокол Huawei SPP, по базе [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds))
+| Модели | Поддерживаемые функции | Статус |
+|---|---|---|
+| **HUAWEI FreeBuds 5i / 6i / Pro / Pro 2 / Pro 3 / Pro 4 / Pro 5** | Батарея L/Кейс/R, ANC + уровни интенсивности (Комфорт / Обычный / Ультра / Динамический), EQ (+ кастомные), жесты, Автопауза, Приоритет качества звука, Low Latency, Подключение к двум устройствам + список устройств | Добавлено `[OpenFreebuds]` |
+| **HUAWEI FreeBuds 4i / SE / SE 2 / SE 4 ANC / 3** | Батарея, ANC (где поддерживается, + уровни на SE 4), EQ (SE 2 / SE 4), жесты, Автопауза (4i), Low Latency (SE 2 / SE 4) | Добавлено `[OpenFreebuds]` |
+| **HUAWEI FreeClip / FreeClip 2 / Studio / FreeLace Pro / FreeLace Pro 2** | Батарея, ANC + уровни (Studio / FreeLace), EQ, жесты, Автопауза, Приоритет качества, Low Latency, Dual-Connect (по возможностям модели) | Добавлено `[OpenFreebuds]` |
+| **HONOR Earbuds 2 / 2 SE / 2 Lite / S2** и прочие **HUAWEI FreeBuds** | Профиль Huawei SPP (батарея, ANC, настройки по модели) | Добавлено `[OpenFreebuds]` |
 
 > **Как помочь добавить новую модель:** откройте Issue / PR с точным Bluetooth-именем наушников и скриншотами настроек вашей модели из официального realme Link (и, по возможности, скопированным протокольным логом из приложения).
 

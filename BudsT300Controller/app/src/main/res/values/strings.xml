@@ -27,15 +27,15 @@
 
     <string name="hint_connecting">Connecting to earbuds via SPP/GATT…</string>
     <string name="hint_disconnected">Earbuds are not connected to phone via Bluetooth. Open the case or put on the earbuds.</string>
-    <string name="hint_not_paired">No supported realme Buds (T300, T200, Air 7 Pro) found among paired Bluetooth devices.</string>
-    <string name="hint_unsupported">The connected device is not supported. Supported models: realme Buds T300, T200, Air 7 Pro.</string>
+    <string name="hint_not_paired">No supported earbuds (realme Buds / HUAWEI FreeBuds) found among paired Bluetooth devices.</string>
+    <string name="hint_unsupported">The connected device is not supported. Supported: realme Buds (T300, T200, Air 7 Pro) and HUAWEI FreeBuds / FreeClip / FreeLace.</string>
     <string name="hint_no_permissions">Grant Bluetooth permissions above.</string>
     <string name="hint_waiting_activity">Waiting for device activity…</string>
     <string name="btn_reconnect">Reconnect to earbuds</string>
 
     <!-- Unsupported Device Warning -->
     <string name="unsupported_warning_title">Unsupported device</string>
-    <string name="unsupported_warning_message">\"%s\" is not supported by this app. Supported models: realme Buds T300, T200, Air 7 Pro.</string>
+    <string name="unsupported_warning_message">\"%s\" is not supported by this app. Supported: realme Buds (T300, T200, Air 7 Pro) and HUAWEI FreeBuds / FreeClip / FreeLace.</string>
 
     <!-- Permissions Banner -->
     <string name="perm_warning_title">Bluetooth access required</string>
@@ -48,6 +48,10 @@
     <string name="anc_noise_reduction">Noise cancellation</string>
     <string name="anc_off">Off</string>
     <string name="anc_transparency">Transparency</string>
+    <string name="anc_level_comfort">Comfort</string>
+    <string name="anc_level_general">General</string>
+    <string name="anc_level_ultra">Ultra</string>
+    <string name="anc_level_dynamic">Dynamic</string>
 
     <!-- Sound Effects (EQ) -->
     <string name="section_eq">Sound effects</string>
@@ -55,6 +59,10 @@
     <string name="eq_original_sound">Original sound</string>
     <string name="eq_pure_bass">Pure bass</string>
     <string name="eq_deep_bass">Deep bass</string>
+    <string name="eq_huawei_voices">Voices</string>
+    <string name="eq_huawei_default">Default</string>
+    <string name="eq_huawei_treble">Treble boost</string>
+    <string name="eq_huawei_bass">Bass boost</string>
     <string name="eq_custom_active">Custom: %s (active)</string>
 
     <!-- Button Settings (Gestures) -->
@@ -96,10 +104,11 @@
     <string name="game_mode_title">Game mode</string>
     <string name="game_mode_desc">Provides smooth gameplay with ultra-low audio latency.</string>
 
-    <!-- High-Definition Audio (LDAC / LHDC 5.0) & Dynamic Audio -->
+    <!-- High-Definition Audio (LDAC / LHDC 5.0 / Huawei) & Dynamic Audio -->
     <string name="high_quality_audio_title">High-definition audio</string>
     <string name="high_quality_audio_desc">LDAC codec for superior audio quality.</string>
     <string name="high_quality_audio_desc_lhdc">Play high-resolution LHDC 5.0 audio.</string>
+    <string name="high_quality_audio_desc_huawei">Prioritize sound quality over connection stability.</string>
     <string name="dynamic_audio_title">Dynamic audio</string>
     <string name="dynamic_audio_desc">Dynamically enhances bass and sound depth.</string>
 

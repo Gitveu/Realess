@@ -49,6 +49,7 @@ import androidx.core.content.ContextCompat
 import uwu.realness.gitveu.BuildConfig
 import uwu.realness.gitveu.R
 import uwu.realness.gitveu.ble.BleConnectionState
+import uwu.realness.gitveu.protocol.HuaweiProtocol
 import uwu.realness.gitveu.protocol.T300Protocol
 import uwu.realness.gitveu.protocol.T300Protocol.AncMode
 import uwu.realness.gitveu.protocol.T300Protocol.TouchSide
@@ -251,66 +252,85 @@ fun MainScreen(
             }
 
             // ANC Section
-            Text(
-                text = stringResource(R.string.section_anc),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            AncModeSelector(
-                currentMode = t300State.ancMode,
-                enabled = connectionState == BleConnectionState.CONNECTED,
-                onModeSelected = { viewModel.setAncMode(it) }
-            )
+            if (!detectedModel.isSupported || detectedModel.supportsAnc) {
+                Text(
+                    text = stringResource(R.string.section_anc),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                AncModeSelector(
+                    currentMode = t300State.ancMode,
+                    currentLevel = t300State.ancLevel,
+                    supportsAncLevel = detectedModel.supportsAncLevel,
+                    supportsAncDynamic = detectedModel.supportsAncDynamic,
+                    enabled = connectionState == BleConnectionState.CONNECTED,
+                    onModeSelected = { viewModel.setAncMode(it) },
+                    onLevelSelected = { viewModel.setAncLevel(it) }
+                )
+            }
 
             // Sound Effects (EQ) Section
-            Text(
-                text = stringResource(R.string.section_eq),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            EqPresetSelector(
-                currentPreset = t300State.eqPreset,
-                activeCustomName = t300State.activeCustomEqName,
-                enabled = connectionState == BleConnectionState.CONNECTED,
-                onPresetSelected = { viewModel.setEqPreset(it) }
-            )
+            if (!detectedModel.isSupported || detectedModel.supportsEq) {
+                Text(
+                    text = stringResource(R.string.section_eq),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                EqPresetSelector(
+                    currentPreset = t300State.eqPreset,
+                    activeCustomName = t300State.activeCustomEqName,
+                    isHuawei = detectedModel.isHuawei,
+                    enabled = connectionState == BleConnectionState.CONNECTED,
+                    onPresetSelected = { viewModel.setEqPreset(it) }
+                )
+            }
 
             // Button Settings (Gestures) Section
-            Text(
-                text = stringResource(R.string.section_touch_settings),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            ButtonSettingsCard(
-                selectedSide = selectedTouchSide,
-                touchSettings = t300State.touchSettings,
-                enabled = connectionState == BleConnectionState.CONNECTED,
-                onSideSelected = { selectedTouchSide = it },
-                onGestureClick = { gesture ->
-                    activeEditingGesture = Pair(selectedTouchSide, gesture)
+            if (!detectedModel.isSupported || detectedModel.supportsTouchSettings) {
+                Text(
+                    text = stringResource(R.string.section_touch_settings),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                val visibleGestures = buildList {
+                    if (!detectedModel.isSupported || detectedModel.supportsDoubleTap) add(TouchGesture.DOUBLE_TAP)
+                    if (!detectedModel.isSupported || detectedModel.supportsTripleTap) add(TouchGesture.TRIPLE_TAP)
+                    if (!detectedModel.isSupported || detectedModel.supportsLongPress) add(TouchGesture.LONG_PRESS)
                 }
-            )
+                ButtonSettingsCard(
+                    selectedSide = selectedTouchSide,
+                    gestures = visibleGestures,
+                    touchSettings = t300State.touchSettings,
+                    enabled = connectionState == BleConnectionState.CONNECTED,
+                    onSideSelected = { selectedTouchSide = it },
+                    onGestureClick = { gesture ->
+                        activeEditingGesture = Pair(selectedTouchSide, gesture)
+                    }
+                )
+            }
 
-            // Spatial Audio Section
-            Text(
-                text = stringResource(R.string.section_spatial_audio),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            SpatialAudioCard(
-                spatialAudio = t300State.spatialAudio,
-                isPlayingDemo = isPlayingDemo,
-                enabled = connectionState == BleConnectionState.CONNECTED,
-                onToggle = { viewModel.setSpatialAudio(it) },
-                onToggleDemo = { viewModel.toggleDemoAudio() }
-            )
+            // Spatial Audio Section (realme only)
+            if (!detectedModel.isSupported || detectedModel.supportsSpatialAudio) {
+                Text(
+                    text = stringResource(R.string.section_spatial_audio),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                SpatialAudioCard(
+                    spatialAudio = t300State.spatialAudio,
+                    isPlayingDemo = isPlayingDemo,
+                    enabled = connectionState == BleConnectionState.CONNECTED,
+                    onToggle = { viewModel.setSpatialAudio(it) },
+                    onToggleDemo = { viewModel.toggleDemoAudio() }
+                )
+            }
 
-            // High-Definition Audio (LDAC for T200, LHDC 5.0 for Air 7 Pro)
+            // High-Definition Audio (LDAC for T200, LHDC 5.0 for Air 7 Pro, Sound Quality Priority for Huawei)
             if (detectedModel.supportsHighQualityAudio) {
-                val codecDescRes = if (detectedModel.usesLhdc) {
-                    R.string.high_quality_audio_desc_lhdc
-                } else {
-                    R.string.high_quality_audio_desc
+                val codecDescRes = when {
+                    detectedModel.isHuawei -> R.string.high_quality_audio_desc_huawei
+                    detectedModel.usesLhdc -> R.string.high_quality_audio_desc_lhdc
+                    else -> R.string.high_quality_audio_desc
                 }
                 SwitchFeatureCard(
                     title = stringResource(R.string.high_quality_audio_title),
@@ -333,47 +353,56 @@ fun MainScreen(
             }
 
             // Other - Game Mode, Dual-Device Connection, Auto Play/Pause, Auto Answer
-            Text(
-                text = stringResource(R.string.section_other),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            GameModeCard(
-                gameMode = t300State.gameMode,
-                enabled = connectionState == BleConnectionState.CONNECTED,
-                onToggle = { viewModel.setGameMode(it) }
-            )
-
-            // Dual-Device Connection (Buds T200 / Buds Air 7 Pro)
-            if (detectedModel.supportsDualConnection) {
-                DualConnectionCard(
-                    dualConnection = t300State.dualConnection,
-                    connectedDevices = t300State.connectedDevices,
-                    enabled = connectionState == BleConnectionState.CONNECTED,
-                    onToggle = { viewModel.setDualConnection(it) }
+            val hasOtherSection = !detectedModel.isSupported ||
+                detectedModel.supportsGameMode ||
+                detectedModel.supportsDualConnection ||
+                detectedModel.supportsAutoPlayPause ||
+                detectedModel.supportsAutoAnswer
+            if (hasOtherSection) {
+                Text(
+                    text = stringResource(R.string.section_other),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
                 )
-            }
+                if (!detectedModel.isSupported || detectedModel.supportsGameMode) {
+                    GameModeCard(
+                        gameMode = t300State.gameMode,
+                        enabled = connectionState == BleConnectionState.CONNECTED,
+                        onToggle = { viewModel.setGameMode(it) }
+                    )
+                }
 
-            // Auto Play/Pause — In-ear wear detection (Buds Air 7 Pro)
-            if (detectedModel.supportsAutoPlayPause) {
-                SwitchFeatureCard(
-                    title = stringResource(R.string.auto_play_pause_title),
-                    description = stringResource(R.string.auto_play_pause_desc),
-                    checked = t300State.autoPlayPause,
-                    enabled = connectionState == BleConnectionState.CONNECTED,
-                    onToggle = { viewModel.setAutoPlayPause(it) }
-                )
-            }
+                // Dual-Device Connection (Buds T200 / Buds Air 7 Pro / Huawei)
+                if (detectedModel.supportsDualConnection) {
+                    DualConnectionCard(
+                        dualConnection = t300State.dualConnection,
+                        connectedDevices = t300State.connectedDevices,
+                        enabled = connectionState == BleConnectionState.CONNECTED,
+                        onToggle = { viewModel.setDualConnection(it) }
+                    )
+                }
 
-            // Auto Answer — Answer call on put-on (Buds Air 7 Pro)
-            if (detectedModel.supportsAutoAnswer) {
-                SwitchFeatureCard(
-                    title = stringResource(R.string.auto_answer_title),
-                    description = stringResource(R.string.auto_answer_desc),
-                    checked = t300State.autoAnswer,
-                    enabled = connectionState == BleConnectionState.CONNECTED,
-                    onToggle = { viewModel.setAutoAnswer(it) }
-                )
+                // Auto Play/Pause — In-ear wear detection (Buds Air 7 Pro / Huawei)
+                if (detectedModel.supportsAutoPlayPause) {
+                    SwitchFeatureCard(
+                        title = stringResource(R.string.auto_play_pause_title),
+                        description = stringResource(R.string.auto_play_pause_desc),
+                        checked = t300State.autoPlayPause,
+                        enabled = connectionState == BleConnectionState.CONNECTED,
+                        onToggle = { viewModel.setAutoPlayPause(it) }
+                    )
+                }
+
+                // Auto Answer — Answer call on put-on (Buds Air 7 Pro)
+                if (detectedModel.supportsAutoAnswer) {
+                    SwitchFeatureCard(
+                        title = stringResource(R.string.auto_answer_title),
+                        description = stringResource(R.string.auto_answer_desc),
+                        checked = t300State.autoAnswer,
+                        enabled = connectionState == BleConnectionState.CONNECTED,
+                        onToggle = { viewModel.setAutoAnswer(it) }
+                    )
+                }
             }
 
             // Total Usage Time Statistics (L / R) from headset memory
@@ -409,6 +438,7 @@ fun MainScreen(
             val (side, gesture) = activeEditingGesture!!
             val currentAction = t300State.touchSettings[Pair(side, gesture)]
             GestureActionSelectionDialog(
+                model = detectedModel,
                 side = side,
                 gesture = gesture,
                 currentAction = currentAction,
@@ -635,43 +665,90 @@ fun BatteryCard(
 @Composable
 fun AncModeSelector(
     currentMode: AncMode?,
+    currentLevel: HuaweiProtocol.AncLevel?,
+    supportsAncLevel: Boolean,
+    supportsAncDynamic: Boolean,
     enabled: Boolean,
-    onModeSelected: (AncMode) -> Unit
+    onModeSelected: (AncMode) -> Unit,
+    onLevelSelected: (HuaweiProtocol.AncLevel) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(16.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(6.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            AncMode.entries.forEach { mode ->
-                val selected = mode == currentMode
-                val itemWeight = when (mode) {
-                    AncMode.NOISE_REDUCTION -> 1.3f
-                    AncMode.OFF -> 0.65f
-                    AncMode.TRANSPARENCY -> 1.05f
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                AncMode.entries.forEach { mode ->
+                    val selected = mode == currentMode
+                    val itemWeight = when (mode) {
+                        AncMode.NOISE_REDUCTION -> 1.3f
+                        AncMode.OFF -> 0.65f
+                        AncMode.TRANSPARENCY -> 1.05f
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(itemWeight)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                            .clickable(enabled = enabled) { onModeSelected(mode) }
+                            .padding(vertical = 12.dp, horizontal = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AutoSizeSingleLineText(
+                            text = stringResource(mode.titleRes),
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (selected) MaterialTheme.colorScheme.onPrimary else if (enabled) Color.White else Color.Gray,
+                            maxFontSize = 13.sp,
+                            minFontSize = 9.sp
+                        )
+                    }
                 }
-                Box(
+            }
+
+            if (supportsAncLevel && currentMode == AncMode.NOISE_REDUCTION) {
+                val levels = buildList {
+                    add(HuaweiProtocol.AncLevel.COMFORT)
+                    add(HuaweiProtocol.AncLevel.GENERAL)
+                    add(HuaweiProtocol.AncLevel.ULTRA)
+                    if (supportsAncDynamic) add(HuaweiProtocol.AncLevel.DYNAMIC)
+                }
+                Row(
                     modifier = Modifier
-                        .weight(itemWeight)
+                        .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
-                        .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
-                        .clickable(enabled = enabled) { onModeSelected(mode) }
-                        .padding(vertical = 12.dp, horizontal = 4.dp),
-                    contentAlignment = Alignment.Center
+                        .background(Color(0xFF262626))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    AutoSizeSingleLineText(
-                        text = stringResource(mode.titleRes),
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                        color = if (selected) MaterialTheme.colorScheme.onPrimary else if (enabled) Color.White else Color.Gray,
-                        maxFontSize = 13.sp,
-                        minFontSize = 9.sp
-                    )
+                    levels.forEach { lvl ->
+                        val selected = lvl == currentLevel
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f) else Color.Transparent)
+                                .clickable(enabled = enabled) { onLevelSelected(lvl) }
+                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AutoSizeSingleLineText(
+                                text = stringResource(lvl.titleRes),
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selected) MaterialTheme.colorScheme.primary else if (enabled) Color.LightGray else Color.Gray,
+                                maxFontSize = 12.sp,
+                                minFontSize = 8.sp
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -682,6 +759,7 @@ fun AncModeSelector(
 fun EqPresetSelector(
     currentPreset: T300Protocol.EqPreset?,
     activeCustomName: String?,
+    isHuawei: Boolean,
     enabled: Boolean,
     onPresetSelected: (T300Protocol.EqPreset) -> Unit
 ) {
@@ -710,6 +788,16 @@ fun EqPresetSelector(
                 ) {
                     for (preset in row) {
                         val selected = (preset == currentPreset) && (activeCustomName == null)
+                        val titleRes = if (isHuawei) {
+                            when (preset) {
+                                T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
+                                T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_huawei_default
+                                T300Protocol.EqPreset.PURE_BASS -> R.string.eq_huawei_treble
+                                T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
+                            }
+                        } else {
+                            preset.titleRes
+                        }
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -720,7 +808,7 @@ fun EqPresetSelector(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = stringResource(preset.titleRes),
+                                text = stringResource(titleRes),
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                                 color = if (selected) MaterialTheme.colorScheme.onPrimary else if (enabled) Color.White else Color.Gray,
                                 fontSize = 13.sp
@@ -763,6 +851,7 @@ fun EqPresetSelector(
 @Composable
 fun ButtonSettingsCard(
     selectedSide: TouchSide,
+    gestures: List<TouchGesture>,
     touchSettings: Map<Pair<TouchSide, TouchGesture>, TouchAction>,
     enabled: Boolean,
     onSideSelected: (TouchSide) -> Unit,
@@ -809,13 +898,7 @@ fun ButtonSettingsCard(
                 }
             }
 
-            // List of 3 gestures
-            val gestures = listOf(
-                TouchGesture.DOUBLE_TAP,
-                TouchGesture.TRIPLE_TAP,
-                TouchGesture.LONG_PRESS
-            )
-
+            // List of supported gestures for current model
             gestures.forEachIndexed { index, gesture ->
                 val action = touchSettings[Pair(selectedSide, gesture)]
                 Row(
@@ -862,14 +945,20 @@ fun ButtonSettingsCard(
 
 @Composable
 fun GestureActionSelectionDialog(
+    model: T300Protocol.BudsModel,
     side: TouchSide,
     gesture: TouchGesture,
     currentAction: TouchAction?,
     onActionSelected: (TouchAction) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val allowedActions = remember(gesture, currentAction) {
-        val list = getAvailableActions(gesture).toMutableList()
+    val allowedActions = remember(model, gesture, currentAction) {
+        val base = if (model.isHuawei) {
+            HuaweiProtocol.getAvailableActions(model, gesture)
+        } else {
+            getAvailableActions(gesture)
+        }
+        val list = base.toMutableList()
         if (currentAction != null && currentAction !in list) {
             list.add(0, currentAction)
         }
