@@ -177,9 +177,7 @@ realess-t300/
 ├── README.ru.md                   # Обзор проекта (Русский)
 ├── AGENTS.md                      # Подробная документация протокола и приложения (English)
 ├── AGENTS.ru.md                   # Подробная документация протокола и приложения (Русский)
-├── .github/workflows/             # GitHub Actions для сборки подписанных release APK через Secrets
-├── realness 1.4.apk               # Основная release-сборка (Jetpack Compose + Material3 + R8)
-├── realness-tiny 1.4.apk          # Ультралёгкая release-сборка по методу tinyapk-lab (~33 КБ)
+├── .github/workflows/             # GitHub Actions для сборки и публикации подписанных APK в Releases
 ├── tiny-realness/                 # Исходники и build.sh на чистой Java 8 без Gradle и AndroidX
 └── BudsT300Controller/
     ├── app/src/main/java/uwu/realness/gitveu/
@@ -202,13 +200,13 @@ realess-t300/
 
 ## 📲 Установка
 
-1. Скачайте [realness 1.4.apk](realness%201.4.apk) (основная версия) или [realness-tiny 1.4.apk](realness-tiny%201.4.apk) (~33 КБ) и установите на Android 8.0+.
+1. Скачайте `realness <версия>.apk` (основная версия) или `realness-tiny <версия>.apk` (~33 КБ) из [GitHub Releases](https://github.com/Gitveu/realess-t300/releases/latest) и установите на Android 8.0+.
 2. Выдайте разрешение «Устройства поблизости» (`BLUETOOTH_CONNECT`).
 3. Подключите поддерживаемые наушники realme Buds — приложение подхватит их автоматически.
 
 ### Сборка из исходников
 Ключ подписи хранится в **GitHub Actions Secrets** (`REALNESS_KEYSTORE_BASE64`, `REALNESS_KEYSTORE_PASSWORD`, `REALNESS_KEY_ALIAS`, `REALNESS_KEY_PASSWORD`) и **не коммитится в репозиторий**:
-- **На GitHub (с любого устройства):** запустите workflow `Build Release APKs` во вкладке **Actions** и скачайте подписанные `realness 1.x.apk` и `realness-tiny 1.x.apk` из артефактов.
+- **На GitHub (с любого устройства):** запушьте изменения или запустите workflow `Build Release APKs` во вкладке **Actions** — подписанные `realness 1.x.apk` и `realness-tiny 1.x.apk` автоматически публикуются в [GitHub Releases](https://github.com/Gitveu/realess-t300/releases) и загружаются в артефакты сборки.
 - **Локально:** передайте переменные окружения `REALNESS_KEYSTORE_PATH`, `REALNESS_KEYSTORE_PASSWORD`, `REALNESS_KEY_ALIAS`, `REALNESS_KEY_PASSWORD` (или положите локальный `keystore.properties` в корень, он в `.gitignore`):
 
 ```bash

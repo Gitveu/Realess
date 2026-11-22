@@ -315,8 +315,8 @@ All frames are transmitted over RFCOMM SPP (`UUID: 0000079A-D102-11E1-9B23-00025
 2. **Versioning & Release Builds**:
    * Always increment `versionCode` and `versionName` after every change in `BudsT300Controller/app/build.gradle.kts` and `tiny-realness/AndroidManifest.xml` (current: `versionName = "1.4"`, `versionCode = 5`).
    * All builds are produced in **release** mode (`./gradlew assembleRelease` with R8 minify + shrinkResources, and `./tiny-realness/build.sh`).
-   * The signing keystore (`realness-release.keystore`) is **never stored in git** (added to `.gitignore` along with `keystore.properties`) — it is stored in **GitHub Actions Secrets** (`REALNESS_KEYSTORE_BASE64`, `REALNESS_KEYSTORE_PASSWORD`, `REALNESS_KEY_ALIAS`, `REALNESS_KEY_PASSWORD`) and locally on the developer's machine. Signed APKs can be built in the cloud via `.github/workflows/build-release.yml` from any device.
-   * Output APK naming in the repository root: `realness <versionName>.apk` and `realness-tiny <versionName>.apk` (delete the outdated APK from the previous version when publishing a new one).
+   * The signing keystore (`realness-release.keystore`) is **never stored in git** (added to `.gitignore` along with `keystore.properties`) — it is stored in **GitHub Actions Secrets** (`REALNESS_KEYSTORE_BASE64`, `REALNESS_KEYSTORE_PASSWORD`, `REALNESS_KEY_ALIAS`, `REALNESS_KEY_PASSWORD`) and locally on the developer's machine.
+   * Compiled `.apk` files are **not committed to git** (`*.apk` is in `.gitignore`). The `.github/workflows/build-release.yml` workflow automatically builds signed `realness <versionName>.apk` and `realness-tiny <versionName>.apk` and publishes them to **GitHub Releases** under tag `v<versionName>`.
 3. **Source Code Structure**:
    * `T300Protocol.kt`: TL + OPPOv1 frame builder and parser, `BudsModel` with capability flags (`BUDS_T300`, `BUDS_T200`, `BUDS_AIR_7_PRO`).
    * `T300BleManager.kt`: RFCOMM SPP socket management (and GATT fallback), streaming packet reader, command queue, `0x0201`/`0x0204` notification subscription, debounced state sync.
@@ -327,4 +327,4 @@ All frames are transmitted over RFCOMM SPP (`UUID: 0000079A-D102-11E1-9B23-00025
    * Technical protocol logs are always output in English.
 5. **Build & Repository**:
    * GitHub repository: `https://github.com/Gitveu/realess-t300.git` (`main` branch).
-   * Compiled release APKs: `realness 1.4.apk` and `realness-tiny 1.4.apk`.
+   * Release APKs (`realness <versionName>.apk` and `realness-tiny <versionName>.apk`) are published automatically to GitHub Releases by GitHub Actions.

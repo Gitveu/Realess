@@ -315,8 +315,8 @@ Payload: `[status (0x00), count (N), (componentId, value)...]`
 2. **Версионирование и release-сборки**:
    * Обязательно увеличивать `versionCode` и `versionName` после каждого изменения в `BudsT300Controller/app/build.gradle.kts` и `tiny-realness/AndroidManifest.xml` (текущая: `versionName = "1.4"`, `versionCode = 5`).
    * Все сборки выполняются в режиме **release** (`./gradlew assembleRelease` с R8 minify + shrinkResources, а также `./tiny-realness/build.sh`).
-   * Ключ подписи (`realness-release.keystore`) **не хранится в git** (добавлен в `.gitignore` вместе с `keystore.properties`) — хранится в **GitHub Actions Secrets** (`REALNESS_KEYSTORE_BASE64`, `REALNESS_KEYSTORE_PASSWORD`, `REALNESS_KEY_ALIAS`, `REALNESS_KEY_PASSWORD`) и локально на машине разработчика. Подписанные APK можно собрать в облаке через workflow `.github/workflows/build-release.yml` с любого устройства.
-   * Именование готовых APK в корне репозитория: `realness <versionName>.apk` и `realness-tiny <versionName>.apk` (удалять устаревший APK предыдущей версии при выпуске новой).
+   * Ключ подписи (`realness-release.keystore`) **не хранится в git** (добавлен в `.gitignore` вместе с `keystore.properties`) — хранится в **GitHub Actions Secrets** (`REALNESS_KEYSTORE_BASE64`, `REALNESS_KEYSTORE_PASSWORD`, `REALNESS_KEY_ALIAS`, `REALNESS_KEY_PASSWORD`) и локально на машине разработчика.
+   * Скомпилированные `.apk` **не коммитятся в git** (`*.apk` добавлен в `.gitignore`). Workflow `.github/workflows/build-release.yml` автоматически собирает подписанные `realness <versionName>.apk` и `realness-tiny <versionName>.apk` и публикует их в **GitHub Releases** с тегом `v<versionName>`.
 3. **Структура исходного кода**:
    * `T300Protocol.kt`: построение и разбор кадров TL + OPPOv1, `BudsModel` с capability-флагами (`BUDS_T300`, `BUDS_T200`, `BUDS_AIR_7_PRO`).
    * `T300BleManager.kt`: управление сокетом RFCOMM SPP (и GATT fallback), потоковый считыватель пакетов, очередь команд, подписка на уведомления `0x0201`/`0x0204`, дебаунс-синхронизация.
@@ -327,4 +327,4 @@ Payload: `[status (0x00), count (N), (componentId, value)...]`
    * Технические логи протокола выводятся на английском языке.
 5. **Сборка и репозиторий**:
    * Репозиторий GitHub: `https://github.com/Gitveu/realess-t300.git` (ветка `main`).
-   * Скомпилированные release APK: `realness 1.4.apk` и `realness-tiny 1.4.apk`.
+   * Release APK (`realness <versionName>.apk` и `realness-tiny <versionName>.apk`) автоматически публикуются в GitHub Releases через GitHub Actions.

@@ -177,9 +177,7 @@ realess-t300/
 ├── README.ru.md                   # Project overview (Russian)
 ├── AGENTS.md                      # Detailed protocol & app documentation (English)
 ├── AGENTS.ru.md                   # Detailed protocol & app documentation (Russian)
-├── .github/workflows/             # GitHub Actions for building signed release APKs via Secrets
-├── realness 1.4.apk               # Main release build (Jetpack Compose + Material3 + R8)
-├── realness-tiny 1.4.apk          # Ultra-lightweight release build via tinyapk-lab (~33 KB)
+├── .github/workflows/             # GitHub Actions for building & publishing signed APKs to Releases
 ├── tiny-realness/                 # Pure Java 8 source & build.sh without Gradle or AndroidX
 └── BudsT300Controller/
     ├── app/src/main/java/uwu/realness/gitveu/
@@ -202,13 +200,13 @@ realess-t300/
 
 ## 📲 Installation
 
-1. Download [realness 1.4.apk](realness%201.4.apk) (main version) or [realness-tiny 1.4.apk](realness-tiny%201.4.apk) (~33 KB) and install on Android 8.0+.
+1. Download `realness <version>.apk` (main version) or `realness-tiny <version>.apk` (~33 KB) from [GitHub Releases](https://github.com/Gitveu/realess-t300/releases/latest) and install on Android 8.0+.
 2. Grant the "Nearby devices" permission (`BLUETOOTH_CONNECT`).
 3. Connect supported realme Buds earbuds — the app will detect and connect to them automatically.
 
 ### Building from Source
 The signing keystore is stored in **GitHub Actions Secrets** (`REALNESS_KEYSTORE_BASE64`, `REALNESS_KEYSTORE_PASSWORD`, `REALNESS_KEY_ALIAS`, `REALNESS_KEY_PASSWORD`) and is **never committed to the repository**:
-- **On GitHub (from any device):** trigger the `Build Release APKs` workflow in the **Actions** tab and download the signed `realness 1.x.apk` and `realness-tiny 1.x.apk` artifacts.
+- **On GitHub (from any device):** push changes or trigger the `Build Release APKs` workflow in the **Actions** tab — signed `realness 1.x.apk` and `realness-tiny 1.x.apk` are automatically published to [GitHub Releases](https://github.com/Gitveu/realess-t300/releases) and uploaded as workflow artifacts.
 - **Locally:** pass the environment variables `REALNESS_KEYSTORE_PATH`, `REALNESS_KEYSTORE_PASSWORD`, `REALNESS_KEY_ALIAS`, `REALNESS_KEY_PASSWORD` (or place a local `keystore.properties` in the repo root; it is in `.gitignore`):
 
 ```bash
