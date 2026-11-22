@@ -1,7 +1,7 @@
 # realme Link / realness — Документация протокола и приложения
 
 Дата обновления: 2026-11-22
-Статус: поддерживаются **realme Buds T300**, **realme Buds T200** и **realme Buds Air 7 Pro**; приложение **realness** (`uwu.realness.gitveu`, версия `1.3`, `build 4`).
+Статус: поддерживаются **realme Buds T300**, **realme Buds T200** и **realme Buds Air 7 Pro**; приложение **realness** (`uwu.realness.gitveu`, версия `1.4`, `build 5`, release-сборки).
 
 ---
 
@@ -309,8 +309,12 @@ Payload: `[status (0x00), count (N), (componentId, value)...]`
 
 ## 13. Архитектура приложения realness
 
-1. **Стек**: Kotlin, Jetpack Compose (Material3), Coroutines/Flow, MinSdk 26, TargetSdk 34, пакет `uwu.realness.gitveu`.
-2. **Версионирование**: обязательно увеличивать `versionCode` и `versionName` в `BudsT300Controller/app/build.gradle.kts` после каждого изменения (текущая: `versionName = "1.3"`, `versionCode = 4`).
+1. **Стек**: Kotlin, Jetpack Compose (Material3), Coroutines/Flow, MinSdk 26, TargetSdk 34, пакет `uwu.realness.gitveu`. Также доступна облегчённая сборка `tiny-realness/` (`uwu.realness.gitveu.tiny`) на чистой Java 8 без Gradle/AndroidX (`aapt2 -> javac -> R8 -> zipalign -> apksigner`, ~33 КБ).
+2. **Версионирование и release-сборки**:
+   * Обязательно увеличивать `versionCode` и `versionName` после каждого изменения в `BudsT300Controller/app/build.gradle.kts` и `tiny-realness/AndroidManifest.xml` (текущая: `versionName = "1.4"`, `versionCode = 5`).
+   * Все сборки выполняются в режиме **release** (`./gradlew assembleRelease` с R8 minify + shrinkResources, а также `./tiny-realness/build.sh`).
+   * Ключ подписи (`realness-release.keystore`) **не хранится в git** (добавлен в `.gitignore` вместе с `keystore.properties`) — хранится в **GitHub Actions Secrets** (`REALNESS_KEYSTORE_BASE64`, `REALNESS_KEYSTORE_PASSWORD`, `REALNESS_KEY_ALIAS`, `REALNESS_KEY_PASSWORD`) и локально на машине разработчика. Подписанные APK можно собрать в облаке через workflow `.github/workflows/build-release.yml` с любого устройства.
+   * Именование готовых APK в корне репозитория: `realness <versionName>.apk` и `realness-tiny <versionName>.apk` (удалять устаревший APK предыдущей версии при выпуске новой).
 3. **Структура исходного кода**:
    * `T300Protocol.kt`: построение и разбор кадров TL + OPPOv1, `BudsModel` с capability-флагами (`BUDS_T300`, `BUDS_T200`, `BUDS_AIR_7_PRO`).
    * `T300BleManager.kt`: управление сокетом RFCOMM SPP (и GATT fallback), потоковый считыватель пакетов, очередь команд, подписка на уведомления `0x0201`/`0x0204`, дебаунс-синхронизация.
@@ -321,4 +325,4 @@ Payload: `[status (0x00), count (N), (componentId, value)...]`
    * Технические логи протокола выводятся на английском языке.
 5. **Сборка и репозиторий**:
    * Репозиторий GitHub: `https://github.com/Gitveu/realess-t300.git` (ветка `main`).
-   * Скомпилированный APK: `realness-debug.apk`.
+   * Скомпилированные release APK: `realness 1.4.apk` и `realness-tiny 1.4.apk`.

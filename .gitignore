@@ -10,3 +10,6 @@ apkm_extracted/
 .DS_Store
 **/.DS_Store
 *.hprof
+*.keystore
+*.jks
+keystore.properties

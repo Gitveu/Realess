@@ -2,7 +2,7 @@
 
 Автономное Android-приложение (**realness**, пакет `uwu.realness.gitveu`, Kotlin + Jetpack Compose) и документация протокола **TL TWS** для прямого управления наушниками **realme Buds** — без **realme Link**, без аккаунтов и облака, напрямую по Bluetooth.
 
-**Актуальная версия:** `v1.3 (build 4)`  
+**Актуальная версия:** `v1.4 (build 5)` — release-сборки (`realness 1.4.apk` и `realness-tiny 1.4.apk`)  
 **Исходный артефакт анализа:** `realme Link.apkm` (пакет `com.realme.link`, стек `com.realme.iot.headset.tl.*`).
 
 ---
@@ -173,7 +173,10 @@ Auto Answer ON:      AA 09 00 00 03 04 00 02 00 08 01
 realess-t300/
 ├── README.md                      # Обзор проекта
 ├── AGENTS.md                      # Подробная документация протокола и приложения
-├── realness-debug.apk             # Скомпилированный APK (v1.3, build 4)
+├── .github/workflows/             # GitHub Actions для сборки подписанных release APK через Secrets
+├── realness 1.4.apk               # Основная release-сборка (Jetpack Compose + Material3 + R8)
+├── realness-tiny 1.4.apk          # Ультралёгкая release-сборка по методу tinyapk-lab (~33 КБ)
+├── tiny-realness/                 # Исходники и build.sh на чистой Java 8 без Gradle и AndroidX
 └── BudsT300Controller/
     ├── app/src/main/java/uwu/realness/gitveu/
     │   ├── protocol/              # T300Protocol.kt — кадры TL + OPPOv1, модели BudsModel и capabilities
@@ -186,7 +189,8 @@ realess-t300/
 ```
 
 ### Стек и локализация
-- **Стек:** Kotlin, Jetpack Compose (Material3), Coroutines / Flow, MinSdk 26 (Android 8.0+), TargetSdk 34.
+- **Основная сборка (`realness`):** Kotlin, Jetpack Compose (Material3), Coroutines / Flow, R8 minify + resource shrinking, MinSdk 26 (Android 8.0+), TargetSdk 34.
+- **Ультралёгкая сборка (`realness-tiny`):** чистая Java 8 + Android SDK без Gradle и AndroidX (`aapt2 -> javac -> R8 -> zipalign -> apksigner`), пакет `uwu.realness.gitveu.tiny` (ставится рядом с основной версией, весь функционал протокола без 1.5 МБ демо-аудио).
 - **Локализация:** английский по умолчанию (`values/strings.xml`), полная русская локализация (`values-ru/strings.xml`), поддержка выбора языка приложения в Android 13+ (`res/xml/locales_config.xml`). Технические логи протокола — на английском.
 - **Иконка:** адаптивная (повернутый на 90° символ realme Link с диагональной линией `/` на градиентном фоне `#B662FE` → `#4F7FFF`, monochrome-слой для Android 13+ и legacy mipmap).
 
@@ -194,15 +198,24 @@ realess-t300/
 
 ## 📲 Установка
 
-1. Скачайте [realness-debug.apk](realness-debug.apk) и установите на Android 8.0+.
+1. Скачайте [realness 1.4.apk](realness%201.4.apk) (основная версия) или [realness-tiny 1.4.apk](realness-tiny%201.4.apk) (~33 КБ) и установите на Android 8.0+.
 2. Выдайте разрешение «Устройства поблизости» (`BLUETOOTH_CONNECT`).
 3. Подключите поддерживаемые наушники realme Buds — приложение подхватит их автоматически.
 
 ### Сборка из исходников
+Ключ подписи хранится в **GitHub Actions Secrets** (`REALNESS_KEYSTORE_BASE64`, `REALNESS_KEYSTORE_PASSWORD`, `REALNESS_KEY_ALIAS`, `REALNESS_KEY_PASSWORD`) и **не коммитится в репозиторий**:
+- **На GitHub (с любого устройства):** запустите workflow `Build Release APKs` во вкладке **Actions** и скачайте подписанные `realness 1.x.apk` и `realness-tiny 1.x.apk` из артефактов.
+- **Локально:** передайте переменные окружения `REALNESS_KEYSTORE_PATH`, `REALNESS_KEYSTORE_PASSWORD`, `REALNESS_KEY_ALIAS`, `REALNESS_KEY_PASSWORD` (или положите локальный `keystore.properties` в корень, он в `.gitignore`):
+
 ```bash
 git clone https://github.com/Gitveu/realess-t300.git
-cd realess-t300/BudsT300Controller
-./gradlew assembleDebug
+cd realess-t300
+
+# Основная release-сборка (Gradle + R8):
+cd BudsT300Controller && ./gradlew assembleRelease
+
+# Ультралёгкая release-сборка (pure Java, без Gradle):
+cd .. && ./tiny-realness/build.sh
 ```
 
 Репозиторий: [github.com/Gitveu/realess-t300](https://github.com/Gitveu/realess-t300) (ветка `main`).

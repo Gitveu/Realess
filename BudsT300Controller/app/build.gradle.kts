@@ -1,8 +1,18 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val keystoreProps = Properties().apply {
+    val file = rootProject.file("../keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+fun signingParam(envKey: String, propKey: String): String? =
+    System.getenv(envKey)?.takeIf { it.isNotBlank() } ?: keystoreProps.getProperty(propKey)?.takeIf { it.isNotBlank() }
 
 android {
     namespace = "uwu.realness.gitveu"
@@ -12,22 +22,51 @@ android {
         applicationId = "uwu.realness.gitveu"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 5
+        versionName = "1.4"
 
         resourceConfigurations += listOf("en", "ru")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            val ksPath = signingParam("REALNESS_KEYSTORE_PATH", "storeFile") ?: "realness-release.keystore"
+            val ksFile = File(ksPath).let { if (it.isAbsolute) it else rootProject.file("../$ksPath") }
+            if (ksFile.exists()) {
+                storeFile = ksFile
+                storePassword = signingParam("REALNESS_KEYSTORE_PASSWORD", "storePassword")
+                keyAlias = signingParam("REALNESS_KEY_ALIAS", "keyAlias")
+                keyPassword = signingParam("REALNESS_KEY_PASSWORD", "keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            val releaseSigning = signingConfigs.getByName("release")
+            if (releaseSigning.storeFile != null) {
+                signingConfig = releaseSigning
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
+    }
+
+    applicationVariants.all {
+        val variant = this
+        outputs
+            .map { it as com.android.build.gradle.internal.api.BaseVariantOutputImpl }
+            .forEach { output ->
+                if (variant.buildType.name == "release") {
+                    output.outputFileName = "realness ${variant.versionName}.apk"
+                }
+            }
     }
 
     compileOptions {
