@@ -25,6 +25,9 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Install Android 34 platform & build-tools
         run: |
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
@@ -46,7 +49,7 @@ jobs:
           REALNESS_KEY_PASSWORD: ${{ secrets.REALNESS_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease
+          ./gradlew assembleRelease --no-daemon || (sleep 10 && ./gradlew assembleRelease --no-daemon)
 
       - name: Build realness-tiny (tinyapk-lab Release)
         env:
