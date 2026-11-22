@@ -101,7 +101,7 @@ class T300BleManager(private val context: Context) {
             delay(80)
             refreshSpatialAudio()
             delay(80)
-            if (activeModel.supportsLdac) {
+            if (activeModel.supportsHighQualityAudio) {
                 refreshHighQualityAudio()
                 delay(80)
             }
@@ -113,6 +113,14 @@ class T300BleManager(private val context: Context) {
                 refreshDualConnection()
                 delay(80)
                 refreshMultiConnectInfo()
+                delay(80)
+            }
+            if (activeModel.supportsAutoPlayPause) {
+                refreshAutoPlayPause()
+                delay(80)
+            }
+            if (activeModel.supportsAutoAnswer) {
+                refreshAutoAnswer()
                 delay(80)
             }
             refreshEq()
@@ -431,6 +439,44 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
+     * Request Auto Play/Pause (Wear Detection) state (Feature 4 / 0x04)
+     */
+    fun refreshAutoPlayPause() {
+        val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_AUTO_PLAY_PAUSE)
+        log("TX AutoPlayPause Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+    }
+
+    /**
+     * Set Auto Play/Pause (ON / OFF)
+     */
+    fun setAutoPlayPause(enabled: Boolean) {
+        val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_AUTO_PLAY_PAUSE, enabled)
+        log("TX AutoPlayPause [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+        _t300State.value = _t300State.value.copy(autoPlayPause = enabled)
+    }
+
+    /**
+     * Request Auto Answer state (Feature 8 / 0x08)
+     */
+    fun refreshAutoAnswer() {
+        val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_AUTO_ANSWER)
+        log("TX AutoAnswer Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+    }
+
+    /**
+     * Set Auto Answer (ON / OFF)
+     */
+    fun setAutoAnswer(enabled: Boolean) {
+        val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_AUTO_ANSWER, enabled)
+        log("TX AutoAnswer [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
+        sendData(frame)
+        _t300State.value = _t300State.value.copy(autoAnswer = enabled)
+    }
+
+    /**
      * Request total usage time for Left/Right earbuds (Opcode 0x0128)
      */
     fun refreshUseTime() {
@@ -565,7 +611,7 @@ class T300BleManager(private val context: Context) {
             delay(80)
             refreshSpatialAudio()
             delay(80)
-            if (activeModel.supportsLdac) {
+            if (activeModel.supportsHighQualityAudio) {
                 refreshHighQualityAudio()
                 delay(80)
             }
@@ -577,6 +623,14 @@ class T300BleManager(private val context: Context) {
                 refreshDualConnection()
                 delay(80)
                 refreshMultiConnectInfo()
+                delay(80)
+            }
+            if (activeModel.supportsAutoPlayPause) {
+                refreshAutoPlayPause()
+                delay(80)
+            }
+            if (activeModel.supportsAutoAnswer) {
+                refreshAutoAnswer()
                 delay(80)
             }
             refreshEq()
@@ -618,7 +672,7 @@ class T300BleManager(private val context: Context) {
                 delay(60)
                 refreshSpatialAudio()
                 delay(60)
-                if (activeModel.supportsLdac) {
+                if (activeModel.supportsHighQualityAudio) {
                     refreshHighQualityAudio()
                     delay(60)
                 }
@@ -628,6 +682,14 @@ class T300BleManager(private val context: Context) {
                 }
                 if (activeModel.supportsDualConnection) {
                     refreshDualConnection()
+                    delay(60)
+                }
+                if (activeModel.supportsAutoPlayPause) {
+                    refreshAutoPlayPause()
+                    delay(60)
+                }
+                if (activeModel.supportsAutoAnswer) {
+                    refreshAutoAnswer()
                     delay(60)
                 }
                 refreshEq()
@@ -805,7 +867,8 @@ class T300BleManager(private val context: Context) {
                 }
                 val hq = T300Protocol.parseSwitchFeaturePayload(frame.payload, T300Protocol.FEATURE_ID_HIGH_QUALITY_AUDIO)
                 if (hq != null) {
-                    log("RX HighQualityAudio (LDAC) State: ${if (hq) "ON" else "OFF"}")
+                    val codecLabel = if (activeModel.usesLhdc) "LHDC 5.0" else "LDAC"
+                    log("RX HighQualityAudio ($codecLabel) State: ${if (hq) "ON" else "OFF"}")
                     _t300State.value = _t300State.value.copy(highQualityAudio = hq)
                 }
                 val da = T300Protocol.parseSwitchFeaturePayload(frame.payload, T300Protocol.FEATURE_ID_DYNAMIC_AUDIO)
@@ -818,6 +881,16 @@ class T300BleManager(private val context: Context) {
                     log("RX DualConnection State: ${if (dc) "ON" else "OFF"}")
                     _t300State.value = _t300State.value.copy(dualConnection = dc)
                 }
+                val app = T300Protocol.parseSwitchFeaturePayload(frame.payload, T300Protocol.FEATURE_ID_AUTO_PLAY_PAUSE)
+                if (app != null) {
+                    log("RX AutoPlayPause State: ${if (app) "ON" else "OFF"}")
+                    _t300State.value = _t300State.value.copy(autoPlayPause = app)
+                }
+                val aa = T300Protocol.parseSwitchFeaturePayload(frame.payload, T300Protocol.FEATURE_ID_AUTO_ANSWER)
+                if (aa != null) {
+                    log("RX AutoAnswer State: ${if (aa) "ON" else "OFF"}")
+                    _t300State.value = _t300State.value.copy(autoAnswer = aa)
+                }
             }
             T300Protocol.CMD_SWITCH_FEATURE_SET_RSP -> {
                 val ok = T300Protocol.parseSwitchFeatureSetResponse(frame.payload)
@@ -825,12 +898,14 @@ class T300BleManager(private val context: Context) {
                 if (ok) {
                     refreshGameMode()
                     refreshSpatialAudio()
-                    if (activeModel.supportsLdac) refreshHighQualityAudio()
+                    if (activeModel.supportsHighQualityAudio) refreshHighQualityAudio()
                     if (activeModel.supportsDynamicAudio) refreshDynamicAudio()
                     if (activeModel.supportsDualConnection) {
                         refreshDualConnection()
                         refreshMultiConnectInfo()
                     }
+                    if (activeModel.supportsAutoPlayPause) refreshAutoPlayPause()
+                    if (activeModel.supportsAutoAnswer) refreshAutoAnswer()
                 }
             }
             T300Protocol.CMD_MULTI_CONNECT_INFO_RSP -> {

@@ -314,6 +314,22 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         bleManager.refreshMultiConnectInfo()
     }
 
+    fun setAutoPlayPause(enabled: Boolean) {
+        bleManager.setAutoPlayPause(enabled)
+    }
+
+    fun refreshAutoPlayPause() {
+        bleManager.refreshAutoPlayPause()
+    }
+
+    fun setAutoAnswer(enabled: Boolean) {
+        bleManager.setAutoAnswer(enabled)
+    }
+
+    fun refreshAutoAnswer() {
+        bleManager.refreshAutoAnswer()
+    }
+
     fun toggleDemoAudio() {
         if (_isPlayingDemo.value) {
             stopDemoAudio()
@@ -365,12 +381,14 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
             bleManager.refreshAncState()
             bleManager.refreshGameMode()
             bleManager.refreshSpatialAudio()
-            if (model.supportsLdac) bleManager.refreshHighQualityAudio()
+            if (model.supportsHighQualityAudio) bleManager.refreshHighQualityAudio()
             if (model.supportsDynamicAudio) bleManager.refreshDynamicAudio()
             if (model.supportsDualConnection) {
                 bleManager.refreshDualConnection()
                 bleManager.refreshMultiConnectInfo()
             }
+            if (model.supportsAutoPlayPause) bleManager.refreshAutoPlayPause()
+            if (model.supportsAutoAnswer) bleManager.refreshAutoAnswer()
             bleManager.refreshEq()
             bleManager.refreshKeySettings()
             bleManager.refreshUseTime()

@@ -55,9 +55,11 @@ object T300Protocol {
     const val CMD_NOTIFICATION: Int = 0x8400     // Асинхронные уведомления от устройства
 
     // Идентификаторы переключателей (SwitchFeature)
+    const val FEATURE_ID_AUTO_PLAY_PAUSE: Byte = 0x04    // 4 decimal (Автовоспроизведение/пауза, Wear Detection)
     const val FEATURE_ID_GAME_MODE: Byte = 0x06          // 6 decimal (Игровой режим)
+    const val FEATURE_ID_AUTO_ANSWER: Byte = 0x08        // 8 decimal (Автоответ на вызов)
     const val FEATURE_ID_DUAL_CONNECTION: Byte = 0x11    // 17 decimal (Подключение к двум устройствам)
-    const val FEATURE_ID_HIGH_QUALITY_AUDIO: Byte = 0x18 // 24 decimal (Звук высокой четкости / LDAC)
+    const val FEATURE_ID_HIGH_QUALITY_AUDIO: Byte = 0x18 // 24 decimal (Звук высокой четкости: LDAC / LHDC 5.0)
     const val FEATURE_ID_SPATIAL_AUDIO: Byte = 0x1B      // 27 decimal (Пространственное аудио / 3D Sound)
     const val FEATURE_ID_DYNAMIC_AUDIO: Byte = 0x1D      // 29 decimal (Динамическое аудио)
     const val EVENT_TYPE_GAME_MODE: Byte = 0x05
@@ -69,21 +71,26 @@ object T300Protocol {
     enum class BudsModel {
         UNKNOWN,
         BUDS_T300,
-        BUDS_T200;
+        BUDS_T200,
+        BUDS_AIR_7_PRO;
 
         val isSupported: Boolean get() = this != UNKNOWN
-        val supportsLdac: Boolean get() = this == BUDS_T200
-        val supportsDynamicAudio: Boolean get() = this == BUDS_T200
-        val supportsDualConnection: Boolean get() = this == BUDS_T200
+        val supportsHighQualityAudio: Boolean get() = this == BUDS_T200 || this == BUDS_AIR_7_PRO
+        val usesLhdc: Boolean get() = this == BUDS_AIR_7_PRO
+        val supportsDynamicAudio: Boolean get() = this == BUDS_T200 || this == BUDS_AIR_7_PRO
+        val supportsDualConnection: Boolean get() = this == BUDS_T200 || this == BUDS_AIR_7_PRO
+        val supportsAutoPlayPause: Boolean get() = this == BUDS_AIR_7_PRO
+        val supportsAutoAnswer: Boolean get() = this == BUDS_AIR_7_PRO
 
         companion object {
             fun fromDeviceName(name: String?): BudsModel {
                 if (name.isNullOrBlank()) return UNKNOWN
-                val isRealmeOrBuds = name.contains("realme", ignoreCase = true) ||
-                    name.contains("Buds", ignoreCase = true)
+                val normalized = name.lowercase().replace(Regex("\\s+"), " ")
+                val isRealmeOrBuds = normalized.contains("realme") || normalized.contains("buds")
                 return when {
-                    isRealmeOrBuds && name.contains("T200", ignoreCase = true) -> BUDS_T200
-                    isRealmeOrBuds && name.contains("T300", ignoreCase = true) -> BUDS_T300
+                    isRealmeOrBuds && (normalized.contains("air 7 pro") || normalized.contains("air7 pro")) -> BUDS_AIR_7_PRO
+                    isRealmeOrBuds && normalized.contains("t200") -> BUDS_T200
+                    isRealmeOrBuds && normalized.contains("t300") -> BUDS_T300
                     else -> UNKNOWN
                 }
             }
@@ -224,6 +231,8 @@ object T300Protocol {
         val highQualityAudio: Boolean? = null,
         val dynamicAudio: Boolean? = null,
         val dualConnection: Boolean? = null,
+        val autoPlayPause: Boolean? = null,
+        val autoAnswer: Boolean? = null,
         val connectedDevices: List<ConnectedDeviceInfo> = emptyList(),
         val leftUseTimeMinutes: Int? = null,
         val rightUseTimeMinutes: Int? = null,

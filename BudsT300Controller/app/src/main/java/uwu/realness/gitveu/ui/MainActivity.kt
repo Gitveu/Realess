@@ -305,18 +305,23 @@ fun MainScreen(
                 onToggleDemo = { viewModel.toggleDemoAudio() }
             )
 
-            // High-Definition Audio (LDAC) — strictly for models supporting LDAC (Buds T200)
-            if (detectedModel.supportsLdac) {
+            // High-Definition Audio (LDAC for T200, LHDC 5.0 for Air 7 Pro)
+            if (detectedModel.supportsHighQualityAudio) {
+                val codecDescRes = if (detectedModel.usesLhdc) {
+                    R.string.high_quality_audio_desc_lhdc
+                } else {
+                    R.string.high_quality_audio_desc
+                }
                 SwitchFeatureCard(
                     title = stringResource(R.string.high_quality_audio_title),
-                    description = stringResource(R.string.high_quality_audio_desc),
+                    description = stringResource(codecDescRes),
                     checked = t300State.highQualityAudio,
                     enabled = connectionState == BleConnectionState.CONNECTED,
                     onToggle = { viewModel.setHighQualityAudio(it) }
                 )
             }
 
-            // Dynamic Audio — strictly for models supporting Dynamic Audio (Buds T200)
+            // Dynamic Audio (Buds T200 / Buds Air 7 Pro)
             if (detectedModel.supportsDynamicAudio) {
                 SwitchFeatureCard(
                     title = stringResource(R.string.dynamic_audio_title),
@@ -327,7 +332,7 @@ fun MainScreen(
                 )
             }
 
-            // Other - Game Mode & Dual-Device Connection Section
+            // Other - Game Mode, Dual-Device Connection, Auto Play/Pause, Auto Answer
             Text(
                 text = stringResource(R.string.section_other),
                 style = MaterialTheme.typography.titleMedium,
@@ -339,13 +344,35 @@ fun MainScreen(
                 onToggle = { viewModel.setGameMode(it) }
             )
 
-            // Dual-Device Connection — strictly for models supporting Multipoint (Buds T200)
+            // Dual-Device Connection (Buds T200 / Buds Air 7 Pro)
             if (detectedModel.supportsDualConnection) {
                 DualConnectionCard(
                     dualConnection = t300State.dualConnection,
                     connectedDevices = t300State.connectedDevices,
                     enabled = connectionState == BleConnectionState.CONNECTED,
                     onToggle = { viewModel.setDualConnection(it) }
+                )
+            }
+
+            // Auto Play/Pause — In-ear wear detection (Buds Air 7 Pro)
+            if (detectedModel.supportsAutoPlayPause) {
+                SwitchFeatureCard(
+                    title = stringResource(R.string.auto_play_pause_title),
+                    description = stringResource(R.string.auto_play_pause_desc),
+                    checked = t300State.autoPlayPause,
+                    enabled = connectionState == BleConnectionState.CONNECTED,
+                    onToggle = { viewModel.setAutoPlayPause(it) }
+                )
+            }
+
+            // Auto Answer — Answer call on put-on (Buds Air 7 Pro)
+            if (detectedModel.supportsAutoAnswer) {
+                SwitchFeatureCard(
+                    title = stringResource(R.string.auto_answer_title),
+                    description = stringResource(R.string.auto_answer_desc),
+                    checked = t300State.autoAnswer,
+                    enabled = connectionState == BleConnectionState.CONNECTED,
+                    onToggle = { viewModel.setAutoAnswer(it) }
                 )
             }
 
@@ -364,10 +391,10 @@ fun MainScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // Build version at the very bottom
+            // Version and build number at the very bottom
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "build ${BuildConfig.VERSION_CODE}",
+                text = "v${BuildConfig.VERSION_NAME} · build ${BuildConfig.VERSION_CODE}",
                 fontSize = 11.sp,
                 color = Color.DarkGray,
                 modifier = Modifier
