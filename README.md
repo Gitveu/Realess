@@ -15,9 +15,9 @@ The list of supported models is actively growing — **new realme Buds models wi
 
 | Model | Core Features | Model-Specific Features | Status |
 |---|---|---|---|
-| **realme Buds T300** | Battery, ANC, EQ, Touch Gestures, Spatial Audio + Demo, Game Mode, L/R Usage Stats | — | Verified on device |
+| **realme Buds T300** | All core features | — | Verified on device |
 | **realme Buds T200** | All core features | LDAC, Dynamic Audio, Dual-Device Connection + connection history | Verified on device |
-| **realme Buds Air 7 Pro** | All core features | LHDC 5.0, Dynamic Audio, Dual-Device Connection + connection history, Auto Play/Pause, Auto Answer | Added `[from code]` |
+| **realme Buds Air 7 Pro** | All core features | LHDC 5.0, Dynamic Audio, Dual-Device Connection + connection history, Auto Play/Pause, Auto Answer | Verified on device |
 
 > **How to help add a new model:** open an Issue / PR with the exact Bluetooth name of your earbuds and screenshots of your model's settings from the official realme Link app (and, if possible, the copied protocol log from the app).
 
