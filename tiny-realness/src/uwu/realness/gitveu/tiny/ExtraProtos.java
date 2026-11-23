@@ -122,6 +122,17 @@ final class ExtraProtos {
         return boseBuild(0x01, 0x06, 0x02, new byte[]{lvl});
     }
 
+    static byte[] boseRename(String name) {
+        byte[] raw = name.trim().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (raw.length > 31) raw = Arrays.copyOf(raw, 31);
+        return boseBuild(0x01, 0x02, 0x02, raw);
+    }
+
+    static byte[] boseEqBandSet(int idx, int db) {
+        int g = Math.max(-10, Math.min(10, db));
+        return boseBuild(0x01, 0x07, 0x02, new byte[]{(byte) g, (byte) idx});
+    }
+
     static byte[] boseParseStream(byte[] buf, List<BosePkt> out) {
         int off = 0, total = buf.length;
         while (off + 4 <= total) {
@@ -287,22 +298,73 @@ final class ExtraProtos {
     }
 
     static byte[] xiaomiAuthChallenge() {
-        return xiaomiReq(0x50, new byte[]{0x00, 0x01, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10});
+        byte[] rand = new byte[17];
+        rand[0] = 0x00;
+        for (int i = 1; i <= 16; i++) rand[i] = (byte) (i * 17);
+        return xiaomiReq(0x50, rand);
+    }
+
+    static byte[] xiaomiGetCfg(int key) {
+        return xiaomiReq(0xF3, new byte[]{(byte) ((key >>> 8) & 0xFF), (byte) (key & 0xFF)});
+    }
+
+    static byte[] xiaomiSetCfg(int key, byte[] val) {
+        byte[] p = new byte[3 + val.length];
+        p[0] = (byte) (2 + val.length);
+        p[1] = (byte) ((key >>> 8) & 0xFF);
+        p[2] = (byte) (key & 0xFF);
+        System.arraycopy(val, 0, p, 3, val.length);
+        return xiaomiReq(0xF2, p);
     }
 
     static byte[] xiaomiAncSet(byte mode) {
         byte m = mode == Protocol.ANC_ON ? 0x01 : (mode == Protocol.ANC_TRANSPARENCY ? (byte) 0x02 : (byte) 0x00);
-        return xiaomiReq(0x08, new byte[]{0x01, m});
+        return xiaomiReq(0x08, new byte[]{0x02, 0x04, m});
     }
 
     static byte[] xiaomiAncLevelSet(byte lvl) {
-        byte v = lvl == 1 ? 0x01 : (lvl == 0 ? 0x02 : (lvl == 2 ? (byte) 0x03 : (byte) 0x04));
-        return xiaomiReq(0xF2, new byte[]{0x0B, 0x01, v});
+        byte v = lvl == 1 ? 0x01 : (lvl == 0 ? 0x00 : (lvl == 2 ? (byte) 0x02 : (byte) 0x03));
+        return xiaomiSetCfg(0x0B, new byte[]{0x01, v});
     }
 
     static byte[] xiaomiEqSet(byte eqId) {
-        byte v = eqId == 0 ? 0x00 : (eqId == 2 ? 0x01 : (eqId == 3 ? 0x02 : (byte) 0x03));
-        return xiaomiReq(0xF2, new byte[]{0x07, 0x01, v});
+        byte v = eqId == 0 ? 0x00 : (eqId == 2 ? 0x01 : (eqId == 3 ? 0x06 : (byte) 0x05));
+        return xiaomiSetCfg(0x07, new byte[]{v});
+    }
+
+    static byte[] xiaomiCustomEqSave(int[] freqs, int[] gains) {
+        int n = Math.min(freqs.length, gains.length);
+        byte[] out = new byte[7 + n * 3];
+        out[0] = 1; out[1] = 10; out[2] = 1; out[3] = 1; out[4] = 1; out[5] = 0; out[6] = (byte) n;
+        int off = 7;
+        for (int i = 0; i < n; i++) {
+            int f = freqs[i];
+            int g = Math.max(-10, Math.min(10, gains[i]));
+            out[off++] = (byte) ((f >>> 8) & 0xFF);
+            out[off++] = (byte) (f & 0xFF);
+            out[off++] = (byte) (g >= 0 ? g : (128 - g));
+        }
+        return xiaomiSetCfg(0x37, out);
+    }
+
+    static byte[] scCustomEqSet(int[] gains) {
+        byte[] b = new byte[10];
+        b[0] = (byte) 0xFE; b[1] = (byte) 0xFE;
+        for (int i = 0; i < 8; i++) {
+            int g = Math.max(-6, Math.min(6, i < gains.length ? gains[i] : 0));
+            b[2 + i] = (byte) (g * 10 + 120);
+        }
+        return scBuild(0x02, 0x81, b);
+    }
+
+    static byte[] sonyCustomEqSet(int seq, int[] gains) {
+        byte[] p = new byte[10];
+        p[0] = 0x58; p[1] = 0x01; p[2] = (byte) 0xA0; p[3] = 6;
+        for (int i = 0; i < 6; i++) {
+            int g = Math.max(-10, Math.min(10, i < gains.length ? gains[i] : 0));
+            p[4 + i] = (byte) (g + 10);
+        }
+        return sonyPack((byte) 0x0C, seq, p);
     }
 
     static byte[] xiaomiParseStream(byte[] buf, List<XiaomiPkt> out) {

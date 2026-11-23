@@ -428,4 +428,72 @@ object HuaweiProtocol {
             }
         }
     }
+
+    /**
+     * Parse 36-byte custom EQ entries from 0x2B4A param 8:
+     *   [0]=id, [1]=bandCount (10), [2..2+n]=gains(s8, 0.1 dB units), [2+n..35]=UTF-8 name NUL-terminated.
+     */
+    fun parseCustomEqProfiles(param8: ByteArray?, activeId: Int? = null): List<T300Protocol.CustomEqProfile> {
+        if (param8 == null || param8.size < 36) return emptyList()
+        val freqs = listOf(31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000)
+        val out = mutableListOf<T300Protocol.CustomEqProfile>()
+        var off = 0
+        while (off + 36 <= param8.size) {
+            val id = param8[off].toInt()
+            val count = (param8[off + 1].toInt() and 0xFF).coerceIn(1, 10)
+            val gains = ArrayList<Int>(count)
+            for (i in 0 until count) {
+                val raw = param8[off + 2 + i].toInt() // signed byte in 0.1 dB
+                gains.add((raw / 10).coerceIn(-6, 6))
+            }
+            val nameStart = off + 2 + count
+            var nameEnd = nameStart
+            while (nameEnd < off + 36 && param8[nameEnd].toInt() != 0) nameEnd++
+            val name = if (nameEnd > nameStart) {
+                String(param8, nameStart, nameEnd - nameStart, Charsets.UTF_8)
+            } else {
+                "Custom #$id"
+            }
+            out.add(
+                T300Protocol.CustomEqProfile(
+                    id = id,
+                    name = name,
+                    freqs = freqs.take(count),
+                    gains = gains,
+                    isSelected = (activeId != null && id == activeId)
+                )
+            )
+            off += 36
+        }
+        return out
+    }
+
+    /**
+     * Write/create/delete a 10-band Huawei custom EQ profile (0x2B49).
+     * action: 1 = create/update & select, 2 = delete.
+     */
+    fun buildCustomEqWrite(
+        modeId: Int,
+        name: String,
+        gainsDb: List<Int>,
+        delete: Boolean = false
+    ): ByteArray {
+        val data = ByteArray(10) { idx ->
+            val db = gainsDb.getOrElse(idx) { 0 }.coerceIn(-6, 6)
+            (db * 10).toByte()
+        }
+        val nameBytes = name.toByteArray(Charsets.UTF_8).let {
+            if (it.size > 20) it.copyOf(20) else it
+        }
+        return buildPacket(
+            CMD_EQ_WRITE,
+            listOf(
+                1 to byteArrayOf(modeId.toByte()),
+                2 to byteArrayOf(data.size.toByte()),
+                3 to data,
+                4 to nameBytes,
+                5 to byteArrayOf(if (delete) 2 else 1)
+            )
+        )
+    }
 }

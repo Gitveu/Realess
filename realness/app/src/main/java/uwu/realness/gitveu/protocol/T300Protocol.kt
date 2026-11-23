@@ -49,6 +49,12 @@ object T300Protocol {
     const val CMD_SWITCH_FEATURE_SET_RSP: Int = 0x8403 // 33795 decimal
     const val CMD_EQ_SET: Int = 0x0406           // 1030 decimal (Установка пресета эквалайзера)
     const val CMD_EQ_SET_RSP: Int = 0x8406       // 33798 decimal
+    const val CMD_FIND_BUDS: Int = 0x0400        // Поиск наушников (01=start, 00=stop)
+    const val CMD_CUSTOM_EQ_SET: Int = 0x0418    // Создание / сохранение / удаление кастомного EQ
+    const val CMD_CUSTOM_EQ_SET_RSP: Int = 0x8418
+    const val CUSTOM_EQ_ACTION_CREATE: Int = 0x01
+    const val CUSTOM_EQ_ACTION_SAVE: Int = 0x02
+    const val CUSTOM_EQ_ACTION_DELETE: Int = 0x03
     const val CMD_NOTIFICATION_REGISTER: Int = 0x0201 // 513 decimal (Регистрация на события)
     const val CMD_NOTIFICATION_REGISTER_RSP: Int = 0x8201 // 33281 decimal
     const val CMD_EVENT: Int = 0x0204            // 516 decimal (Асинхронные события)
@@ -402,12 +408,72 @@ object T300Protocol {
             get() = isRealme || isSennheiser || isJbl
 
         val supportsGameMode: Boolean
-            get() = isRealme || isNothing || isSoundcore || this in setOf(
+            get() = isRealme || isNothing || isSoundcore || isXiaomi ||
+                (isGalaxy && this != GALAXY_BUDS) || this in setOf(
                 HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I, HUAWEI_FREEBUDS_PRO_3,
                 HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREECLIP, HUAWEI_FREECLIP_2,
                 HUAWEI_FREEBUDS_SE_2, HUAWEI_FREEBUDS_SE_4, HUAWEI_FREELACE_PRO_2,
                 HUAWEI_GENERIC
             )
+
+        val supportsCustomEq: Boolean
+            get() = isRealme || isNothing || isXiaomi || isSony || isBose || isSoundcore ||
+                isSennheiser || isPixelBuds || (isHuawei && supportsEq && this != HUAWEI_FREEBUDS_SE_2)
+
+        val supportsHardwareFindBuds: Boolean
+            get() = isRealme || isNothing || isGalaxy
+
+        val supportsFirmwareRename: Boolean
+            get() = isBose
+
+        fun customEqSpec(): CustomEqSpec? = when {
+            isRealme -> CustomEqSpec(
+                bandLabels = listOf("62", "250", "1k", "4k", "8k", "16k"),
+                defaultFreqs = listOf(62, 250, 1000, 4000, 8000, 16000),
+                minDb = -6, maxDb = 6, supportsMultipleProfiles = true
+            )
+            isHuawei && supportsCustomEq -> CustomEqSpec(
+                bandLabels = listOf("31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"),
+                defaultFreqs = listOf(31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000),
+                minDb = -6, maxDb = 6, supportsMultipleProfiles = true
+            )
+            isNothing -> CustomEqSpec(
+                bandLabels = listOf("Bass", "Mid", "Treble"),
+                defaultFreqs = listOf(100, 1000, 6000),
+                minDb = -6, maxDb = 6, supportsMultipleProfiles = false
+            )
+            isXiaomi -> CustomEqSpec(
+                bandLabels = listOf("31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"),
+                defaultFreqs = listOf(31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000),
+                minDb = -10, maxDb = 10, supportsMultipleProfiles = false
+            )
+            isSony -> CustomEqSpec(
+                bandLabels = listOf("Bass", "400", "1k", "2.5k", "6.3k", "16k"),
+                defaultFreqs = listOf(60, 400, 1000, 2500, 6300, 16000),
+                minDb = -10, maxDb = 10, supportsMultipleProfiles = false
+            )
+            isBose -> CustomEqSpec(
+                bandLabels = listOf("Bass", "Mid", "Treble"),
+                defaultFreqs = listOf(100, 1000, 8000),
+                minDb = -10, maxDb = 10, supportsMultipleProfiles = false
+            )
+            isSoundcore -> CustomEqSpec(
+                bandLabels = listOf("100", "200", "400", "800", "1.6k", "3.2k", "6.4k", "12.8k"),
+                defaultFreqs = listOf(100, 200, 400, 800, 1600, 3200, 6400, 12800),
+                minDb = -6, maxDb = 6, supportsMultipleProfiles = false
+            )
+            isSennheiser -> CustomEqSpec(
+                bandLabels = listOf("63", "250", "1k", "4k", "8k"),
+                defaultFreqs = listOf(63, 250, 1000, 4000, 8000),
+                minDb = -6, maxDb = 6, supportsMultipleProfiles = false
+            )
+            isPixelBuds -> CustomEqSpec(
+                bandLabels = listOf("Sub", "Bass", "Mid", "High", "Air"),
+                defaultFreqs = listOf(60, 200, 1000, 4000, 12000),
+                minDb = -6, maxDb = 6, supportsMultipleProfiles = false
+            )
+            else -> null
+        }
 
         val supportsHighQualityAudio: Boolean
             get() = this in setOf(
@@ -781,6 +847,39 @@ object T300Protocol {
         val isSelected: Boolean
     )
 
+    data class CustomEqSpec(
+        val bandLabels: List<String>,
+        val defaultFreqs: List<Int>,
+        val minDb: Int,
+        val maxDb: Int,
+        val supportsMultipleProfiles: Boolean = false
+    )
+
+    data class CustomEqProfile(
+        val id: Int,
+        val name: String,
+        val freqs: List<Int>,
+        val gains: List<Int>,
+        val isSelected: Boolean = false,
+        val tag: ByteArray = byteArrayOf((-6).toByte(), 6.toByte())
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is CustomEqProfile) return false
+            return id == other.id && name == other.name && freqs == other.freqs &&
+                gains == other.gains && isSelected == other.isSelected && tag.contentEquals(other.tag)
+        }
+        override fun hashCode(): Int {
+            var r = id
+            r = 31 * r + name.hashCode()
+            r = 31 * r + freqs.hashCode()
+            r = 31 * r + gains.hashCode()
+            r = 31 * r + isSelected.hashCode()
+            r = 31 * r + tag.contentHashCode()
+            return r
+        }
+    }
+
     enum class TouchSide(val deviceType: Byte, @StringRes val titleRes: Int) {
         LEFT(0x01, R.string.touch_side_left),
         RIGHT(0x02, R.string.touch_side_right);
@@ -886,6 +985,11 @@ object T300Protocol {
         val rightUseTimeMinutes: Int? = null,
         val eqPreset: EqPreset? = null,
         val activeCustomEqName: String? = null,
+        val activeCustomEqId: Int? = null,
+        val customEqProfiles: List<CustomEqProfile> = emptyList(),
+        val customEqGains: List<Int> = emptyList(),
+        val customEqFreqs: List<Int> = emptyList(),
+        val hardwareFindActive: Boolean = false,
         val touchSettings: Map<Pair<TouchSide, TouchGesture>, TouchAction> = emptyMap()
     )
 
@@ -1443,6 +1547,78 @@ object T300Protocol {
      *     [0] roleByte (1 = Left, 2 = Right, 3 = Case)
      *     [1..4] totalMinutes (uint32 little-endian)
      */
+    fun buildFindBudsFrame(enable: Boolean, address: Byte = DEVICE_ADDRESS_DEFAULT): ByteArray =
+        Frame(CMD_FIND_BUDS, address, byteArrayOf(if (enable) 0x01 else 0x00)).toByteArray()
+
+    /**
+     * Create / save / delete custom EQ profile on realme / OnePlus / OPPO (Opcode 0x0418).
+     * Payload: <action> <tag 2B> <id> <nameLen> <name UTF-8> <bandCount> [freq u16 LE, gain s8]...
+     */
+    fun buildCustomEqSetFrame(
+        action: Int,
+        profile: CustomEqProfile,
+        address: Byte = DEVICE_ADDRESS_DEFAULT
+    ): ByteArray {
+        val nameBytes = profile.name.toByteArray(Charsets.UTF_8)
+        val freqs = if (profile.freqs.size == profile.gains.size && profile.freqs.isNotEmpty()) {
+            profile.freqs
+        } else {
+            listOf(62, 250, 1000, 4000, 8000, 16000)
+        }
+        val tag = if (profile.tag.size == 2) profile.tag else byteArrayOf((-6).toByte(), 6.toByte())
+        val payload = ArrayList<Byte>(6 + nameBytes.size + freqs.size * 3)
+        payload.add(action.toByte())
+        payload.add(tag[0])
+        payload.add(tag[1])
+        payload.add((profile.id and 0xFF).toByte())
+        payload.add((nameBytes.size and 0xFF).toByte())
+        for (b in nameBytes) payload.add(b)
+        payload.add((freqs.size and 0xFF).toByte())
+        for (i in freqs.indices) {
+            val f = freqs[i]
+            val g = profile.gains.getOrElse(i) { 0 }.coerceIn(-6, 6)
+            payload.add((f and 0xFF).toByte())
+            payload.add(((f ushr 8) and 0xFF).toByte())
+            payload.add(g.toByte())
+        }
+        return Frame(CMD_CUSTOM_EQ_SET, address, payload.toByteArray()).toByteArray()
+    }
+
+    /**
+     * Full parser for 0x8122 custom EQ profiles list including frequencies, gains, and gain tag.
+     */
+    fun parseCustomEqProfilesPayload(p: ByteArray): List<CustomEqProfile> {
+        if (p.size < 2 || p[0].toInt() != 0) return emptyList()
+        val count = p[1].toInt() and 0xFF
+        val out = mutableListOf<CustomEqProfile>()
+        var off = 2
+        for (i in 0 until count) {
+            if (off + 5 > p.size) break
+            val flag = p[off].toInt() and 0xFF
+            val tag = p.copyOfRange(off + 1, off + 3)
+            val id = p[off + 3].toInt() and 0xFF
+            val nameLen = p[off + 4].toInt() and 0xFF
+            off += 5
+            if (off + nameLen + 1 > p.size) break
+            val name = String(p, off, nameLen, Charsets.UTF_8)
+            off += nameLen
+            val bands = p[off].toInt() and 0xFF
+            off += 1
+            if (off + bands * 3 > p.size) break
+            val freqs = ArrayList<Int>(bands)
+            val gains = ArrayList<Int>(bands)
+            for (b in 0 until bands) {
+                val freq = (p[off].toInt() and 0xFF) or ((p[off + 1].toInt() and 0xFF) shl 8)
+                val gain = p[off + 2].toInt() // signed byte
+                freqs.add(freq)
+                gains.add(gain)
+                off += 3
+            }
+            out.add(CustomEqProfile(id, name, freqs, gains, flag == 1, tag))
+        }
+        return out
+    }
+
     fun parseUseTimePayload(p: ByteArray): Map<ComponentRole, Int>? {
         if (p.size < 2 || p[0].toInt() != 0) return null
         val count = p[1].toInt() and 0xFF

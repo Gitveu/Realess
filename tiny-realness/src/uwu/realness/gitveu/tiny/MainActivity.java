@@ -55,8 +55,13 @@ public class MainActivity extends Activity implements BudsLink.Listener {
     private static final String K_LAST_MAC = "last_mac";
     private static final String K_LAST_NAME = "last_name";
     private static final String K_LAST_MODEL = "last_model";
+    private static final String K_ALIAS_PREFIX = "alias_";
 
     private SharedPreferences prefs;
+    private FindTone findTone;
+    private boolean hwFindActive = false;
+    private String customAlias = null;
+    private int[] customEqGains = new int[10];
     private int sysStatus = ST_NO_PAIRED;
     private int connState = BudsLink.CONN_DISCONNECTED;
     private int autoDetectedModel = Protocol.MODEL_UNKNOWN;
@@ -101,7 +106,7 @@ public class MainActivity extends Activity implements BudsLink.Listener {
     private TextView tvTopTitle, btnRefresh;
     private View cardPerm, cardUnsupported;
     private TextView tvUnsupportedMsg;
-    private TextView tvDevName, tvDevSub, tvBadge, tvHint, btnReconnect;
+    private TextView tvDevName, tvDevSub, tvBadge, tvHint, btnReconnect, btnFind, btnRename;
     private TextView tvBatL, tvBatC, tvBatR;
     private View barBatL, barBatC, barBatR;
     private View secAnc, cardAnc, rowAncLvl;
@@ -109,7 +114,7 @@ public class MainActivity extends Activity implements BudsLink.Listener {
     private final TextView[] btnAncLvl = new TextView[4];
     private View secEq, cardEq;
     private final TextView[] btnEq = new TextView[4];
-    private TextView tvCustomEq;
+    private TextView tvCustomEq, btnCustomEq;
     private View secTouch, cardTouch;
     private final View[] rowGest = new View[3];
     private final TextView[] btnSide = new TextView[2];
@@ -190,6 +195,8 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         lastDeviceName = prefs.getString(K_LAST_NAME, null);
         int savedM = prefs.getInt(K_LAST_MODEL, Protocol.MODEL_UNKNOWN);
         detectedModel = manualModelOverride != Protocol.MODEL_UNKNOWN ? manualModelOverride : savedM;
+        customAlias = lastDeviceMac != null ? prefs.getString(K_ALIAS_PREFIX + lastDeviceMac, null) : null;
+        findTone = new FindTone(this);
         link = new BudsLink(this, this);
 
         setContentView(buildUi());
@@ -226,6 +233,8 @@ public class MainActivity extends Activity implements BudsLink.Listener {
     protected void onDestroy() {
         super.onDestroy();
         uiHandler.removeCallbacks(reconnectTask);
+        if (findTone != null) findTone.stop();
+        if (hwFindActive) link.setHardwareFindBuds(false, FindTone.CH_BOTH);
         try { unregisterReceiver(btReceiver); } catch (Exception ignored) {}
         try { if (adapter != null && a2dp != null) adapter.closeProfileProxy(BluetoothProfile.A2DP, a2dp); } catch (Exception ignored) {}
         link.disconnect();
@@ -267,6 +276,7 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         String mac = d.getAddress();
         lastDeviceName = nm;
         lastDeviceMac = mac;
+        customAlias = mac != null ? prefs.getString(K_ALIAS_PREFIX + mac, null) : null;
         prefs.edit()
             .putString(K_LAST_MAC, mac)
             .putString(K_LAST_NAME, nm)
@@ -526,6 +536,24 @@ public class MainActivity extends Activity implements BudsLink.Listener {
             }
         });
         stCard.addView(btnReconnect, rlp);
+
+        LinearLayout actRow = hbox();
+        LinearLayout.LayoutParams alp = lpMatchWrap();
+        alp.topMargin = dp(10);
+        btnFind = pillBtn(t("Find earbuds", "Поиск наушников"), C_SURFACE2, Color.WHITE);
+        btnFind.setGravity(Gravity.CENTER);
+        btnFind.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showFindDialog(); }
+        });
+        btnRename = pillBtn(t("Rename", "Переименовать"), C_SURFACE2, Color.WHITE);
+        btnRename.setGravity(Gravity.CENTER);
+        btnRename.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showRenameDialog(); }
+        });
+        actRow.addView(btnFind, lpWeight(1));
+        actRow.addView(spaceW(8));
+        actRow.addView(btnRename, lpWeight(1));
+        stCard.addView(actRow, alp);
         addSpaced(content, stCard, 16);
 
         // 4. Battery section
@@ -625,6 +653,15 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         LinearLayout.LayoutParams clp = lpMatchWrap();
         clp.topMargin = dp(8);
         eqCard.addView(tvCustomEq, clp);
+
+        btnCustomEq = pillBtn(t("Custom equalizer", "Настраиваемый эквалайзер"), C_SURFACE2, C_ACCENT);
+        btnCustomEq.setGravity(Gravity.CENTER);
+        btnCustomEq.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { if (connState == BudsLink.CONN_CONNECTED) showCustomEqDialog(); }
+        });
+        LinearLayout.LayoutParams celp = lpMatchWrap();
+        celp.topMargin = dp(8);
+        eqCard.addView(btnCustomEq, celp);
         cardEq = eqCard;
         addSpaced(content, eqCard, 16);
 
@@ -847,12 +884,18 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         updatingUi = true;
         boolean connected = (connState == BudsLink.CONN_CONNECTED);
 
-        String dispName = (detectedDevice != null && detectedDevice.getName() != null)
+        String rawName = (detectedDevice != null && detectedDevice.getName() != null)
             ? detectedDevice.getName() : lastDeviceName;
         String dispMac = detectedDevice != null ? detectedDevice.getAddress() : lastDeviceMac;
+        customAlias = dispMac != null ? prefs.getString(K_ALIAS_PREFIX + dispMac, null) : null;
+        String dispName = customAlias != null ? customAlias : rawName;
 
         tvTopTitle.setText(dispName != null ? dispName : "realness tiny");
         btnRefresh.setVisibility(connected ? View.VISIBLE : View.GONE);
+        boolean ringing = (findTone != null && findTone.isPlaying()) || hwFindActive;
+        btnFind.setText(ringing ? t("Ringing…", "Звучит…") : t("Find earbuds", "Поиск наушников"));
+        btnFind.setBackground(roundRect(ringing ? C_RED : C_SURFACE2, 20));
+        btnRename.setVisibility((dispMac != null || detectedDevice != null) ? View.VISIBLE : View.GONE);
 
         cardPerm.setVisibility(hasPerms() ? View.GONE : View.VISIBLE);
         boolean showUnsup = (sysStatus == ST_UNSUPPORTED && unsupportedName != null);
@@ -938,8 +981,11 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         }
 
         // EQ
-        int eqVis = (!known || Protocol.supportsEq(detectedModel)) ? View.VISIBLE : View.GONE;
+        boolean hasCustomEq = Protocol.supportsCustomEq(detectedModel);
+        int eqVis = (!known || Protocol.supportsEq(detectedModel) || hasCustomEq) ? View.VISIBLE : View.GONE;
         secEq.setVisibility(eqVis); cardEq.setVisibility(eqVis);
+        btnCustomEq.setVisibility(hasCustomEq ? View.VISIBLE : View.GONE);
+        btnCustomEq.setAlpha(connected ? 1f : 0.45f);
         String[] eqNames;
         if (isHw || isXi) {
             eqNames = new String[]{t("Voices", "Голоса"), t("Default", "По умолчанию"), t("Treble boost", "Высокие частоты"), t("Bass boost", "Усиление басов")};
@@ -1084,6 +1130,192 @@ public class MainActivity extends Activity implements BudsLink.Listener {
             .setItems(labels, new DialogInterface.OnClickListener() {
                 @Override public void onClick(DialogInterface dialog, int which) {
                     link.setKey(side, gest, allowed[which]);
+                }
+            })
+            .setNegativeButton(t("Cancel", "Отмена"), null)
+            .show();
+    }
+
+    private void showFindDialog() {
+        LinearLayout box = vbox();
+        box.setPadding(dp(20), dp(14), dp(20), dp(8));
+        box.addView(tv(t("Do not wear the earbuds while playing the locator tone.",
+            "Не надевайте наушники во время сигнала поиска."), 12, C_MUTED, false));
+
+        final String[] chNames = {t("Left", "Левый"), t("Both", "Оба"), t("Right", "Правый")};
+        final RadioGroup rg = new RadioGroup(this);
+        rg.setOrientation(RadioGroup.HORIZONTAL);
+        rg.setPadding(0, dp(10), 0, dp(10));
+        for (int i = 0; i < 3; i++) {
+            RadioButton rb = new RadioButton(this);
+            rb.setId(1000 + i);
+            rb.setText(chNames[i]);
+            rb.setTextColor(Color.WHITE);
+            rg.addView(rb);
+        }
+        rg.check(1000 + findTone.getChannel());
+        rg.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
+            @Override public void onCheckedChanged(RadioGroup g, int id) {
+                int ch = id - 1000;
+                findTone.setChannel(ch);
+                if (hwFindActive && Protocol.isNothing(detectedModel)) link.setHardwareFindBuds(true, ch);
+            }
+        });
+        box.addView(rg);
+
+        if (Protocol.supportsHwFind(detectedModel) && connState == BudsLink.CONN_CONNECTED) {
+            final CheckBox cbHw = new CheckBox(this);
+            cbHw.setText(t("Built-in earbud chime", "Встроенный сигнал наушников"));
+            cbHw.setTextColor(Color.WHITE);
+            cbHw.setChecked(hwFindActive);
+            cbHw.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+                @Override public void onCheckedChanged(CompoundButton b, boolean c) {
+                    hwFindActive = c;
+                    link.setHardwareFindBuds(c, findTone.getChannel());
+                    render();
+                }
+            });
+            box.addView(cbHw);
+        }
+
+        boolean playing = findTone.isPlaying();
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(t("Find earbuds", "Поиск наушников"))
+            .setView(box)
+            .setPositiveButton(playing ? t("Stop", "Остановить") : t("Play sound", "Включить звук"),
+                new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        if (findTone.isPlaying()) {
+                            findTone.stop();
+                            if (hwFindActive) { hwFindActive = false; link.setHardwareFindBuds(false, FindTone.CH_BOTH); }
+                        } else {
+                            findTone.start(findTone.getChannel());
+                        }
+                        render();
+                    }
+                })
+            .setNegativeButton(t("Cancel", "Отмена"), null)
+            .show();
+    }
+
+    private void showRenameDialog() {
+        final String mac = detectedDevice != null ? detectedDevice.getAddress() : lastDeviceMac;
+        if (mac == null) return;
+        String cur = customAlias != null ? customAlias
+            : (detectedDevice != null && detectedDevice.getName() != null ? detectedDevice.getName() : lastDeviceName);
+        final EditText et = new EditText(this);
+        et.setSingleLine(true);
+        et.setText(cur != null ? cur : "");
+        et.setTextColor(Color.WHITE);
+        et.setHint(t("Leave empty to restore default", "Пусто = исходное имя"));
+        LinearLayout box = vbox();
+        box.setPadding(dp(20), dp(12), dp(20), dp(4));
+        box.addView(et);
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(t("Rename earbuds", "Переименовать наушники"))
+            .setView(box)
+            .setPositiveButton(t("Rename", "Переименовать"), new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface d, int w) {
+                    String nm = et.getText().toString().trim();
+                    if (nm.isEmpty()) {
+                        prefs.edit().remove(K_ALIAS_PREFIX + mac).apply();
+                        customAlias = null;
+                        Toast.makeText(MainActivity.this, t("Default name restored", "Исходное имя восстановлено"), Toast.LENGTH_SHORT).show();
+                    } else {
+                        boolean fw = link.renameFirmware(nm);
+                        boolean osOk = false;
+                        if (detectedDevice != null) {
+                            try {
+                                java.lang.reflect.Method m = BluetoothDevice.class.getMethod("setAlias", String.class);
+                                Object r = m.invoke(detectedDevice, nm);
+                                osOk = Boolean.TRUE.equals(r) || Integer.valueOf(0).equals(r);
+                            } catch (Throwable ignored) {}
+                        }
+                        prefs.edit().putString(K_ALIAS_PREFIX + mac, nm).apply();
+                        customAlias = nm;
+                        String msg = fw ? t("Name sent to earbud firmware", "Имя отправлено в прошивку")
+                            : (osOk ? t("Bluetooth alias updated", "Имя Bluetooth обновлено")
+                                : t("Display name saved in realness", "Имя сохранено в realness"));
+                        Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show();
+                    }
+                    render();
+                }
+            })
+            .setNegativeButton(t("Cancel", "Отмена"), null)
+            .show();
+    }
+
+    private void showCustomEqDialog() {
+        final String[] labels;
+        final int maxDb;
+        if (Protocol.isXiaomi(detectedModel)) {
+            labels = new String[]{"62", "125", "250", "500", "1k", "2k", "4k", "8k", "12k", "16k"};
+            maxDb = 10;
+        } else if (Protocol.isSony(detectedModel)) {
+            labels = new String[]{"Bass", "400", "1k", "2.5k", "6.3k", "16k"};
+            maxDb = 10;
+        } else if (Protocol.isBose(detectedModel) || Protocol.isNothing(detectedModel)) {
+            labels = new String[]{t("Bass", "Бас"), t("Mid", "Сред."), t("Treble", "Выс.")};
+            maxDb = Protocol.isBose(detectedModel) ? 10 : 6;
+        } else if (Protocol.isSoundcore(detectedModel)) {
+            labels = new String[]{"100", "200", "400", "800", "1.6k", "3.2k", "6.4k", "12.8k"};
+            maxDb = 6;
+        } else if (Protocol.isSennheiser(detectedModel) || Protocol.isPixelBuds(detectedModel)) {
+            labels = new String[]{"63", "250", "1k", "4k", "8k"};
+            maxDb = 6;
+        } else {
+            labels = new String[]{"62", "250", "1k", "4k", "8k", "16k"};
+            maxDb = 6;
+        }
+        final int n = labels.length;
+        final int[] vals = new int[n];
+        for (int i = 0; i < n; i++) vals[i] = Math.max(-maxDb, Math.min(maxDb, customEqGains[i]));
+
+        ScrollView sv = new ScrollView(this);
+        LinearLayout box = vbox();
+        box.setPadding(dp(18), dp(10), dp(18), dp(8));
+        for (int i = 0; i < n; i++) {
+            final int idx = i;
+            LinearLayout row = hbox();
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            TextView lbl = tv(labels[i], 12, Color.WHITE, true);
+            lbl.setMinWidth(dp(44));
+            final TextView valTv = tv((vals[i] > 0 ? "+" : "") + vals[i] + " dB", 12, C_ACCENT, true);
+            valTv.setMinWidth(dp(46));
+            valTv.setGravity(Gravity.END);
+            SeekBar sb = new SeekBar(this);
+            sb.setMax(maxDb * 2);
+            sb.setProgress(vals[i] + maxDb);
+            sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                @Override public void onProgressChanged(SeekBar s, int p, boolean fromUser) {
+                    int g = p - maxDb;
+                    vals[idx] = g;
+                    valTv.setText((g > 0 ? "+" : "") + g + " dB");
+                }
+                @Override public void onStartTrackingTouch(SeekBar s) {}
+                @Override public void onStopTrackingTouch(SeekBar s) {}
+            });
+            row.addView(lbl);
+            row.addView(sb, lpWeight(1));
+            row.addView(valTv);
+            box.addView(row, lpMatchWrap());
+        }
+        sv.addView(box);
+
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(t("Custom equalizer", "Настраиваемый эквалайзер"))
+            .setView(sv)
+            .setPositiveButton(t("Apply", "Применить"), new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface d, int w) {
+                    System.arraycopy(vals, 0, customEqGains, 0, n);
+                    link.setCustomEq(vals);
+                }
+            })
+            .setNeutralButton(t("Reset", "Сброс"), new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface d, int w) {
+                    Arrays.fill(vals, 0);
+                    Arrays.fill(customEqGains, 0);
+                    link.setCustomEq(vals);
                 }
             })
             .setNegativeButton(t("Cancel", "Отмена"), null)

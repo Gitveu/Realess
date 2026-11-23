@@ -100,6 +100,20 @@ object SonyProtocol {
         return pack(TYPE_DATA_MDR, seq, byteArrayOf(CMD_EQ_SET_PARAM.toByte(), 0x01, sonyPreset, 0x00))
     }
 
+    /**
+     * Sony MDR Custom EQ (6 bands: Clear Bass + 400 / 1k / 2.5k / 6.3k / 16k Hz, range -10..+10 -> encoded 0..20).
+     */
+    fun buildCustomEqSet(seq: Int, gains: List<Int>): ByteArray {
+        val bands = ByteArray(6) { i -> (gains.getOrElse(i) { 0 }.coerceIn(-10, 10) + 10).toByte() }
+        val payload = ByteArray(4 + bands.size)
+        payload[0] = CMD_EQ_SET_PARAM.toByte()
+        payload[1] = 0x01 // PRESET_EQ
+        payload[2] = 0xA0.toByte() // MDR_EQ_CUSTOM
+        payload[3] = bands.size.toByte()
+        System.arraycopy(bands, 0, payload, 4, bands.size)
+        return pack(TYPE_DATA_MDR, seq, payload)
+    }
+
     fun parsePacketsFromStreamBuffer(buf: ByteArray): Pair<List<Packet>, ByteArray> {
         val packets = mutableListOf<Packet>()
         var off = 0

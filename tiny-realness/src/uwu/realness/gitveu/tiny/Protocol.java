@@ -29,6 +29,7 @@ final class Protocol {
     static final int CMD_NOTIFY_REG_RSP = 0x8201;
     static final int CMD_EVENT = 0x0204;
 
+    static final int CMD_FIND_BUDS = 0x0400;
     static final int CMD_KEY_SET = 0x0401;
     static final int CMD_KEY_SET_RSP = 0x8401;
     static final int CMD_SWITCH_SET = 0x0403;
@@ -37,6 +38,7 @@ final class Protocol {
     static final int CMD_ANC_RSP = 0x8404;
     static final int CMD_EQ_SET = 0x0406;
     static final int CMD_EQ_SET_RSP = 0x8406;
+    static final int CMD_CUSTOM_EQ_SET = 0x0418;
     static final int CMD_NOTIFICATION = 0x8400;
 
     static final byte FEAT_AUTO_PLAY_PAUSE = 0x04;
@@ -409,10 +411,19 @@ final class Protocol {
     static boolean supportsTouch(int m) { return supportsDoubleTap(m) || supportsTripleTap(m) || supportsLongTap(m); }
     static boolean supportsSpatial(int m) { return isRealme(m) || isSennheiser(m) || isJbl(m); }
     static boolean supportsGameMode(int m) {
-        return isRealme(m) || isNothing(m) || isSoundcore(m)
+        return isRealme(m) || isNothing(m) || isSoundcore(m) || isXiaomi(m)
+            || m == MODEL_GALAXY_MODERN || m == MODEL_GALAXY_LIVE || m == MODEL_GALAXY_PLUS
             || m == MODEL_HW_5I || m == MODEL_HW_6I || m == MODEL_HW_PRO3 || m == MODEL_HW_PRO5
             || m == MODEL_HW_CLIP || m == MODEL_HW_CLIP2 || m == MODEL_HW_SE2 || m == MODEL_HW_SE4
             || m == MODEL_HW_LACE2 || m == MODEL_HW_GENERIC;
+    }
+    static boolean supportsCustomEq(int m) {
+        return isRealme(m) || isNothing(m) || isXiaomi(m) || isSony(m)
+            || isBose(m) || isSoundcore(m) || isSennheiser(m) || isPixelBuds(m)
+            || (isHuawei(m) && supportsEq(m));
+    }
+    static boolean supportsHwFind(int m) {
+        return isRealme(m) || isNothing(m) || isGalaxy(m);
     }
     static boolean supportsHqAudio(int m) {
         return m == MODEL_T200 || m == MODEL_AIR_7_PRO || m == MODEL_AIR_8_PRO || m == MODEL_REALME_ADV

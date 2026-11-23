@@ -5,6 +5,7 @@ import android.bluetooth.*
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import uwu.realness.gitveu.audio.FindBudsChannel
 import uwu.realness.gitveu.protocol.BoseProtocol
 import uwu.realness.gitveu.protocol.GalaxyProtocol
 import uwu.realness.gitveu.protocol.HuaweiProtocol
@@ -20,6 +21,7 @@ import uwu.realness.gitveu.protocol.XiaomiProtocol
 import java.util.concurrent.atomic.AtomicInteger
 import uwu.realness.gitveu.protocol.T300Protocol.AncMode
 import uwu.realness.gitveu.protocol.T300Protocol.ComponentRole
+import uwu.realness.gitveu.protocol.T300Protocol.CustomEqProfile
 import uwu.realness.gitveu.protocol.T300Protocol.EqPreset
 import uwu.realness.gitveu.protocol.T300Protocol.TouchSide
 import uwu.realness.gitveu.protocol.T300Protocol.TouchGesture
@@ -726,6 +728,12 @@ class T300BleManager(private val context: Context) {
                 log("TX Nothing LowLatency Req")
                 sendRawBytes(NothingProtocol.buildLowLatencyRead())
             }
+            T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
+                if (xiaomiAuthenticated) {
+                    log("TX Xiaomi LowLatency Req (0x002F)")
+                    sendRawBytes(XiaomiProtocol.buildLowLatencyReq())
+                }
+            }
             T300Protocol.ProtocolFamily.REALME_TL -> {
                 val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_GAME_MODE)
                 log("TX GameMode Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
@@ -752,9 +760,23 @@ class T300BleManager(private val context: Context) {
                 _t300State.value = _t300State.value.copy(gameMode = enabled)
                 scope.launch { delay(250); refreshGameMode() }
             }
+            T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
+                if (!xiaomiAuthenticated) return
+                log("TX Xiaomi LowLatency (0x002F) [${if (enabled) "ON" else "OFF"}]")
+                sendRawBytes(XiaomiProtocol.buildLowLatencySet(enabled))
+                _t300State.value = _t300State.value.copy(gameMode = enabled)
+                scope.launch { delay(220); refreshGameMode() }
+            }
+            T300Protocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
+                val legacy = activeModel == T300Protocol.BudsModel.GALAXY_BUDS
+                log("TX Galaxy GamingMode (0x87) [${if (enabled) "ON" else "OFF"}]")
+                sendRawBytes(GalaxyProtocol.buildGameModeWrite(enabled, legacy))
+                _t300State.value = _t300State.value.copy(gameMode = enabled)
+            }
             T300Protocol.ProtocolFamily.SOUNDCORE_SPP -> {
+                val isLiberty = activeModel == T300Protocol.BudsModel.SOUNDCORE_LIBERTY_4_NC
                 log("TX Soundcore Gaming [${if (enabled) "ON" else "OFF"}]")
-                sendRawBytes(SoundcoreProtocol.buildGameModeSet(enabled))
+                sendRawBytes(SoundcoreProtocol.buildGameModeSet(enabled, isLiberty))
                 _t300State.value = _t300State.value.copy(gameMode = enabled)
             }
             T300Protocol.ProtocolFamily.REALME_TL -> {
@@ -1079,7 +1101,7 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
-     * Request current EQ preset
+     * Request current EQ preset and custom EQ parameters
      */
     fun refreshEq() {
         when (activeModel.protocolFamily) {
@@ -1090,6 +1112,27 @@ class T300BleManager(private val context: Context) {
             T300Protocol.ProtocolFamily.NOTHING_SPP -> {
                 log("TX Nothing EQ Req")
                 sendRawBytes(NothingProtocol.buildEqRead(activeModel.nothingUsesListeningModeEq))
+                if (activeModel.supportsCustomEq) {
+                    sendRawBytes(NothingProtocol.buildCustomEqRead())
+                }
+            }
+            T300Protocol.ProtocolFamily.SONY_MDR_SPP -> {
+                sendRawBytes(SonyProtocol.buildEqReq(sonySeq))
+            }
+            T300Protocol.ProtocolFamily.BOSE_BMAP_SPP -> {
+                sendRawBytes(BoseProtocol.buildEqReq())
+            }
+            T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
+                if (xiaomiAuthenticated) {
+                    sendRawBytes(XiaomiProtocol.buildGetConfigReq(XiaomiProtocol.CFG_EQ_PRESET))
+                    sendRawBytes(XiaomiProtocol.buildCustomEqReq())
+                }
+            }
+            T300Protocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
+                sendRawBytes(SennheiserProtocol.buildEqGainsReq())
+            }
+            T300Protocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
+                sendRawBytes(PixelBudsProtocol.buildReadSetting(pixelActiveChannel, PixelBudsProtocol.SETTING_USER_EQ))
             }
             T300Protocol.ProtocolFamily.REALME_TL -> {
                 val frame = T300Protocol.buildEqRequestFrame()
@@ -1104,10 +1147,282 @@ class T300BleManager(private val context: Context) {
      * Request custom EQ curves (realme Opcode 0x0122)
      */
     fun refreshAllEq() {
-        if (!activeModel.isRealme) return
-        val frame = T300Protocol.buildAllEqRequestFrame()
-        log("TX All EQ Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
-        sendData(frame)
+        when (activeModel.protocolFamily) {
+            T300Protocol.ProtocolFamily.REALME_TL -> {
+                val frame = T300Protocol.buildAllEqRequestFrame()
+                log("TX All EQ Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
+                sendData(frame)
+            }
+            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+                if (activeModel.supportsCustomEq) sendRawBytes(NothingProtocol.buildCustomEqRead())
+            }
+            T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
+                if (xiaomiAuthenticated) sendRawBytes(XiaomiProtocol.buildCustomEqReq())
+            }
+            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+                sendRawBytes(HuaweiProtocol.buildEqRead())
+            }
+            else -> return
+        }
+    }
+
+    /**
+     * Save, create, or delete custom EQ across all supported protocols.
+     */
+    fun setCustomEq(
+        gains: List<Int>,
+        profileId: Int? = null,
+        profileName: String? = null,
+        createNew: Boolean = false,
+        delete: Boolean = false
+    ) {
+        val spec = activeModel.customEqSpec() ?: return
+        val clampedGains = List(spec.bandLabels.size) { idx ->
+            gains.getOrElse(idx) { 0 }.coerceIn(spec.minDb, spec.maxDb)
+        }
+        val currentState = _t300State.value
+        val freqs = currentState.customEqFreqs.takeIf { it.size == clampedGains.size } ?: spec.defaultFreqs
+
+        when (activeModel.protocolFamily) {
+            T300Protocol.ProtocolFamily.REALME_TL -> {
+                val existing = currentState.customEqProfiles
+                val existingProfile = existing.firstOrNull { it.id == profileId }
+                val targetId = when {
+                    createNew -> ((existing.maxOfOrNull { it.id } ?: 0) + 1).coerceAtLeast(1)
+                    profileId != null -> profileId
+                    existing.isNotEmpty() -> existing.first().id
+                    else -> 1
+                }
+                val action = when {
+                    delete -> T300Protocol.CUSTOM_EQ_ACTION_DELETE
+                    createNew || (existingProfile == null && existing.isEmpty()) -> T300Protocol.CUSTOM_EQ_ACTION_CREATE
+                    else -> T300Protocol.CUSTOM_EQ_ACTION_SAVE
+                }
+                val name = (profileName?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: existingProfile?.name
+                    ?: "Custom $targetId")
+                val tag = existingProfile?.tag
+                    ?: existing.firstOrNull()?.tag
+                    ?: byteArrayOf((-6).toByte(), 6.toByte())
+                val profile = CustomEqProfile(
+                    id = targetId,
+                    name = name,
+                    freqs = freqs,
+                    gains = clampedGains,
+                    isSelected = !delete,
+                    tag = tag
+                )
+                val frame = T300Protocol.buildCustomEqSetFrame(action, profile)
+                log("TX CustomEQ [action=$action, id=$targetId, name=$name, gains=$clampedGains]")
+                sendData(frame)
+                if (!delete) {
+                    _t300State.value = currentState.copy(
+                        eqPreset = null,
+                        activeCustomEqId = targetId,
+                        activeCustomEqName = name,
+                        customEqGains = clampedGains,
+                        customEqFreqs = freqs
+                    )
+                }
+                scope.launch {
+                    delay(220)
+                    refreshAllEq()
+                    delay(120)
+                    refreshEq()
+                }
+            }
+            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+                val existing = currentState.customEqProfiles
+                val targetId = when {
+                    createNew -> ((existing.maxOfOrNull { it.id } ?: 10) + 1).coerceAtLeast(11)
+                    profileId != null -> profileId
+                    existing.isNotEmpty() -> existing.first().id
+                    else -> 11
+                }
+                val name = profileName?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: existing.firstOrNull { it.id == targetId }?.name
+                    ?: "Custom $targetId"
+                log("TX Huawei CustomEQ [id=$targetId, name=$name, del=$delete, gains=$clampedGains]")
+                sendRawBytes(HuaweiProtocol.buildCustomEqWrite(targetId, name, clampedGains, delete))
+                if (!delete) {
+                    _t300State.value = currentState.copy(
+                        eqPreset = null,
+                        activeCustomEqId = targetId,
+                        activeCustomEqName = name,
+                        customEqGains = clampedGains,
+                        customEqFreqs = freqs
+                    )
+                }
+                scope.launch { delay(280); refreshEq() }
+            }
+            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+                val bass = clampedGains.getOrElse(0) { 0 }
+                val mid = clampedGains.getOrElse(1) { 0 }
+                val treble = clampedGains.getOrElse(2) { 0 }
+                log("TX Nothing CustomEQ [B=$bass, M=$mid, T=$treble]")
+                sendRawBytes(NothingProtocol.buildCustomEqWrite(bass, mid, treble))
+                scope.launch {
+                    delay(120)
+                    sendRawBytes(NothingProtocol.buildSelectCustomEq(activeModel.nothingUsesListeningModeEq))
+                }
+                _t300State.value = currentState.copy(
+                    eqPreset = null,
+                    activeCustomEqName = "Custom",
+                    customEqGains = listOf(bass, mid, treble)
+                )
+            }
+            T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
+                if (!xiaomiAuthenticated) return
+                if (delete) {
+                    log("TX Xiaomi CustomEQ Reset (0x0037)")
+                    sendRawBytes(XiaomiProtocol.buildCustomEqReset())
+                    _t300State.value = currentState.copy(
+                        customEqGains = List(clampedGains.size) { 0 }
+                    )
+                } else {
+                    log("TX Xiaomi CustomEQ Save (0x0037) [gains=$clampedGains]")
+                    sendRawBytes(XiaomiProtocol.buildCustomEqSave(freqs, clampedGains, spec.maxDb))
+                    _t300State.value = currentState.copy(
+                        eqPreset = null,
+                        activeCustomEqName = "Custom",
+                        customEqGains = clampedGains,
+                        customEqFreqs = freqs
+                    )
+                }
+                scope.launch { delay(220); sendRawBytes(XiaomiProtocol.buildCustomEqReq()) }
+            }
+            T300Protocol.ProtocolFamily.SONY_MDR_SPP -> {
+                log("TX Sony CustomEQ [gains=$clampedGains]")
+                sendRawBytes(SonyProtocol.buildCustomEqSet(sonySeq, clampedGains))
+                _t300State.value = currentState.copy(
+                    eqPreset = null,
+                    activeCustomEqName = "Custom",
+                    customEqGains = clampedGains
+                )
+            }
+            T300Protocol.ProtocolFamily.BOSE_BMAP_SPP -> {
+                log("TX Bose CustomEQ [gains=$clampedGains]")
+                scope.launch {
+                    for (i in clampedGains.indices) {
+                        sendRawBytes(BoseProtocol.buildEqBandSet(i, clampedGains[i]))
+                        delay(50)
+                    }
+                }
+                _t300State.value = currentState.copy(
+                    eqPreset = null,
+                    activeCustomEqName = "Custom",
+                    customEqGains = clampedGains
+                )
+            }
+            T300Protocol.ProtocolFamily.SOUNDCORE_SPP -> {
+                log("TX Soundcore CustomEQ [gains=$clampedGains]")
+                sendRawBytes(SoundcoreProtocol.buildCustomEqSet(clampedGains))
+                _t300State.value = currentState.copy(
+                    eqPreset = null,
+                    activeCustomEqName = "Custom",
+                    customEqGains = clampedGains
+                )
+            }
+            T300Protocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
+                log("TX Sennheiser CustomEQ [gains=$clampedGains]")
+                scope.launch {
+                    for (i in clampedGains.indices) {
+                        sendRawBytes(SennheiserProtocol.buildEqBandSet(i, clampedGains[i]))
+                        delay(50)
+                    }
+                }
+                _t300State.value = currentState.copy(
+                    eqPreset = null,
+                    activeCustomEqName = "Custom",
+                    customEqGains = clampedGains
+                )
+            }
+            T300Protocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
+                log("TX PixelBuds CustomEQ [gains=$clampedGains]")
+                sendRawBytes(PixelBudsProtocol.buildWriteUserEq(pixelActiveChannel, clampedGains))
+                _t300State.value = currentState.copy(
+                    eqPreset = null,
+                    activeCustomEqName = "Custom",
+                    customEqGains = clampedGains
+                )
+            }
+            else -> return
+        }
+    }
+
+    /**
+     * Activate an existing saved custom EQ profile (realme / Huawei).
+     */
+    fun selectCustomEqProfile(profile: CustomEqProfile) {
+        when (activeModel.protocolFamily) {
+            T300Protocol.ProtocolFamily.REALME_TL -> {
+                setCustomEq(
+                    gains = profile.gains,
+                    profileId = profile.id,
+                    profileName = profile.name,
+                    createNew = false,
+                    delete = false
+                )
+            }
+            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+                log("TX Huawei Select CustomEQ [id=${profile.id}, name=${profile.name}]")
+                sendRawBytes(HuaweiProtocol.buildEqWrite(profile.id.toByte()))
+                _t300State.value = _t300State.value.copy(
+                    eqPreset = null,
+                    activeCustomEqId = profile.id,
+                    activeCustomEqName = profile.name,
+                    customEqGains = profile.gains,
+                    customEqFreqs = profile.freqs
+                )
+                scope.launch { delay(220); refreshEq() }
+            }
+            else -> return
+        }
+    }
+
+    /**
+     * Trigger optional native firmware Find My Earbuds chime where supported.
+     */
+    fun setHardwareFindBuds(enabled: Boolean, channel: FindBudsChannel = FindBudsChannel.BOTH) {
+        when (activeModel.protocolFamily) {
+            T300Protocol.ProtocolFamily.REALME_TL -> {
+                log("TX Realme FindBuds [${if (enabled) "ON" else "OFF"}]")
+                sendData(T300Protocol.buildFindBudsFrame(enabled))
+                _t300State.value = _t300State.value.copy(hardwareFindActive = enabled)
+            }
+            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+                val sideByte: Byte = when (channel) {
+                    FindBudsChannel.LEFT -> 0x01
+                    FindBudsChannel.RIGHT -> 0x03
+                    FindBudsChannel.BOTH -> 0x06
+                }
+                log("TX Nothing RingBuds [side=$channel, ${if (enabled) "ON" else "OFF"}]")
+                sendRawBytes(NothingProtocol.buildRingBuds(sideByte, enabled))
+                _t300State.value = _t300State.value.copy(hardwareFindActive = enabled)
+            }
+            T300Protocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
+                val legacy = activeModel == T300Protocol.BudsModel.GALAXY_BUDS
+                log("TX Galaxy FindBuds [${if (enabled) "ON" else "OFF"}]")
+                sendRawBytes(GalaxyProtocol.buildFindBudsWrite(enabled, legacy))
+                _t300State.value = _t300State.value.copy(hardwareFindActive = enabled)
+            }
+            else -> return
+        }
+    }
+
+    /**
+     * Rename device in headset firmware where protocol supports it (Bose BMAP).
+     */
+    fun renameFirmwareDevice(newName: String): Boolean {
+        if (_connectionState.value != BleConnectionState.CONNECTED) return false
+        return when (activeModel.protocolFamily) {
+            T300Protocol.ProtocolFamily.BOSE_BMAP_SPP -> {
+                log("TX Bose Rename -> \"$newName\"")
+                sendRawBytes(BoseProtocol.buildRename(newName))
+                true
+            }
+            else -> false
+        }
     }
 
     /**
@@ -1315,6 +1630,8 @@ class T300BleManager(private val context: Context) {
                     delay(80)
                     sendRawBytes(BoseProtocol.buildAnrReq())
                     delay(80)
+                    sendRawBytes(BoseProtocol.buildEqReq())
+                    delay(80)
                     sendRawBytes(BoseProtocol.buildMultipointReq())
                     delay(80)
                     sendRawBytes(BoseProtocol.buildAutoPauseReq())
@@ -1346,6 +1663,8 @@ class T300BleManager(private val context: Context) {
                     sendRawBytes(SennheiserProtocol.buildPacket(SennheiserProtocol.CMD_GET_AUTO_ANSWER))
                     delay(60)
                     sendRawBytes(SennheiserProtocol.buildPacket(SennheiserProtocol.CMD_GET_SPATIAL))
+                    delay(60)
+                    sendRawBytes(SennheiserProtocol.buildEqGainsReq())
                     startPolling(gen)
                     return@launch
                 }
@@ -1802,14 +2121,36 @@ class T300BleManager(private val context: Context) {
             }
             T300Protocol.CMD_ALL_EQ_RSP -> {
                 log("RX $hexCmd [$hexPayload]")
-                val customList = T300Protocol.parseAllEqPayload(frame.payload)
-                log("RX All EQ: ${customList.map { "${it.name}${if (it.isSelected) " [active]" else ""}" }}")
-                val activeCustom = customList.firstOrNull { it.isSelected }
-                if (activeCustom != null) {
-                    _t300State.value = _t300State.value.copy(
+                val profiles = T300Protocol.parseCustomEqProfilesPayload(frame.payload)
+                log("RX All EQ: ${profiles.map { "${it.name}(id=${it.id})${if (it.isSelected) " [active]" else ""}" }}")
+                val activeCustom = profiles.firstOrNull { it.isSelected }
+                _t300State.value = if (activeCustom != null) {
+                    _t300State.value.copy(
                         eqPreset = null,
-                        activeCustomEqName = activeCustom.name
+                        activeCustomEqId = activeCustom.id,
+                        activeCustomEqName = activeCustom.name,
+                        customEqProfiles = profiles,
+                        customEqGains = activeCustom.gains,
+                        customEqFreqs = activeCustom.freqs
                     )
+                } else {
+                    _t300State.value.copy(
+                        customEqProfiles = profiles,
+                        customEqGains = _t300State.value.customEqGains.ifEmpty { profiles.firstOrNull()?.gains ?: emptyList() },
+                        customEqFreqs = _t300State.value.customEqFreqs.ifEmpty { profiles.firstOrNull()?.freqs ?: emptyList() }
+                    )
+                }
+            }
+            T300Protocol.CMD_CUSTOM_EQ_SET_RSP -> {
+                val ok = frame.payload.isNotEmpty() && frame.payload[0].toInt() == 0
+                log("RX CustomEQ Set Rsp [$hexPayload] -> ${if (ok) "OK" else "ERR"}")
+                if (ok) {
+                    scope.launch {
+                        delay(120)
+                        refreshAllEq()
+                        delay(100)
+                        refreshEq()
+                    }
                 }
             }
             T300Protocol.CMD_KEY_FUNCTION_RSP -> {
@@ -2018,20 +2359,33 @@ class T300BleManager(private val context: Context) {
             HuaweiProtocol.CMD_EQ_READ -> {
                 val cur = pkg.param(2)
                 val customRaw = pkg.param(8)
-                val customNames = if (customRaw != null && customRaw.isNotEmpty()) {
-                    HuaweiProtocol.parseCustomEqNames(customRaw)
-                } else emptyMap()
-                if (cur != null && cur.isNotEmpty()) {
-                    val modeId = cur[0].toInt() // signed byte
+                val modeId = if (cur != null && cur.isNotEmpty()) cur[0].toInt() else null
+                val customProfiles = HuaweiProtocol.parseCustomEqProfiles(customRaw, activeId = modeId)
+                val activeCustom = customProfiles.firstOrNull { it.isSelected }
+                if (modeId != null) {
                     val preset = HuaweiProtocol.huaweiIdToEqPreset(modeId, activeModel.huaweiEqUsesPro3Ids)
                     if (preset != null) {
                         log("RX Huawei EQ: ${preset.name} (id=$modeId)")
-                        _t300State.value = _t300State.value.copy(eqPreset = preset, activeCustomEqName = null)
+                        _t300State.value = _t300State.value.copy(
+                            eqPreset = preset,
+                            activeCustomEqId = null,
+                            activeCustomEqName = null,
+                            customEqProfiles = customProfiles
+                        )
                     } else {
-                        val customName = customNames[modeId] ?: "EQ #$modeId"
+                        val customName = activeCustom?.name ?: "EQ #$modeId"
                         log("RX Huawei EQ Custom: $customName (id=$modeId)")
-                        _t300State.value = _t300State.value.copy(eqPreset = null, activeCustomEqName = customName)
+                        _t300State.value = _t300State.value.copy(
+                            eqPreset = null,
+                            activeCustomEqId = modeId,
+                            activeCustomEqName = customName,
+                            customEqProfiles = customProfiles,
+                            customEqGains = activeCustom?.gains ?: _t300State.value.customEqGains,
+                            customEqFreqs = activeCustom?.freqs ?: _t300State.value.customEqFreqs
+                        )
                     }
+                } else if (customProfiles.isNotEmpty()) {
+                    _t300State.value = _t300State.value.copy(customEqProfiles = customProfiles)
                 }
             }
             HuaweiProtocol.CMD_DUAL_CONNECT_READ -> {
@@ -2136,6 +2490,13 @@ class T300BleManager(private val context: Context) {
                     val (preset, customName) = NothingProtocol.nothingIdToEqPreset(id, useListening)
                     log("RX Nothing EQ: ${preset?.name ?: customName ?: "id=$id"}")
                     _t300State.value = _t300State.value.copy(eqPreset = preset, activeCustomEqName = customName)
+                }
+            }
+            NothingProtocol.CMD_CUSTOM_EQ_RSP -> {
+                val gains = NothingProtocol.parseCustomEqPayload(p)
+                if (gains != null) {
+                    log("RX Nothing CustomEQ: $gains")
+                    _t300State.value = _t300State.value.copy(customEqGains = gains)
                 }
             }
             NothingProtocol.CMD_IN_EAR_RSP -> {
@@ -2313,7 +2674,23 @@ class T300BleManager(private val context: Context) {
                         0x05 -> EqPreset.DEEP_BASS
                         else -> null
                     }
-                    _t300State.value = _t300State.value.copy(eqPreset = eq, activeCustomEqName = if (eq == null) "Preset #$presetId" else null)
+                    var gains = _t300State.value.customEqGains
+                    if (p.size >= 4) {
+                        val bCount = p[3].toInt() and 0xFF
+                        if (bCount in 5..6 && p.size >= 4 + bCount) {
+                            gains = List(bCount) { idx -> ((p[4 + idx].toInt() and 0xFF) - 10).coerceIn(-10, 10) }
+                        }
+                    }
+                    val customLabel = when {
+                        eq != null -> null
+                        presetId == 0xA0 -> "Custom"
+                        else -> "Preset #$presetId"
+                    }
+                    _t300State.value = _t300State.value.copy(
+                        eqPreset = eq,
+                        activeCustomEqName = customLabel,
+                        customEqGains = gains
+                    )
                 }
             }
         }
@@ -2352,6 +2729,18 @@ class T300BleManager(private val context: Context) {
                             else -> AncMode.NOISE_REDUCTION
                         }
                         _t300State.value = _t300State.value.copy(ancMode = mode)
+                    }
+                    BoseProtocol.FUNC_EQUALIZER.toInt() -> {
+                        val gains = when {
+                            p.size >= 9 -> listOf(p[0].toInt(), p[3].toInt(), p[6].toInt())
+                            p.size >= 3 -> listOf(p[0].toInt(), p[1].toInt(), p[2].toInt())
+                            else -> null
+                        }
+                        if (gains != null) {
+                            val clamped = gains.map { it.coerceIn(-10, 10) }
+                            log("RX Bose EQ: $clamped")
+                            _t300State.value = _t300State.value.copy(customEqGains = clamped)
+                        }
                     }
                     BoseProtocol.FUNC_MULTIPOINT.toInt() -> {
                         _t300State.value = _t300State.value.copy(dualConnection = (p[0].toInt() and 0x01) != 0)
@@ -2468,11 +2857,13 @@ class T300BleManager(private val context: Context) {
                     sendRawBytes(XiaomiProtocol.buildResponse(XiaomiProtocol.OP_AUTH_CONFIRM, pkg.seq, byteArrayOf(0x01)))
                     if (!xiaomiAuthenticated) {
                         xiaomiAuthenticated = true
-                        log("✓ Xiaomi auth confirmed! Querying state...")
+                        log("Xiaomi auth confirmed; querying state...")
                         scope.launch {
                             sendRawBytes(XiaomiProtocol.buildDeviceInfoReq()); delay(80)
                             sendRawBytes(XiaomiProtocol.buildRunInfoReq()); delay(80)
+                            sendRawBytes(XiaomiProtocol.buildLowLatencyReq()); delay(80)
                             sendRawBytes(XiaomiProtocol.buildGetConfigReq(XiaomiProtocol.CFG_EQ_PRESET)); delay(80)
+                            sendRawBytes(XiaomiProtocol.buildCustomEqReq()); delay(80)
                             sendRawBytes(XiaomiProtocol.buildGetConfigReq(XiaomiProtocol.CFG_MULTIPOINT)); delay(80)
                             sendRawBytes(XiaomiProtocol.buildGetConfigReq(XiaomiProtocol.CFG_AUTO_ANSWER))
                         }
@@ -2532,40 +2923,57 @@ class T300BleManager(private val context: Context) {
             }
             XiaomiProtocol.OP_GET_CONFIG,
             XiaomiProtocol.OP_NOTIFY_CONFIG -> {
-                var i = 0
-                while (i + 2 < p.size) {
-                    val l = p[i].toInt() and 0xFF
-                    if (l < 2 || i + 1 + l > p.size) break
-                    val key = ((p[i + 1].toInt() and 0xFF) shl 8) or (p[i + 2].toInt() and 0xFF)
-                    val dLen = l - 2
-                    if (dLen >= 1) {
-                        val v = p[i + 3].toInt() and 0xFF
-                        when (key) {
-                            XiaomiProtocol.CFG_AUTO_ANSWER -> _t300State.value = _t300State.value.copy(autoAnswer = v != 0)
-                            XiaomiProtocol.CFG_MULTIPOINT -> _t300State.value = _t300State.value.copy(dualConnection = v != 0)
-                            XiaomiProtocol.CFG_EQ_PRESET -> {
-                                val eq = when (v) {
-                                    0x00, 0x15 -> EqPreset.ORIGINAL_SOUND
-                                    0x01 -> EqPreset.SERENADE
-                                    0x06 -> EqPreset.PURE_BASS
-                                    0x05 -> EqPreset.DEEP_BASS
-                                    else -> null
-                                }
-                                _t300State.value = _t300State.value.copy(eqPreset = eq, activeCustomEqName = if (eq == null) "EQ #$v" else null)
+                val records = XiaomiProtocol.parseConfigRecords(p)
+                for ((key, data) in records) {
+                    if (data.isEmpty()) continue
+                    val v = data[0].toInt() and 0xFF
+                    when (key) {
+                        XiaomiProtocol.CFG_AUTO_ANSWER -> {
+                            _t300State.value = _t300State.value.copy(autoAnswer = v != 0)
+                        }
+                        XiaomiProtocol.CFG_MULTIPOINT -> {
+                            _t300State.value = _t300State.value.copy(dualConnection = v != 0)
+                        }
+                        XiaomiProtocol.CFG_LOW_LATENCY -> {
+                            log("RX Xiaomi LowLatency (0x002F): ${if (v != 0) "ON" else "OFF"}")
+                            _t300State.value = _t300State.value.copy(gameMode = v != 0)
+                        }
+                        XiaomiProtocol.CFG_EQ_PRESET -> {
+                            val eq = when (v) {
+                                0x00, 0x15 -> EqPreset.ORIGINAL_SOUND
+                                0x01 -> EqPreset.SERENADE
+                                0x06 -> EqPreset.PURE_BASS
+                                0x05 -> EqPreset.DEEP_BASS
+                                else -> null
                             }
-                            XiaomiProtocol.CFG_EFFECT_STRENGTH -> if (dLen >= 2 && v == 1) {
-                                val lvl = when (p[i + 4].toInt() and 0xFF) {
-                                    1 -> HuaweiProtocol.AncLevel.COMFORT
-                                    0 -> HuaweiProtocol.AncLevel.GENERAL
-                                    2 -> HuaweiProtocol.AncLevel.ULTRA
-                                    3 -> HuaweiProtocol.AncLevel.DYNAMIC
-                                    else -> null
-                                }
-                                if (lvl != null) _t300State.value = _t300State.value.copy(ancLevel = lvl)
+                            val customName = when {
+                                eq != null -> null
+                                v == 0xFF || v == 0x07 -> "Custom"
+                                else -> "EQ #$v"
+                            }
+                            _t300State.value = _t300State.value.copy(eqPreset = eq, activeCustomEqName = customName)
+                        }
+                        XiaomiProtocol.CFG_CUSTOM_EQ -> {
+                            val parsed = XiaomiProtocol.parseCustomEqValue(data)
+                            if (parsed != null) {
+                                log("RX Xiaomi CustomEQ (0x0037): freqs=${parsed.first}, gains=${parsed.second}")
+                                _t300State.value = _t300State.value.copy(
+                                    customEqFreqs = parsed.first,
+                                    customEqGains = parsed.second
+                                )
                             }
                         }
+                        XiaomiProtocol.CFG_EFFECT_STRENGTH -> if (data.size >= 2 && v == 1) {
+                            val lvl = when (data[1].toInt() and 0xFF) {
+                                1 -> HuaweiProtocol.AncLevel.COMFORT
+                                0 -> HuaweiProtocol.AncLevel.GENERAL
+                                2 -> HuaweiProtocol.AncLevel.ULTRA
+                                3 -> HuaweiProtocol.AncLevel.DYNAMIC
+                                else -> null
+                            }
+                            if (lvl != null) _t300State.value = _t300State.value.copy(ancLevel = lvl)
+                        }
                     }
-                    i += l + 1
                 }
                 if (pkg.opcode == XiaomiProtocol.OP_NOTIFY_CONFIG && !pkg.isResponse) {
                     sendRawBytes(XiaomiProtocol.buildResponse(XiaomiProtocol.OP_NOTIFY_CONFIG, pkg.seq))
@@ -2607,6 +3015,13 @@ class T300BleManager(private val context: Context) {
             SennheiserProtocol.CMD_GET_AUTO_PAUSE -> _t300State.value = _t300State.value.copy(autoPlayPause = v != 0)
             SennheiserProtocol.CMD_GET_AUTO_ANSWER -> _t300State.value = _t300State.value.copy(autoAnswer = v != 0)
             SennheiserProtocol.CMD_GET_SPATIAL -> _t300State.value = _t300State.value.copy(spatialAudio = v != 0)
+            SennheiserProtocol.CMD_GET_EQ_GAINS -> if (p.size >= 5) {
+                val startOff = if (p.size >= 6) p.size - 5 else 0
+                val raw = List(5) { idx -> p[startOff + idx].toInt() } // signed bytes
+                val scaled = if (raw.any { kotlin.math.abs(it) > 6 }) raw.map { (it / 10).coerceIn(-6, 6) } else raw.map { it.coerceIn(-6, 6) }
+                log("RX Sennheiser EQ: $scaled")
+                _t300State.value = _t300State.value.copy(customEqGains = scaled)
+            }
         }
     }
 
@@ -2659,6 +3074,8 @@ class T300BleManager(private val context: Context) {
                 sendRawBytes(PixelBudsProtocol.buildReadSetting(pixelActiveChannel, PixelBudsProtocol.SETTING_OHD))
                 delay(60)
                 sendRawBytes(PixelBudsProtocol.buildReadSetting(pixelActiveChannel, PixelBudsProtocol.SETTING_MULTIPOINT))
+                delay(60)
+                sendRawBytes(PixelBudsProtocol.buildReadSetting(pixelActiveChannel, PixelBudsProtocol.SETTING_USER_EQ))
             }
             return
         }
@@ -2689,6 +3106,18 @@ class T300BleManager(private val context: Context) {
             for (f in PixelBudsProtocol.readProtoFields(pkg.payload)) {
                 if (f.num == 4 && f.wire == 2) {
                     for (sv in PixelBudsProtocol.readProtoFields(f.bytes)) {
+                        if (sv.num == PixelBudsProtocol.SETTING_USER_EQ && sv.wire == 2) {
+                            val gains = MutableList(5) { 0 }
+                            for (bf in PixelBudsProtocol.readProtoFields(sv.bytes)) {
+                                if (bf.wire == 5 && bf.num in 1..5) {
+                                    val flt = java.lang.Float.intBitsToFloat(bf.varint.toInt())
+                                    gains[bf.num - 1] = flt.toInt().coerceIn(-6, 6)
+                                }
+                            }
+                            log("RX PixelBuds EQ: $gains")
+                            _t300State.value = _t300State.value.copy(customEqGains = gains)
+                            continue
+                        }
                         if (sv.wire != 0) continue
                         when (sv.num) {
                             PixelBudsProtocol.SETTING_OHD -> _t300State.value = _t300State.value.copy(autoPlayPause = sv.varint != 0L)

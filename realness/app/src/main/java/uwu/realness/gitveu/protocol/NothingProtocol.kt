@@ -210,6 +210,90 @@ object NothingProtocol {
     fun buildBassBoostWrite(enabled: Boolean, level: Int = 3): ByteArray =
         buildPacket(CMD_BASS_BOOST_SET, byteArrayOf(if (enabled) 0x01 else 0x00, (level.coerceIn(1, 5)).toByte()))
 
+    const val CMD_CUSTOM_EQ_REQ: Int = 0xC044
+    const val CMD_CUSTOM_EQ_RSP: Int = 0x4044
+    const val CMD_CUSTOM_EQ_SET: Int = 0xF041
+    const val CMD_RING_BUDS_SET: Int = 0xF002
+
+    fun buildCustomEqRead(): ByteArray = buildPacket(CMD_CUSTOM_EQ_REQ)
+
+    fun buildSelectCustomEq(useListeningMode: Boolean): ByteArray {
+        val id: Byte = if (useListeningMode) 6 else 5
+        val cmd = if (useListeningMode) CMD_EQ_LISTENING_SET else CMD_EQ_CLASSIC_SET
+        return buildPacket(cmd, byteArrayOf(id, 0x00))
+    }
+
+    /**
+     * 3-band Custom EQ for Nothing / CMF (swift-nothing-ear Bluetooth.swift):
+     *   [count=3, totalGain(f32 LE), 3 × (filterType, gain f32 LE, freq f32 LE, Q f32 LE)]
+     */
+    fun buildCustomEqWrite(bassDb: Int, midDb: Int, trebleDb: Int): ByteArray {
+        val bass = bassDb.coerceIn(-6, 6).toFloat()
+        val mid = midDb.coerceIn(-6, 6).toFloat()
+        val treble = trebleDb.coerceIn(-6, 6).toFloat()
+        val maxGain = maxOf(0f, bass, mid, treble)
+        val totalGain = -maxGain
+
+        fun putFloatLe(arr: ByteArray, off: Int, v: Float) {
+            val bits = java.lang.Float.floatToRawIntBits(v)
+            arr[off] = (bits and 0xFF).toByte()
+            arr[off + 1] = ((bits ushr 8) and 0xFF).toByte()
+            arr[off + 2] = ((bits ushr 16) and 0xFF).toByte()
+            arr[off + 3] = ((bits ushr 24) and 0xFF).toByte()
+        }
+
+        // Order matches swift-nothing-ear: PEAK (Mid), HIGH_SHELF (Treble), LOW_SHELF (Bass)
+        val bands = listOf(
+            Triple(0x01.toByte(), mid, 1000f to 1.0f),
+            Triple(0x02.toByte(), treble, 6000f to 0.707f),
+            Triple(0x00.toByte(), bass, 100f to 0.707f)
+        )
+        val pkt = ByteArray(1 + 4 + bands.size * 13)
+        pkt[0] = bands.size.toByte()
+        putFloatLe(pkt, 1, totalGain)
+        var off = 5
+        for ((ftype, gain, fq) in bands) {
+            pkt[off] = ftype
+            putFloatLe(pkt, off + 1, gain)
+            putFloatLe(pkt, off + 5, fq.first)
+            putFloatLe(pkt, off + 9, fq.second)
+            off += 13
+        }
+        return buildPacket(CMD_CUSTOM_EQ_SET, pkt)
+    }
+
+    fun parseCustomEqPayload(p: ByteArray): List<Int>? {
+        if (p.size < 5 + 3 * 13) return null
+        fun readFloatLe(off: Int): Float {
+            val bits = (p[off].toInt() and 0xFF) or
+                ((p[off + 1].toInt() and 0xFF) shl 8) or
+                ((p[off + 2].toInt() and 0xFF) shl 16) or
+                ((p[off + 3].toInt() and 0xFF) shl 24)
+            return java.lang.Float.intBitsToFloat(bits)
+        }
+        var bass = 0; var mid = 0; var treble = 0
+        var off = 5
+        val count = (p[0].toInt() and 0xFF).coerceAtMost(3)
+        for (i in 0 until count) {
+            if (off + 13 > p.size) break
+            val ftype = p[off].toInt() and 0xFF
+            val g = readFloatLe(off + 1).toInt().coerceIn(-6, 6)
+            when (ftype) {
+                0x00 -> bass = g
+                0x01 -> mid = g
+                0x02 -> treble = g
+            }
+            off += 13
+        }
+        return listOf(bass, mid, treble)
+    }
+
+    /**
+     * Ring Nothing / CMF buds (0xF002): side = 0x01 Left, 0x03 Right, 0x06 Both/Unibody.
+     */
+    fun buildRingBuds(sideByte: Byte, enable: Boolean): ByteArray =
+        buildPacket(CMD_RING_BUDS_SET, byteArrayOf(sideByte, if (enable) 0x01 else 0x00))
+
     fun parseBatteryPayload(payload: ByteArray): List<T300Protocol.BatteryInfo> {
         if (payload.isEmpty()) return emptyList()
         val count = payload[0].toInt() and 0xFF

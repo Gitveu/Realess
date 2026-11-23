@@ -6,6 +6,10 @@
     <!-- General / Symbols -->
     <string name="dash">—</string>
     <string name="cancel">Отмена</string>
+    <string name="save">Сохранить</string>
+    <string name="apply">Применить</string>
+    <string name="reset">Сброс</string>
+    <string name="delete">Удалить</string>
     <string name="refresh_state_desc">Обновить состояние</string>
     <string name="drawer_menu_desc">Выбрать модель</string>
 
@@ -91,6 +95,38 @@
     <string name="eq_jbl_studio">Студия</string>
     <string name="eq_jbl_club">Клуб</string>
     <string name="eq_custom_active">Пользовательский: %s (активен)</string>
+    <string name="eq_custom_title">Настраиваемый эквалайзер</string>
+    <string name="eq_custom_subtitle">%1$d полос (%2$d..+%3$d дБ)</string>
+    <string name="eq_custom_new_profile">Новый профиль</string>
+    <string name="eq_custom_profile_name">Название профиля</string>
+    <string name="eq_custom_low_freq">Низкие</string>
+    <string name="eq_custom_high_freq">Высокие</string>
+    <string name="eq_custom_drag_hint">Перетаскивайте точки вверх и вниз для настройки кривой</string>
+    <string name="eq_custom_saved_toast">Эквалайзер применён</string>
+
+    <!-- Find My Earbuds -->
+    <string name="find_buds_title">Поиск наушников</string>
+    <string name="find_buds_playing_badge">Звучит…</string>
+    <string name="find_buds_desc">Воспроизводит нарастающий звуковой сигнал через подключённые наушники и возвращает прежнюю громкость после остановки.</string>
+    <string name="find_buds_warning">Не надевайте наушники во время воспроизведения сигнала поиска.</string>
+    <string name="find_buds_channel_left">Левый</string>
+    <string name="find_buds_channel_both">Оба</string>
+    <string name="find_buds_channel_right">Правый</string>
+    <string name="find_buds_volume_level">Громкость: %d%%</string>
+    <string name="find_buds_start">Включить звук</string>
+    <string name="find_buds_stop">Остановить</string>
+    <string name="find_buds_hardware_title">Встроенный сигнал наушников</string>
+    <string name="find_buds_hardware_desc">Отправляет аппаратную команду поиска поддерживаемым наушникам.</string>
+
+    <!-- Rename Earbuds -->
+    <string name="rename_title">Переименовать наушники</string>
+    <string name="rename_label">Имя наушников</string>
+    <string name="rename_action">Переименовать</string>
+    <string name="rename_reset_hint">Оставьте пустым, чтобы вернуть исходное имя</string>
+    <string name="rename_toast_firmware">Имя отправлено в прошивку наушников</string>
+    <string name="rename_toast_os">Имя устройства Bluetooth обновлено</string>
+    <string name="rename_toast_local">Имя сохранено в realness</string>
+    <string name="rename_toast_reset">Исходное имя устройства восстановлено</string>
 
     <!-- Button Settings (Gestures) -->
     <string name="section_touch_settings">Настройка кнопок</string>
@@ -126,10 +162,12 @@
     <string name="demo_sample_spatial">Сэмпл: Пространственный 3D (fix)</string>
     <string name="demo_sample_stereo">Сэмпл: Обычный стерео (off)</string>
 
-    <!-- Game Mode -->
+    <!-- Game Mode / Low Latency -->
     <string name="section_other">Другое</string>
     <string name="game_mode_title">Игровой режим</string>
     <string name="game_mode_desc">Обеспечивает плавный игровой процесс с минимальной задержкой звука.</string>
+    <string name="low_latency_title">Низкая задержка</string>
+    <string name="low_latency_desc">Синхронизация звука в играх и видео для уменьшения задержки.</string>
 
     <!-- High-Definition Audio (LDAC / LHDC 5.0 / Huawei) & Dynamic Audio / Ultra Bass -->
     <string name="high_quality_audio_title">Звук высокой чёткости</string>

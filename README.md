@@ -4,8 +4,8 @@
 
 Standalone Android app (**realness**, package `uwu.realness.gitveu`, Kotlin + Jetpack Compose) and protocol documentation for direct control of **15 earbud brands across 13 protocol families** — **realme**, **OnePlus**, **OPPO**, **HUAWEI**, **HONOR / HONOR CHOICE**, **Nothing / CMF**, **Samsung Galaxy Buds**, **Sony**, **Bose**, **Soundcore**, **Xiaomi / Redmi**, **Sennheiser**, **Jabra**, **Google Pixel Buds**, and **JBL** — no vendor companion apps, no accounts, no cloud, directly over Bluetooth.
 
-**Latest version:** `v1.7 (build 8)` — release builds (`realness 1.7.apk` and `realness-tiny 1.7.apk`)  
-**Protocol references:** `realme Link.apkm` (`com.realme.iot.headset.tl.*`), [QuickBuds](https://github.com/spizganed/QuickBuds), [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds), [noctalia/honor-earbuds](https://github.com/noctalia-dev/community-plugins/tree/main/honor-earbuds), [swift-nothing-ear](https://github.com/bestK1ngArthur/swift-nothing-ear), [omarchy-nothing-ear](https://github.com/r-witz/omarchy-nothing-ear), and [kde-headphones](https://github.com/RodiAda/kde-headphones).
+**Latest version:** `v1.8 (build 9)` — release builds (`realness 1.8.apk` in native Material 3 Expressive, `realness-tiny 1.8.apk` on classic compact UI)  
+**Protocol references:** `realme Link.apkm` (`com.realme.iot.headset.tl.*`), [QuickBuds](https://github.com/spizganed/QuickBuds), [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds), [noctalia/honor-earbuds](https://github.com/noctalia-dev/community-plugins/tree/main/honor-earbuds), [swift-nothing-ear](https://github.com/bestK1ngArthur/swift-nothing-ear), [omarchy-nothing-ear](https://github.com/r-witz/omarchy-nothing-ear), [kde-headphones](https://github.com/RodiAda/kde-headphones), and [MiBudsClient](https://github.com/CesurPolat/MiBudsClient).
 
 ---
 
@@ -49,9 +49,16 @@ No scanning dialogs or manual device selection. The app listens to system Blueto
 ### Noise Control (ANC)
 Quick switching and reading of all three modes: **Noise Cancellation**, **Off**, and **Transparency**, with auto-scaling typography so labels never wrap.
 
-### Sound Effects (Equalizer)
-- Presets: **Serenade**, **Original Sound**, **Pure Bass**, **Deep Bass**.
-- Detection of an active custom EQ profile by name via command `0x0122`, highlighted in the UI.
+### Sound Effects & Protocol-Aware Custom Equalizer
+- Presets adapted per brand (e.g. Serenade, Original Sound, Pure Bass, Deep Bass on realme; Voices / Default / Treble / Bass on Huawei & Xiaomi; Balanced / Voice / More Bass on Nothing).
+- Interactive custom EQ curve editor adapted to each protocol's native band count and dB range: 6-band (`-6..+6 dB`, multi-profile create/save/delete) on **realme / OnePlus / OPPO**, 10-band (`-6..+6 dB`, multi-profile) on **HUAWEI**, 10-band (`-10..+10 dB`) on **Xiaomi / Redmi** (`0x0037`), 6-band (`-10..+10 dB`) on **Sony**, 8-band (`-6..+6 dB`) on **Soundcore**, 5-band (`-6..+6 dB`) on **Sennheiser** & **Pixel Buds**, and 3-band on **Nothing / CMF** & **Bose**.
+
+### Universal Find My Earbuds & Rename
+- **Find My Earbuds (all headsets):** Plays an escalating high-visibility stereo locator tone (`15% -> 100%` over 20s) with Left / Both / Right panning, restoring the user's media volume automatically on Stop, plus an optional native firmware chime where supported (**realme / OnePlus / OPPO** `0x0400`, **Nothing / CMF** `0xF002`, **Galaxy Buds** `0xA0`/`0xA1`).
+- **Rename Earbuds:** Renames devices via firmware where supported (**Bose** BMAP `Block=1, Func=2`), Android `BluetoothDevice.setAlias()` when permitted by the OS, and persistent per-MAC display alias in `realness`.
+
+### Low Latency / Game Mode
+- Supported across **realme / OnePlus / OPPO** (`0x06`), **Xiaomi / Redmi** (including Redmi Buds 4 Active via RCSP config `0x002F`), **HUAWEI** (`0x2B6C`), **Nothing / CMF** (`0xF040`), **Samsung Galaxy Buds** (`0x87`), and **Anker Soundcore** (`0x0187` / `0x1085`).
 
 ### Touch Controls (Button Gestures)
 Read and customize actions for **Double Tap**, **Triple Tap**, and **Touch & Hold** independently for the left and right earbuds, filtered to valid actions per gesture.

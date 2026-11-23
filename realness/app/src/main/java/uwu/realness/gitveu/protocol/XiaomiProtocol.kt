@@ -29,6 +29,8 @@ object XiaomiProtocol {
     const val CFG_MULTIPOINT: Int = 0x04
     const val CFG_EQ_PRESET: Int = 0x07
     const val CFG_EFFECT_STRENGTH: Int = 0x0B
+    const val CFG_LOW_LATENCY: Int = 0x2F
+    const val CFG_CUSTOM_EQ: Int = 0x37
 
     private val seqCounter = AtomicInteger(1)
 
@@ -164,7 +166,7 @@ object XiaomiProtocol {
     fun buildDeviceInfoReq(): ByteArray = buildRequest(OP_DEVICE_INFO, byteArrayOf(0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()))
     fun buildRunInfoReq(): ByteArray = buildRequest(OP_RUN_INFO, byteArrayOf(0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()))
     fun buildGetConfigReq(key: Int): ByteArray =
-        buildRequest(OP_GET_CONFIG, byteArrayOf(0x02, ((key ushr 8) and 0xFF).toByte(), (key and 0xFF).toByte()))
+        buildRequest(OP_GET_CONFIG, byteArrayOf(((key ushr 8) and 0xFF).toByte(), (key and 0xFF).toByte()))
 
     fun buildSetConfig(key: Int, value: ByteArray): ByteArray {
         val p = ByteArray(3 + value.size)
@@ -173,6 +175,85 @@ object XiaomiProtocol {
         p[2] = (key and 0xFF).toByte()
         System.arraycopy(value, 0, p, 3, value.size)
         return buildRequest(OP_SET_CONFIG, p)
+    }
+
+    fun buildLowLatencyReq(): ByteArray = buildGetConfigReq(CFG_LOW_LATENCY)
+    fun buildLowLatencySet(enabled: Boolean): ByteArray =
+        buildSetConfig(CFG_LOW_LATENCY, byteArrayOf(if (enabled) 0x01 else 0x00))
+
+    fun buildCustomEqReq(): ByteArray = buildGetConfigReq(CFG_CUSTOM_EQ)
+
+    /**
+     * Save custom EQ curve via RCSP config 0x0037 (MiBudsClient/equalizer.py).
+     * Sign-magnitude gain encoding: positive = gain, negative = 128 - gain (i.e. 0x80 | abs(gain)).
+     */
+    fun buildCustomEqSave(freqs: List<Int>, gains: List<Int>, bound: Int = 10): ByteArray {
+        val n = minOf(freqs.size, gains.size)
+        val header = byteArrayOf(0x01, 0x0A, 0x01, 0x01, 0x01, 0x00, n.toByte())
+        val out = ByteArray(header.size + n * 3)
+        System.arraycopy(header, 0, out, 0, header.size)
+        var off = header.size
+        for (i in 0 until n) {
+            val f = freqs[i].coerceIn(1, 65535)
+            val g = gains[i].coerceIn(-bound, bound)
+            out[off++] = ((f ushr 8) and 0xFF).toByte()
+            out[off++] = (f and 0xFF).toByte()
+            out[off++] = (if (g >= 0) g else (128 - g)).toByte()
+        }
+        return buildSetConfig(CFG_CUSTOM_EQ, out)
+    }
+
+    fun buildCustomEqReset(): ByteArray =
+        buildSetConfig(CFG_CUSTOM_EQ, byteArrayOf(0x04, 0x01, 0x01, 0x01))
+
+    /**
+     * Parse config records from 0xF3 / 0xF4 payload: [len, keyHi, keyLo, val...]
+     */
+    fun parseConfigRecords(p: ByteArray): Map<Int, ByteArray> {
+        val out = mutableMapOf<Int, ByteArray>()
+        var pos = 0
+        while (pos + 3 <= p.size) {
+            val len = p[pos].toInt() and 0xFF
+            val key = ((p[pos + 1].toInt() and 0xFF) shl 8) or (p[pos + 2].toInt() and 0xFF)
+            if (len == 0xFF) {
+                if (pos + 5 > p.size) break
+                val extLen = ((p[pos + 3].toInt() and 0xFF) shl 8) or (p[pos + 4].toInt() and 0xFF)
+                val end = pos + 5 + extLen
+                if (end > p.size) break
+                out[key] = p.copyOfRange(pos + 5, end)
+                pos = end
+            } else {
+                val end = pos + 1 + len
+                if (len < 2 || end > p.size) break
+                out[key] = p.copyOfRange(pos + 3, end)
+                pos = end
+            }
+        }
+        return out
+    }
+
+    /**
+     * Parse custom EQ record (config 0x0037) -> Pair(freqs, gains).
+     */
+    fun parseCustomEqValue(v: ByteArray): Pair<List<Int>, List<Int>>? {
+        if (v.size < 7 || v[0].toInt() != 1) return null
+        val nameLen = v[5].toInt() and 0xFF
+        val off = 6 + nameLen
+        if (off >= v.size) return null
+        val count = v[off].toInt() and 0xFF
+        if (count == 0 || off + 1 + count * 3 > v.size) return null
+        val freqs = ArrayList<Int>(count)
+        val gains = ArrayList<Int>(count)
+        var pos = off + 1
+        for (i in 0 until count) {
+            val freq = ((v[pos].toInt() and 0xFF) shl 8) or (v[pos + 1].toInt() and 0xFF)
+            val raw = v[pos + 2].toInt() and 0xFF
+            val gain = if (raw < 128) raw else (128 - raw)
+            freqs.add(freq)
+            gains.add(gain)
+            pos += 3
+        }
+        return freqs to gains
     }
 
     fun buildAncSet(mode: T300Protocol.AncMode): ByteArray {

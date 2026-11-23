@@ -297,4 +297,14 @@ object GalaxyProtocol {
         val remaining = if (off < total) buf.copyOfRange(off, total) else ByteArray(0)
         return Pair(packets, remaining)
     }
+
+    const val MSG_GAMING_MODE: Int = 0x87
+    const val MSG_FIND_MY_EARBUDS_START: Int = 0xA0
+    const val MSG_FIND_MY_EARBUDS_STOP: Int = 0xA1
+
+    fun buildGameModeWrite(enabled: Boolean, legacy: Boolean): ByteArray =
+        buildPacket(MSG_GAMING_MODE, byteArrayOf(if (enabled) 0x01 else 0x00), legacy)
+
+    fun buildFindBudsWrite(enabled: Boolean, legacy: Boolean): ByteArray =
+        buildPacket(if (enabled) MSG_FIND_MY_EARBUDS_START else MSG_FIND_MY_EARBUDS_STOP, ByteArray(0), legacy)
 }

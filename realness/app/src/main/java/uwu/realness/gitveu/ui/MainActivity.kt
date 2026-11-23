@@ -13,6 +13,7 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
@@ -27,14 +28,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -53,11 +56,12 @@ import uwu.realness.gitveu.ble.BleConnectionState
 import uwu.realness.gitveu.protocol.HuaweiProtocol
 import uwu.realness.gitveu.protocol.T300Protocol
 import uwu.realness.gitveu.protocol.T300Protocol.AncMode
-import uwu.realness.gitveu.protocol.T300Protocol.TouchSide
-import uwu.realness.gitveu.protocol.T300Protocol.TouchGesture
 import uwu.realness.gitveu.protocol.T300Protocol.TouchAction
+import uwu.realness.gitveu.protocol.T300Protocol.TouchGesture
+import uwu.realness.gitveu.protocol.T300Protocol.TouchSide
 import uwu.realness.gitveu.protocol.T300Protocol.getAvailableActions
 import uwu.realness.gitveu.viewmodel.BudsViewModel
+import uwu.realness.gitveu.viewmodel.RenameScope
 import uwu.realness.gitveu.viewmodel.SystemDeviceStatus
 
 class MainActivity : ComponentActivity() {
@@ -90,18 +94,12 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         checkAndRequestPermissions()
 
         setContent {
-            MaterialTheme(
-                colorScheme = darkColorScheme(
-                    primary = Color(0xFFFFCC00),     // Yellow Realme accent
-                    onPrimary = Color.Black,
-                    surface = Color(0xFF1E1E1E),
-                    background = Color(0xFF121212)
-                )
-            ) {
+            RealnessExpressiveTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -161,6 +159,7 @@ fun MainScreen(
     onRequestPermissions: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
+    val context = LocalContext.current
     val connectionState by viewModel.connectionState.collectAsState()
     val t300State by viewModel.t300State.collectAsState()
     val deviceStatus by viewModel.deviceStatus.collectAsState()
@@ -170,19 +169,33 @@ fun MainScreen(
     val manualModelOverride by viewModel.manualModelOverride.collectAsState()
     val lastDeviceName by viewModel.lastDeviceName.collectAsState()
     val lastDeviceMac by viewModel.lastDeviceMac.collectAsState()
+    val customDeviceAlias by viewModel.customDeviceAlias.collectAsState()
     val unsupportedDeviceName by viewModel.unsupportedDeviceName.collectAsState()
     val logs by viewModel.recentLogs.collectAsState()
     val hasPermissions by viewModel.hasPermissions.collectAsState()
     val isPlayingDemo by viewModel.isPlayingDemo.collectAsState()
+    val findIsPlaying by viewModel.findIsPlaying.collectAsState()
+    val findVolumeProgress by viewModel.findVolumeProgress.collectAsState()
+    val findChannel by viewModel.findChannel.collectAsState()
 
     var selectedTouchSide by remember { mutableStateOf(TouchSide.LEFT) }
     var activeEditingGesture by remember { mutableStateOf<Pair<TouchSide, TouchGesture>?>(null) }
 
+    var showCustomEqSheet by remember { mutableStateOf(false) }
+    var editingCustomProfile by remember { mutableStateOf<T300Protocol.CustomEqProfile?>(null) }
+    var creatingNewCustomProfile by remember { mutableStateOf(false) }
+    var showFindBudsSheet by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
-    val displayDeviceName = detectedDevice?.name ?: lastDeviceName
+    val rawDeviceName = detectedDevice?.name ?: lastDeviceName
+    val displayDeviceName = customDeviceAlias ?: rawDeviceName
     val displayDeviceMac = detectedDevice?.address ?: lastDeviceMac
+    val isConnected = connectionState == BleConnectionState.CONNECTED
+    val hasKnownDevice = displayDeviceMac != null || detectedDevice != null
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -197,316 +210,411 @@ fun MainScreen(
             )
         }
     ) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    IconButton(onClick = { drawerScope.launch { drawerState.open() } }) {
-                        Icon(
-                            imageVector = Icons.Default.Menu,
-                            contentDescription = stringResource(R.string.drawer_menu_desc)
+        Scaffold(
+            modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                TopAppBar(
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = {
+                        IconButton(onClick = { drawerScope.launch { drawerState.open() } }) {
+                            Icon(
+                                imageVector = Icons.Rounded.Menu,
+                                contentDescription = stringResource(R.string.drawer_menu_desc)
+                            )
+                        }
+                    },
+                    title = {
+                        Text(
+                            text = displayDeviceName ?: stringResource(R.string.app_name),
+                            style = MaterialTheme.typography.titleLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
-                    }
-                },
-                title = {
-                    Text(
-                        text = displayDeviceName ?: stringResource(R.string.app_name),
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                ),
-                actions = {
-                    if (connectionState == BleConnectionState.CONNECTED) {
-                        IconButton(onClick = { viewModel.refreshAll() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh_state_desc))
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ),
+                    actions = {
+                        if (isConnected) {
+                            IconButton(onClick = { viewModel.refreshAll() }) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Refresh,
+                                    contentDescription = stringResource(R.string.refresh_state_desc)
+                                )
+                            }
                         }
                     }
-                }
-            )
-        }
-    ) { padding ->
-        val scrollState = rememberScrollState()
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .verticalScroll(scrollState)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Permissions warning banner
-            if (!hasPermissions) {
-                PermissionWarningCard(
-                    onRequest = onRequestPermissions,
-                    onOpenSettings = onOpenSettings
                 )
             }
-
-            // Unsupported connected Bluetooth audio device banner
-            if (deviceStatus == SystemDeviceStatus.UNSUPPORTED_DEVICE && unsupportedDeviceName != null) {
-                UnsupportedDeviceCard(deviceName = unsupportedDeviceName!!)
-            }
-
-            // Device status card
-            StatusDeviceCard(
-                deviceStatus = deviceStatus,
-                connectionState = connectionState,
-                device = detectedDevice,
-                displayName = displayDeviceName,
-                displayMac = displayDeviceMac,
-                manualModelOverride = manualModelOverride,
-                unsupportedDeviceName = unsupportedDeviceName,
-                onRetryConnect = { viewModel.manualReconnect() }
-            )
-
-            // Battery level section
-            Text(
-                text = stringResource(R.string.section_battery),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                BatteryCard(
-                    modifier = Modifier.weight(1f),
-                    title = stringResource(R.string.battery_left),
-                    battery = t300State.leftBattery,
-                    icon = Icons.Default.Headphones
-                )
-                BatteryCard(
-                    modifier = Modifier.weight(1f),
-                    title = stringResource(R.string.battery_case),
-                    battery = t300State.caseBattery,
-                    icon = Icons.Default.Inbox
-                )
-                BatteryCard(
-                    modifier = Modifier.weight(1f),
-                    title = stringResource(R.string.battery_right),
-                    battery = t300State.rightBattery,
-                    icon = Icons.Default.Headphones
-                )
-            }
-
-            // ANC Section
-            if (!detectedModel.isSupported || detectedModel.supportsAnc) {
-                Text(
-                    text = stringResource(R.string.section_anc),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                AncModeSelector(
-                    currentMode = t300State.ancMode,
-                    currentLevel = t300State.ancLevel,
-                    supportsAncLevel = detectedModel.supportsAncLevel,
-                    supportsAncDynamic = detectedModel.supportsAncDynamic,
-                    useLowMidHighLabels = detectedModel.isNothing || detectedModel.isXiaomi,
-                    enabled = connectionState == BleConnectionState.CONNECTED,
-                    onModeSelected = { viewModel.setAncMode(it) },
-                    onLevelSelected = { viewModel.setAncLevel(it) }
-                )
-            }
-
-            // Sound Effects (EQ) Section
-            if (!detectedModel.isSupported || detectedModel.supportsEq) {
-                Text(
-                    text = stringResource(R.string.section_eq),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                EqPresetSelector(
-                    currentPreset = t300State.eqPreset,
-                    activeCustomName = t300State.activeCustomEqName,
-                    model = detectedModel,
-                    enabled = connectionState == BleConnectionState.CONNECTED,
-                    onPresetSelected = { viewModel.setEqPreset(it) }
-                )
-            }
-
-            // Button Settings (Gestures) Section
-            if (!detectedModel.isSupported || detectedModel.supportsTouchSettings) {
-                Text(
-                    text = stringResource(R.string.section_touch_settings),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                val visibleGestures = buildList {
-                    if (!detectedModel.isSupported || detectedModel.supportsDoubleTap) add(TouchGesture.DOUBLE_TAP)
-                    if (!detectedModel.isSupported || detectedModel.supportsTripleTap) add(TouchGesture.TRIPLE_TAP)
-                    if (!detectedModel.isSupported || detectedModel.supportsLongPress) add(TouchGesture.LONG_PRESS)
-                }
-                ButtonSettingsCard(
-                    selectedSide = selectedTouchSide,
-                    gestures = visibleGestures,
-                    touchSettings = t300State.touchSettings,
-                    enabled = connectionState == BleConnectionState.CONNECTED,
-                    onSideSelected = { selectedTouchSide = it },
-                    onGestureClick = { gesture ->
-                        activeEditingGesture = Pair(selectedTouchSide, gesture)
-                    }
-                )
-            }
-
-            // Spatial Audio Section (realme / OnePlus / OPPO)
-            if (!detectedModel.isSupported || detectedModel.supportsSpatialAudio) {
-                Text(
-                    text = stringResource(R.string.section_spatial_audio),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                SpatialAudioCard(
-                    spatialAudio = t300State.spatialAudio,
-                    isPlayingDemo = isPlayingDemo,
-                    showRealmeDemo = !detectedModel.isSupported || detectedModel.isRealme,
-                    enabled = connectionState == BleConnectionState.CONNECTED,
-                    onToggle = { viewModel.setSpatialAudio(it) },
-                    onToggleDemo = { viewModel.toggleDemoAudio() }
-                )
-            }
-
-            // High-Definition Audio (LDAC / LHDC 5.0 / Huawei Sound Quality Priority)
-            if (detectedModel.supportsHighQualityAudio) {
-                val codecDescRes = when {
-                    detectedModel.isHuawei -> R.string.high_quality_audio_desc_huawei
-                    detectedModel.usesLhdc -> R.string.high_quality_audio_desc_lhdc
-                    else -> R.string.high_quality_audio_desc
-                }
-                SwitchFeatureCard(
-                    title = stringResource(R.string.high_quality_audio_title),
-                    description = stringResource(codecDescRes),
-                    checked = t300State.highQualityAudio,
-                    enabled = connectionState == BleConnectionState.CONNECTED,
-                    onToggle = { viewModel.setHighQualityAudio(it) }
-                )
-            }
-
-            // Dynamic Audio (realme) / Ultra Bass (Nothing & CMF)
-            if (detectedModel.supportsDynamicAudio) {
-                val dynTitle = if (detectedModel.isNothing) R.string.ultra_bass_title else R.string.dynamic_audio_title
-                val dynDesc = if (detectedModel.isNothing) R.string.ultra_bass_desc else R.string.dynamic_audio_desc
-                SwitchFeatureCard(
-                    title = stringResource(dynTitle),
-                    description = stringResource(dynDesc),
-                    checked = t300State.dynamicAudio,
-                    enabled = connectionState == BleConnectionState.CONNECTED,
-                    onToggle = { viewModel.setDynamicAudio(it) }
-                )
-            }
-
-            // Other - Game Mode, Dual-Device Connection, Auto Play/Pause, Auto Answer
-            val hasOtherSection = !detectedModel.isSupported ||
-                detectedModel.supportsGameMode ||
-                detectedModel.supportsDualConnection ||
-                detectedModel.supportsAutoPlayPause ||
-                detectedModel.supportsAutoAnswer
-            if (hasOtherSection) {
-                Text(
-                    text = stringResource(R.string.section_other),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                if (!detectedModel.isSupported || detectedModel.supportsGameMode) {
-                    GameModeCard(
-                        gameMode = t300State.gameMode,
-                        enabled = connectionState == BleConnectionState.CONNECTED,
-                        onToggle = { viewModel.setGameMode(it) }
-                    )
-                }
-
-                // Dual-Device Connection / Galaxy Seamless Connection
-                if (detectedModel.supportsDualConnection) {
-                    if (detectedModel.isGalaxy) {
-                        SwitchFeatureCard(
-                            title = stringResource(R.string.dual_connection_galaxy_title),
-                            description = stringResource(R.string.dual_connection_galaxy_desc),
-                            checked = t300State.dualConnection,
-                            enabled = connectionState == BleConnectionState.CONNECTED,
-                            onToggle = { viewModel.setDualConnection(it) }
-                        )
-                    } else {
-                        DualConnectionCard(
-                            dualConnection = t300State.dualConnection,
-                            connectedDevices = t300State.connectedDevices,
-                            enabled = connectionState == BleConnectionState.CONNECTED,
-                            onToggle = { viewModel.setDualConnection(it) }
-                        )
-                    }
-                }
-
-                // Auto Play/Pause — In-ear wear detection (Air 7 Pro / OnePlus / OPPO / Huawei / Nothing)
-                if (detectedModel.supportsAutoPlayPause) {
-                    SwitchFeatureCard(
-                        title = stringResource(R.string.auto_play_pause_title),
-                        description = stringResource(R.string.auto_play_pause_desc),
-                        checked = t300State.autoPlayPause,
-                        enabled = connectionState == BleConnectionState.CONNECTED,
-                        onToggle = { viewModel.setAutoPlayPause(it) }
-                    )
-                }
-
-                // Auto Answer — Answer call on put-on (Air 7 Pro)
-                if (detectedModel.supportsAutoAnswer) {
-                    SwitchFeatureCard(
-                        title = stringResource(R.string.auto_answer_title),
-                        description = stringResource(R.string.auto_answer_desc),
-                        checked = t300State.autoAnswer,
-                        enabled = connectionState == BleConnectionState.CONNECTED,
-                        onToggle = { viewModel.setAutoAnswer(it) }
-                    )
-                }
-            }
-
-            // Total Usage Time Statistics (L / R) from headset memory
-            if (t300State.leftUseTimeMinutes != null || t300State.rightUseTimeMinutes != null) {
-                UseTimeCard(
-                    leftMinutes = t300State.leftUseTimeMinutes,
-                    rightMinutes = t300State.rightUseTimeMinutes
-                )
-            }
-
-            // Logs Console
-            LogsConsole(
-                logs = logs,
-                onClearLogs = { viewModel.clearLogs() },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            // Version and build number at the very bottom
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "v${BuildConfig.VERSION_NAME} · build ${BuildConfig.VERSION_CODE}",
-                fontSize = 11.sp,
-                color = Color.DarkGray,
+        ) { padding ->
+            val scrollState = rememberScrollState()
+            Column(
                 modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .navigationBarsPadding()
-                    .padding(bottom = 8.dp)
-            )
-        }
+                    .padding(padding)
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Permissions warning banner
+                if (!hasPermissions) {
+                    PermissionWarningCard(
+                        onRequest = onRequestPermissions,
+                        onOpenSettings = onOpenSettings
+                    )
+                }
 
-        // Gesture Action Selection Dialog
-        if (activeEditingGesture != null) {
-            val (side, gesture) = activeEditingGesture!!
-            val currentAction = t300State.touchSettings[Pair(side, gesture)]
-            GestureActionSelectionDialog(
-                model = detectedModel,
-                side = side,
-                gesture = gesture,
-                currentAction = currentAction,
-                onActionSelected = { action ->
-                    viewModel.setKeySetting(side, gesture, action)
-                    activeEditingGesture = null
-                },
-                onDismiss = { activeEditingGesture = null }
-            )
+                // Unsupported connected Bluetooth audio device banner
+                if (deviceStatus == SystemDeviceStatus.UNSUPPORTED_DEVICE && unsupportedDeviceName != null) {
+                    UnsupportedDeviceCard(deviceName = unsupportedDeviceName!!)
+                }
+
+                // Expressive Hero Device Card with Quick Actions (Find earbuds + Rename)
+                StatusDeviceCard(
+                    deviceStatus = deviceStatus,
+                    connectionState = connectionState,
+                    device = detectedDevice,
+                    displayName = displayDeviceName,
+                    displayMac = displayDeviceMac,
+                    manualModelOverride = manualModelOverride,
+                    unsupportedDeviceName = unsupportedDeviceName,
+                    findIsPlaying = findIsPlaying || t300State.hardwareFindActive,
+                    canRename = hasKnownDevice,
+                    onRetryConnect = { viewModel.manualReconnect() },
+                    onOpenFindBuds = { showFindBudsSheet = true },
+                    onOpenRename = { showRenameDialog = true }
+                )
+
+                // Battery section
+                SectionHeader(title = stringResource(R.string.section_battery))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    BatteryCard(
+                        modifier = Modifier.weight(1f),
+                        title = stringResource(R.string.battery_left),
+                        battery = t300State.leftBattery,
+                        icon = Icons.Rounded.Headphones
+                    )
+                    BatteryCard(
+                        modifier = Modifier.weight(1f),
+                        title = stringResource(R.string.battery_case),
+                        battery = t300State.caseBattery,
+                        icon = Icons.Rounded.Inventory2
+                    )
+                    BatteryCard(
+                        modifier = Modifier.weight(1f),
+                        title = stringResource(R.string.battery_right),
+                        battery = t300State.rightBattery,
+                        icon = Icons.Rounded.Headphones
+                    )
+                }
+
+                // Noise Cancellation (ANC) Section
+                if (!detectedModel.isSupported || detectedModel.supportsAnc) {
+                    SectionHeader(title = stringResource(R.string.section_anc))
+                    AncModeSelector(
+                        currentMode = t300State.ancMode,
+                        currentLevel = t300State.ancLevel,
+                        supportsAncLevel = detectedModel.supportsAncLevel,
+                        supportsAncDynamic = detectedModel.supportsAncDynamic,
+                        useLowMidHighLabels = detectedModel.isNothing || detectedModel.isXiaomi,
+                        enabled = isConnected,
+                        onModeSelected = { viewModel.setAncMode(it) },
+                        onLevelSelected = { viewModel.setAncLevel(it) }
+                    )
+                }
+
+                // Sound Effects (EQ) + Protocol-Aware Custom Equalizer Section
+                val customEqSpec = detectedModel.customEqSpec()
+                if (!detectedModel.isSupported || detectedModel.supportsEq || customEqSpec != null) {
+                    SectionHeader(title = stringResource(R.string.section_eq))
+                    EqPresetSelector(
+                        currentPreset = t300State.eqPreset,
+                        activeCustomName = t300State.activeCustomEqName,
+                        activeCustomId = t300State.activeCustomEqId,
+                        customProfiles = t300State.customEqProfiles,
+                        customEqSpec = customEqSpec,
+                        showPresets = !detectedModel.isSupported || (detectedModel.supportsEq && !detectedModel.isBose && !detectedModel.isSoundcore && !detectedModel.isSennheiser && !detectedModel.isPixelBuds),
+                        model = detectedModel,
+                        enabled = isConnected,
+                        onPresetSelected = { viewModel.setEqPreset(it) },
+                        onSelectCustomProfile = { viewModel.selectCustomEqProfile(it) },
+                        onEditCustomProfile = { profile ->
+                            editingCustomProfile = profile
+                            creatingNewCustomProfile = false
+                            showCustomEqSheet = true
+                        },
+                        onDeleteCustomProfile = { viewModel.deleteCustomEqProfile(it) },
+                        onCreateCustomProfile = {
+                            editingCustomProfile = null
+                            creatingNewCustomProfile = true
+                            showCustomEqSheet = true
+                        },
+                        onOpenDirectCustomEq = {
+                            editingCustomProfile = t300State.customEqProfiles.firstOrNull { it.isSelected }
+                                ?: t300State.customEqProfiles.firstOrNull()
+                            creatingNewCustomProfile = false
+                            showCustomEqSheet = true
+                        }
+                    )
+                }
+
+                // Button Settings (Gestures) Section
+                if (!detectedModel.isSupported || detectedModel.supportsTouchSettings) {
+                    SectionHeader(title = stringResource(R.string.section_touch_settings))
+                    val visibleGestures = buildList {
+                        if (!detectedModel.isSupported || detectedModel.supportsDoubleTap) add(TouchGesture.DOUBLE_TAP)
+                        if (!detectedModel.isSupported || detectedModel.supportsTripleTap) add(TouchGesture.TRIPLE_TAP)
+                        if (!detectedModel.isSupported || detectedModel.supportsLongPress) add(TouchGesture.LONG_PRESS)
+                    }
+                    ButtonSettingsCard(
+                        selectedSide = selectedTouchSide,
+                        gestures = visibleGestures,
+                        touchSettings = t300State.touchSettings,
+                        enabled = isConnected,
+                        onSideSelected = { selectedTouchSide = it },
+                        onGestureClick = { gesture ->
+                            activeEditingGesture = Pair(selectedTouchSide, gesture)
+                        }
+                    )
+                }
+
+                // Spatial Audio Section
+                if (!detectedModel.isSupported || detectedModel.supportsSpatialAudio) {
+                    SectionHeader(title = stringResource(R.string.section_spatial_audio))
+                    SpatialAudioCard(
+                        spatialAudio = t300State.spatialAudio,
+                        isPlayingDemo = isPlayingDemo,
+                        showRealmeDemo = !detectedModel.isSupported || detectedModel.isRealme,
+                        enabled = isConnected,
+                        onToggle = { viewModel.setSpatialAudio(it) },
+                        onToggleDemo = { viewModel.toggleDemoAudio() }
+                    )
+                }
+
+                // High-Definition Audio (LDAC / LHDC 5.0 / Huawei Sound Quality Priority)
+                if (detectedModel.supportsHighQualityAudio) {
+                    val codecDescRes = when {
+                        detectedModel.isHuawei -> R.string.high_quality_audio_desc_huawei
+                        detectedModel.usesLhdc -> R.string.high_quality_audio_desc_lhdc
+                        else -> R.string.high_quality_audio_desc
+                    }
+                    SwitchFeatureCard(
+                        title = stringResource(R.string.high_quality_audio_title),
+                        description = stringResource(codecDescRes),
+                        icon = Icons.Rounded.HighQuality,
+                        checked = t300State.highQualityAudio,
+                        enabled = isConnected,
+                        onToggle = { viewModel.setHighQualityAudio(it) }
+                    )
+                }
+
+                // Dynamic Audio (realme) / Ultra Bass (Nothing & CMF)
+                if (detectedModel.supportsDynamicAudio) {
+                    val dynTitle = if (detectedModel.isNothing) R.string.ultra_bass_title else R.string.dynamic_audio_title
+                    val dynDesc = if (detectedModel.isNothing) R.string.ultra_bass_desc else R.string.dynamic_audio_desc
+                    SwitchFeatureCard(
+                        title = stringResource(dynTitle),
+                        description = stringResource(dynDesc),
+                        icon = Icons.Rounded.Equalizer,
+                        checked = t300State.dynamicAudio,
+                        enabled = isConnected,
+                        onToggle = { viewModel.setDynamicAudio(it) }
+                    )
+                }
+
+                // Other Section: Game Mode / Low Latency, Dual Connection, Auto Play/Pause, Auto Answer
+                val hasOtherSection = !detectedModel.isSupported ||
+                    detectedModel.supportsGameMode ||
+                    detectedModel.supportsDualConnection ||
+                    detectedModel.supportsAutoPlayPause ||
+                    detectedModel.supportsAutoAnswer
+                if (hasOtherSection) {
+                    SectionHeader(title = stringResource(R.string.section_other))
+
+                    if (!detectedModel.isSupported || detectedModel.supportsGameMode) {
+                        val useLowLatencyLabel = detectedModel.isXiaomi || detectedModel.isHuawei || detectedModel.isNothing
+                        SwitchFeatureCard(
+                            title = stringResource(if (useLowLatencyLabel) R.string.low_latency_title else R.string.game_mode_title),
+                            description = stringResource(if (useLowLatencyLabel) R.string.low_latency_desc else R.string.game_mode_desc),
+                            icon = Icons.Rounded.SportsEsports,
+                            checked = t300State.gameMode,
+                            enabled = isConnected,
+                            allowToggleWhenUnknown = detectedModel.isXiaomi || detectedModel.isGalaxy || detectedModel.isSoundcore,
+                            onToggle = { viewModel.setGameMode(it) }
+                        )
+                    }
+
+                    if (detectedModel.supportsDualConnection) {
+                        if (detectedModel.isGalaxy) {
+                            SwitchFeatureCard(
+                                title = stringResource(R.string.dual_connection_galaxy_title),
+                                description = stringResource(R.string.dual_connection_galaxy_desc),
+                                icon = Icons.Rounded.Devices,
+                                checked = t300State.dualConnection,
+                                enabled = isConnected,
+                                onToggle = { viewModel.setDualConnection(it) }
+                            )
+                        } else {
+                            DualConnectionCard(
+                                dualConnection = t300State.dualConnection,
+                                connectedDevices = t300State.connectedDevices,
+                                enabled = isConnected,
+                                onToggle = { viewModel.setDualConnection(it) }
+                            )
+                        }
+                    }
+
+                    if (detectedModel.supportsAutoPlayPause) {
+                        SwitchFeatureCard(
+                            title = stringResource(R.string.auto_play_pause_title),
+                            description = stringResource(R.string.auto_play_pause_desc),
+                            icon = Icons.Rounded.Earbuds,
+                            checked = t300State.autoPlayPause,
+                            enabled = isConnected,
+                            onToggle = { viewModel.setAutoPlayPause(it) }
+                        )
+                    }
+
+                    if (detectedModel.supportsAutoAnswer) {
+                        SwitchFeatureCard(
+                            title = stringResource(R.string.auto_answer_title),
+                            description = stringResource(R.string.auto_answer_desc),
+                            icon = Icons.Rounded.Call,
+                            checked = t300State.autoAnswer,
+                            enabled = isConnected,
+                            onToggle = { viewModel.setAutoAnswer(it) }
+                        )
+                    }
+                }
+
+                // Total Usage Time Statistics (L / R)
+                if (t300State.leftUseTimeMinutes != null || t300State.rightUseTimeMinutes != null) {
+                    UseTimeCard(
+                        leftMinutes = t300State.leftUseTimeMinutes,
+                        rightMinutes = t300State.rightUseTimeMinutes
+                    )
+                }
+
+                // Protocol Logs Console
+                LogsConsole(
+                    logs = logs,
+                    onClearLogs = { viewModel.clearLogs() },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Footer Version
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "v${BuildConfig.VERSION_NAME} · build ${BuildConfig.VERSION_CODE}",
+                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .navigationBarsPadding()
+                        .padding(bottom = 12.dp)
+                )
+            }
+
+            // Gesture Action Selection Dialog
+            if (activeEditingGesture != null) {
+                val (side, gesture) = activeEditingGesture!!
+                val currentAction = t300State.touchSettings[Pair(side, gesture)]
+                GestureActionSelectionDialog(
+                    model = detectedModel,
+                    side = side,
+                    gesture = gesture,
+                    currentAction = currentAction,
+                    onActionSelected = { action ->
+                        viewModel.setKeySetting(side, gesture, action)
+                        activeEditingGesture = null
+                    },
+                    onDismiss = { activeEditingGesture = null }
+                )
+            }
+
+            // Custom Equalizer ModalBottomSheet
+            val activeSpec = detectedModel.customEqSpec()
+            if (showCustomEqSheet && activeSpec != null) {
+                CustomEqEditorSheet(
+                    spec = activeSpec,
+                    initialGains = t300State.customEqGains,
+                    editingProfile = editingCustomProfile,
+                    isCreatingNew = creatingNewCustomProfile,
+                    onDismiss = { showCustomEqSheet = false },
+                    onApply = { gains, name ->
+                        viewModel.saveCustomEq(
+                            gains = gains,
+                            profileId = if (creatingNewCustomProfile) null else editingCustomProfile?.id,
+                            profileName = name,
+                            createNew = creatingNewCustomProfile
+                        )
+                        showCustomEqSheet = false
+                        Toast.makeText(context, context.getString(R.string.eq_custom_saved_toast), Toast.LENGTH_SHORT).show()
+                    },
+                    onReset = {
+                        viewModel.resetCustomEq()
+                    }
+                )
+            }
+
+            // Universal Find My Earbuds ModalBottomSheet
+            if (showFindBudsSheet) {
+                FindBudsSheet(
+                    isPlaying = findIsPlaying,
+                    volumeProgress = findVolumeProgress,
+                    selectedChannel = findChannel,
+                    supportsHardwareRing = detectedModel.supportsHardwareFindBuds,
+                    hardwareRingActive = t300State.hardwareFindActive,
+                    isConnected = isConnected,
+                    onChannelSelected = { viewModel.setFindChannel(it) },
+                    onTogglePlay = {
+                        if (findIsPlaying) viewModel.stopFindBuds() else viewModel.startFindBuds()
+                    },
+                    onToggleHardwareRing = { enabled ->
+                        viewModel.setHardwareFindBuds(enabled)
+                    },
+                    onDismiss = { showFindBudsSheet = false }
+                )
+            }
+
+            // Rename Earbuds Dialog
+            if (showRenameDialog) {
+                RenameDeviceDialog(
+                    currentName = displayDeviceName ?: "",
+                    onConfirm = { newName ->
+                        val scope = viewModel.renameCurrentDevice(newName)
+                        showRenameDialog = false
+                        val toastRes = when (scope) {
+                            RenameScope.FIRMWARE -> R.string.rename_toast_firmware
+                            RenameScope.OS_ALIAS -> R.string.rename_toast_os
+                            RenameScope.LOCAL_ALIAS -> R.string.rename_toast_local
+                            RenameScope.RESET -> R.string.rename_toast_reset
+                            null -> null
+                        }
+                        if (toastRes != null) {
+                            Toast.makeText(context, context.getString(toastRes), Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onDismiss = { showRenameDialog = false }
+                )
+            }
         }
     }
-    }
+}
+
+@Composable
+private fun SectionHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+    )
 }
 
 @Composable
@@ -519,9 +627,9 @@ fun ModelPickerDrawerContent(
     val isAutoSelected = manualModelOverride == null
 
     ModalDrawerSheet(
-        modifier = Modifier.width(304.dp),
-        drawerContainerColor = Color(0xFF121212),
-        drawerContentColor = Color.White
+        modifier = Modifier.width(312.dp),
+        drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        drawerContentColor = MaterialTheme.colorScheme.onSurface
     ) {
         Column(
             modifier = Modifier
@@ -531,13 +639,12 @@ fun ModelPickerDrawerContent(
         ) {
             Text(
                 text = stringResource(R.string.drawer_title_model),
-                fontSize = 24.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White,
-                modifier = Modifier.padding(top = 12.dp, bottom = 14.dp)
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 12.dp, bottom = 16.dp, start = 4.dp)
             )
 
-            // "Automatic" top card (QuickBuds style)
+            // "Automatic" top card
             val autoSubtitle = if (autoDetectedModel.isSupported) {
                 stringResource(R.string.drawer_auto_detected, autoDetectedModel.displayName)
             } else {
@@ -546,10 +653,14 @@ fun ModelPickerDrawerContent(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(20.dp))
                     .clickable { onSelectModel(null) },
-                color = if (isAutoSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f) else Color(0xFF1E1E1E),
-                shape = RoundedCornerShape(16.dp)
+                color = if (isAutoSelected) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerHigh
+                },
+                shape = RoundedCornerShape(20.dp)
             ) {
                 Row(
                     modifier = Modifier
@@ -561,48 +672,53 @@ fun ModelPickerDrawerContent(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = stringResource(R.string.drawer_auto_title),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (isAutoSelected) MaterialTheme.colorScheme.primary else Color.White
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (isAutoSelected) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = autoSubtitle,
-                            fontSize = 12.sp,
-                            color = Color(0xFFBDBDBD),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isAutoSelected) {
+                                MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
                     if (isAutoSelected) {
                         Icon(
-                            imageVector = Icons.Default.Check,
+                            imageVector = Icons.Rounded.Check,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.size(20.dp)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Scrollable brand-grouped list of all supported models
             LazyColumn(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                contentPadding = PaddingValues(bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                contentPadding = PaddingValues(bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 grouped.forEach { (brand, models) ->
                     item(key = "brand_${brand.name}") {
                         Text(
                             text = brand.title,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp, start = 4.dp)
+                            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp, start = 8.dp)
                         )
                     }
                     items(models, key = { it.name }) { model ->
@@ -610,32 +726,41 @@ fun ModelPickerDrawerContent(
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
+                                .clip(CircleShape)
                                 .clickable { onSelectModel(model) },
-                            color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f) else Color(0xFF1E1E1E),
-                            shape = RoundedCornerShape(14.dp)
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.secondaryContainer
+                            } else {
+                                Color.Transparent
+                            },
+                            shape = CircleShape
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 13.dp),
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     text = model.displayName,
-                                    fontSize = 15.sp,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (selected) MaterialTheme.colorScheme.primary else Color.White,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                                    ),
+                                    color = if (selected) {
+                                        MaterialTheme.colorScheme.onSecondaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    },
                                     modifier = Modifier.weight(1f),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 if (selected) {
                                     Icon(
-                                        imageVector = Icons.Default.Check,
+                                        imageVector = Icons.Rounded.Check,
                                         contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
+                                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
@@ -650,36 +775,36 @@ fun ModelPickerDrawerContent(
 
 @Composable
 fun PermissionWarningCard(onRequest: () -> Unit, onOpenSettings: () -> Unit) {
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF332000)),
-        shape = RoundedCornerShape(14.dp)
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        shape = RoundedCornerShape(24.dp)
     ) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFFCC00))
+                Icon(
+                    Icons.Rounded.WarningAmber,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = stringResource(R.string.perm_warning_title),
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFFFFCC00),
-                    fontSize = 15.sp
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
                 )
             }
             Text(
                 text = stringResource(R.string.perm_warning_message),
-                fontSize = 13.sp,
-                color = Color.LightGray
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f)
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = onRequest,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCC00))
-                ) {
-                    Text(stringResource(R.string.btn_grant_permissions), color = Color.Black)
+                Button(onClick = onRequest, shape = CircleShape) {
+                    Text(stringResource(R.string.btn_grant_permissions))
                 }
-                OutlinedButton(onClick = onOpenSettings) {
-                    Text(stringResource(R.string.btn_settings), color = Color.White)
+                OutlinedButton(onClick = onOpenSettings, shape = CircleShape) {
+                    Text(stringResource(R.string.btn_settings))
                 }
             }
         }
@@ -688,26 +813,29 @@ fun PermissionWarningCard(onRequest: () -> Unit, onOpenSettings: () -> Unit) {
 
 @Composable
 fun UnsupportedDeviceCard(deviceName: String) {
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF331414)),
-        shape = RoundedCornerShape(14.dp)
+        color = MaterialTheme.colorScheme.errorContainer,
+        shape = RoundedCornerShape(24.dp)
     ) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = Color(0xFFEF5350))
+                Icon(
+                    Icons.Rounded.ErrorOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onErrorContainer
+                )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = stringResource(R.string.unsupported_warning_title),
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFFEF5350),
-                    fontSize = 15.sp
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onErrorContainer
                 )
             }
             Text(
                 text = stringResource(R.string.unsupported_warning_message, deviceName),
-                fontSize = 13.sp,
-                color = Color.LightGray
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.9f)
             )
         }
     }
@@ -723,43 +851,48 @@ fun StatusDeviceCard(
     displayMac: String?,
     manualModelOverride: T300Protocol.BudsModel?,
     unsupportedDeviceName: String?,
-    onRetryConnect: () -> Unit
+    findIsPlaying: Boolean,
+    canRename: Boolean,
+    onRetryConnect: () -> Unit,
+    onOpenFindBuds: () -> Unit,
+    onOpenRename: () -> Unit
 ) {
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(16.dp)
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(28.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.Top
             ) {
-                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                     Text(
                         text = displayName
                             ?: unsupportedDeviceName
                             ?: stringResource(R.string.default_device_name),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = when {
                             displayMac != null -> displayMac
                             deviceStatus == SystemDeviceStatus.UNSUPPORTED_DEVICE -> stringResource(R.string.unsupported_warning_title)
                             else -> stringResource(R.string.status_searching_paired)
                         },
-                        fontSize = 12.sp,
-                        color = Color.Gray
+                        style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     if (manualModelOverride != null) {
-                        Spacer(modifier = Modifier.height(2.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = stringResource(R.string.drawer_manual_badge, manualModelOverride.displayName),
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -767,23 +900,54 @@ fun StatusDeviceCard(
                     }
                 }
 
-                // Status indicator
-                val (badgeText, badgeColor) = when {
-                    connectionState == BleConnectionState.CONNECTED -> stringResource(R.string.status_connected) to Color(0xFF4CAF50)
-                    connectionState == BleConnectionState.CONNECTING -> stringResource(R.string.status_connecting) to Color(0xFFFF9800)
-                    deviceStatus == SystemDeviceStatus.DEVICE_CONNECTED_OS -> stringResource(R.string.status_online_connecting) to Color(0xFFFF9800)
-                    deviceStatus == SystemDeviceStatus.UNSUPPORTED_DEVICE -> stringResource(R.string.status_unsupported) to Color(0xFFE53935)
-                    deviceStatus == SystemDeviceStatus.NO_PAIRED_DEVICE -> stringResource(R.string.status_not_paired) to Color(0xFFE53935)
-                    deviceStatus == SystemDeviceStatus.NO_PERMISSIONS -> stringResource(R.string.status_no_permissions) to Color(0xFFE53935)
-                    else -> stringResource(R.string.status_in_case_disconnected) to Color.Gray
+                // Tonal status pill
+                val (badgeText, badgeContainer, badgeContent) = when {
+                    connectionState == BleConnectionState.CONNECTED -> Triple(
+                        stringResource(R.string.status_connected),
+                        MaterialTheme.colorScheme.primaryContainer,
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    connectionState == BleConnectionState.CONNECTING -> Triple(
+                        stringResource(R.string.status_connecting),
+                        MaterialTheme.colorScheme.tertiaryContainer,
+                        MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                    deviceStatus == SystemDeviceStatus.DEVICE_CONNECTED_OS -> Triple(
+                        stringResource(R.string.status_online_connecting),
+                        MaterialTheme.colorScheme.tertiaryContainer,
+                        MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                    deviceStatus == SystemDeviceStatus.UNSUPPORTED_DEVICE -> Triple(
+                        stringResource(R.string.status_unsupported),
+                        MaterialTheme.colorScheme.errorContainer,
+                        MaterialTheme.colorScheme.onErrorContainer
+                    )
+                    deviceStatus == SystemDeviceStatus.NO_PAIRED_DEVICE -> Triple(
+                        stringResource(R.string.status_not_paired),
+                        MaterialTheme.colorScheme.surfaceContainerHighest,
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    deviceStatus == SystemDeviceStatus.NO_PERMISSIONS -> Triple(
+                        stringResource(R.string.status_no_permissions),
+                        MaterialTheme.colorScheme.errorContainer,
+                        MaterialTheme.colorScheme.onErrorContainer
+                    )
+                    else -> Triple(
+                        stringResource(R.string.status_in_case_disconnected),
+                        MaterialTheme.colorScheme.surfaceContainerHighest,
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
 
-                Badge(containerColor = badgeColor.copy(alpha = 0.2f)) {
+                Surface(
+                    color = badgeContainer,
+                    shape = CircleShape
+                ) {
                     Text(
                         text = badgeText,
-                        color = badgeColor,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        style = MaterialTheme.typography.labelMedium,
+                        color = badgeContent,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                     )
                 }
             }
@@ -798,19 +962,87 @@ fun StatusDeviceCard(
                 deviceStatus == SystemDeviceStatus.NO_PERMISSIONS -> stringResource(R.string.hint_no_permissions)
                 else -> stringResource(R.string.hint_waiting_activity)
             }
-
             if (hintText != null) {
-                Text(text = hintText, fontSize = 12.sp, color = Color(0xFFAAAAAA))
+                Text(
+                    text = hintText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // Expressive Quick Actions Row: Find My Earbuds (universal) + Rename
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilledTonalButton(
+                    onClick = onOpenFindBuds,
+                    shape = CircleShape,
+                    colors = if (findIsPlaying) {
+                        ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    } else {
+                        ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    },
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = if (findIsPlaying) Icons.Rounded.StopCircle else Icons.Rounded.GraphicEq,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(if (findIsPlaying) R.string.find_buds_playing_badge else R.string.find_buds_title),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                if (canRename) {
+                    FilledTonalButton(
+                        onClick = onOpenRename,
+                        shape = CircleShape,
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        ),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                        modifier = Modifier.weight(0.85f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Edit,
+                            contentDescription = null,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.rename_action),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
 
             // Manual reconnect button when disconnected but OS-connected
             if (device != null && connectionState == BleConnectionState.DISCONNECTED && deviceStatus == SystemDeviceStatus.DEVICE_CONNECTED_OS) {
                 Button(
                     onClick = onRetryConnect,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.fillMaxWidth()
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
                 ) {
-                    Text(stringResource(R.string.btn_reconnect), color = MaterialTheme.colorScheme.onPrimary)
+                    Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.btn_reconnect))
                 }
             }
         }
@@ -824,53 +1056,82 @@ fun BatteryCard(
     battery: T300Protocol.BatteryInfo,
     icon: ImageVector
 ) {
-    Card(
+    Surface(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(12.dp)
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(20.dp)
     ) {
         Column(
             modifier = Modifier
-                .padding(12.dp)
+                .padding(horizontal = 12.dp, vertical = 14.dp)
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(title, fontSize = 12.sp, color = Color.Gray)
-            Spacer(modifier = Modifier.height(6.dp))
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
                 Text(
                     text = if (battery.level >= 0) "${battery.level}%" else stringResource(R.string.dash),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontFeatureSettings = "tnum"
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 if (battery.isCharging) {
                     Spacer(modifier = Modifier.width(2.dp))
-                    Text("⚡", color = Color(0xFFFFCC00), fontSize = 14.sp)
+                    Icon(
+                        imageVector = Icons.Rounded.Bolt,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
             LinearProgressIndicator(
                 progress = { if (battery.level >= 0) battery.level / 100f else 0f },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(4.dp)
+                    .height(6.dp)
                     .clip(CircleShape),
                 color = when {
-                    battery.isCharging -> Color(0xFFFFCC00)
-                    battery.level in 0..19 -> Color(0xFFE53935)
-                    else -> Color(0xFF4CAF50)
+                    battery.isCharging -> MaterialTheme.colorScheme.primary
+                    battery.level in 0..19 -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.tertiary
                 },
-                trackColor = Color(0xFF2C2C2C)
+                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                strokeCap = StrokeCap.Round
             )
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AncModeSelector(
     currentMode: AncMode?,
@@ -882,41 +1143,32 @@ fun AncModeSelector(
     onModeSelected: (AncMode) -> Unit,
     onLevelSelected: (HuaweiProtocol.AncLevel) -> Unit
 ) {
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(16.dp)
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(24.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                AncMode.entries.forEach { mode ->
+            val modes = AncMode.entries
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                modes.forEachIndexed { index, mode ->
                     val selected = mode == currentMode
-                    val itemWeight = when (mode) {
-                        AncMode.NOISE_REDUCTION -> 1.3f
-                        AncMode.OFF -> 0.65f
-                        AncMode.TRANSPARENCY -> 1.05f
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(itemWeight)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
-                            .clickable(enabled = enabled) { onModeSelected(mode) }
-                            .padding(vertical = 12.dp, horizontal = 4.dp),
-                        contentAlignment = Alignment.Center
+                    SegmentedButton(
+                        selected = selected,
+                        enabled = enabled,
+                        onClick = { onModeSelected(mode) },
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
+                        icon = {}
                     ) {
                         AutoSizeSingleLineText(
                             text = stringResource(mode.titleRes),
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (selected) MaterialTheme.colorScheme.onPrimary else if (enabled) Color.White else Color.Gray,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                            color = LocalContentColor.current,
                             maxFontSize = 13.sp,
                             minFontSize = 9.sp
                         )
@@ -934,8 +1186,8 @@ fun AncModeSelector(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF262626))
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                         .padding(4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
@@ -954,16 +1206,25 @@ fun AncModeSelector(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f) else Color.Transparent)
+                                .clip(CircleShape)
+                                .background(
+                                    if (selected) MaterialTheme.colorScheme.primaryContainer
+                                    else Color.Transparent
+                                )
                                 .clickable(enabled = enabled) { onLevelSelected(lvl) }
                                 .padding(vertical = 8.dp, horizontal = 4.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             AutoSizeSingleLineText(
                                 text = stringResource(lvlTitleRes),
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selected) MaterialTheme.colorScheme.primary else if (enabled) Color.LightGray else Color.Gray,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                color = if (selected) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else if (enabled) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                },
                                 maxFontSize = 12.sp,
                                 minFontSize = 8.sp
                             )
@@ -979,118 +1240,285 @@ fun AncModeSelector(
 fun EqPresetSelector(
     currentPreset: T300Protocol.EqPreset?,
     activeCustomName: String?,
+    activeCustomId: Int?,
+    customProfiles: List<T300Protocol.CustomEqProfile>,
+    customEqSpec: T300Protocol.CustomEqSpec?,
+    showPresets: Boolean,
     model: T300Protocol.BudsModel,
     enabled: Boolean,
-    onPresetSelected: (T300Protocol.EqPreset) -> Unit
+    onPresetSelected: (T300Protocol.EqPreset) -> Unit,
+    onSelectCustomProfile: (T300Protocol.CustomEqProfile) -> Unit,
+    onEditCustomProfile: (T300Protocol.CustomEqProfile) -> Unit,
+    onDeleteCustomProfile: (T300Protocol.CustomEqProfile) -> Unit,
+    onCreateCustomProfile: () -> Unit,
+    onOpenDirectCustomEq: () -> Unit
 ) {
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(16.dp)
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(24.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            val presets = if (model.isHonorChoice) {
-                listOf(
-                    T300Protocol.EqPreset.ORIGINAL_SOUND,
-                    T300Protocol.EqPreset.DEEP_BASS,
-                    T300Protocol.EqPreset.SERENADE
-                )
-            } else {
-                listOf(
-                    T300Protocol.EqPreset.SERENADE,
-                    T300Protocol.EqPreset.ORIGINAL_SOUND,
-                    T300Protocol.EqPreset.PURE_BASS,
-                    T300Protocol.EqPreset.DEEP_BASS
-                )
-            }
+            if (showPresets) {
+                val presets = if (model.isHonorChoice) {
+                    listOf(
+                        T300Protocol.EqPreset.ORIGINAL_SOUND,
+                        T300Protocol.EqPreset.DEEP_BASS,
+                        T300Protocol.EqPreset.SERENADE
+                    )
+                } else {
+                    listOf(
+                        T300Protocol.EqPreset.SERENADE,
+                        T300Protocol.EqPreset.ORIGINAL_SOUND,
+                        T300Protocol.EqPreset.PURE_BASS,
+                        T300Protocol.EqPreset.DEEP_BASS
+                    )
+                }
 
-            for (row in presets.chunked(2)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    for (preset in row) {
-                        val selected = (preset == currentPreset) && (activeCustomName == null)
-                        val titleRes = when {
-                            model.isHuawei -> when (preset) {
-                                T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
-                                T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_huawei_default
-                                T300Protocol.EqPreset.PURE_BASS -> R.string.eq_huawei_treble
-                                T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
+                for (row in presets.chunked(2)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        for (preset in row) {
+                            val selected = (preset == currentPreset) && (activeCustomName == null)
+                            val titleRes = when {
+                                model.isHuawei -> when (preset) {
+                                    T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
+                                    T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_huawei_default
+                                    T300Protocol.EqPreset.PURE_BASS -> R.string.eq_huawei_treble
+                                    T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
+                                }
+                                model.isHonorChoice -> when (preset) {
+                                    T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_nothing_balanced
+                                    T300Protocol.EqPreset.DEEP_BASS,
+                                    T300Protocol.EqPreset.PURE_BASS -> R.string.eq_huawei_bass
+                                    T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
+                                }
+                                model.isNothing && model.nothingUsesListeningModeEq -> when (preset) {
+                                    T300Protocol.EqPreset.SERENADE -> R.string.eq_cmf_vocals
+                                    T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_cmf_pop
+                                    T300Protocol.EqPreset.PURE_BASS -> R.string.eq_cmf_electronic
+                                    T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_cmf_rock
+                                }
+                                model.isNothing -> when (preset) {
+                                    T300Protocol.EqPreset.SERENADE -> R.string.eq_nothing_voice
+                                    T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_nothing_balanced
+                                    T300Protocol.EqPreset.PURE_BASS -> R.string.eq_nothing_more_treble
+                                    T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_nothing_more_bass
+                                }
+                                model.isGalaxy -> when (preset) {
+                                    T300Protocol.EqPreset.SERENADE -> R.string.eq_galaxy_clear
+                                    T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_galaxy_normal
+                                    T300Protocol.EqPreset.PURE_BASS -> R.string.eq_galaxy_dynamic
+                                    T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_galaxy_bass
+                                }
+                                model.isSony -> when (preset) {
+                                    T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
+                                    T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.anc_off
+                                    T300Protocol.EqPreset.PURE_BASS -> R.string.eq_sony_bright
+                                    T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
+                                }
+                                model.isXiaomi -> when (preset) {
+                                    T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
+                                    T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_huawei_default
+                                    T300Protocol.EqPreset.PURE_BASS -> R.string.eq_huawei_treble
+                                    T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
+                                }
+                                model.isJbl -> when (preset) {
+                                    T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
+                                    T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_jbl_studio
+                                    T300Protocol.EqPreset.PURE_BASS -> R.string.eq_jbl_club
+                                    T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
+                                }
+                                else -> preset.titleRes
                             }
-                            model.isHonorChoice -> when (preset) {
-                                T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_nothing_balanced
-                                T300Protocol.EqPreset.DEEP_BASS,
-                                T300Protocol.EqPreset.PURE_BASS -> R.string.eq_huawei_bass
-                                T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable(enabled = enabled) { onPresetSelected(preset) },
+                                color = if (selected) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceContainerHigh
+                                },
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(vertical = 13.dp, horizontal = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = stringResource(titleRes),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = when {
+                                            selected -> MaterialTheme.colorScheme.onPrimaryContainer
+                                            enabled -> MaterialTheme.colorScheme.onSurface
+                                            else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                        },
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
-                            model.isNothing && model.nothingUsesListeningModeEq -> when (preset) {
-                                T300Protocol.EqPreset.SERENADE -> R.string.eq_cmf_vocals
-                                T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_cmf_pop
-                                T300Protocol.EqPreset.PURE_BASS -> R.string.eq_cmf_electronic
-                                T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_cmf_rock
-                            }
-                            model.isNothing -> when (preset) {
-                                T300Protocol.EqPreset.SERENADE -> R.string.eq_nothing_voice
-                                T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_nothing_balanced
-                                T300Protocol.EqPreset.PURE_BASS -> R.string.eq_nothing_more_treble
-                                T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_nothing_more_bass
-                            }
-                            model.isGalaxy -> when (preset) {
-                                T300Protocol.EqPreset.SERENADE -> R.string.eq_galaxy_clear
-                                T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_galaxy_normal
-                                T300Protocol.EqPreset.PURE_BASS -> R.string.eq_galaxy_dynamic
-                                T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_galaxy_bass
-                            }
-                            model.isSony -> when (preset) {
-                                T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
-                                T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.anc_off
-                                T300Protocol.EqPreset.PURE_BASS -> R.string.eq_sony_bright
-                                T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
-                            }
-                            model.isXiaomi -> when (preset) {
-                                T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
-                                T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_huawei_default
-                                T300Protocol.EqPreset.PURE_BASS -> R.string.eq_huawei_treble
-                                T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
-                            }
-                            model.isJbl -> when (preset) {
-                                T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
-                                T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_jbl_studio
-                                T300Protocol.EqPreset.PURE_BASS -> R.string.eq_jbl_club
-                                T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
-                            }
-                            else -> preset.titleRes
-                        }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (selected) MaterialTheme.colorScheme.primary else Color(0xFF2A2A2A))
-                                .clickable(enabled = enabled) { onPresetSelected(preset) }
-                                .padding(vertical = 12.dp, horizontal = 6.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = stringResource(titleRes),
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selected) MaterialTheme.colorScheme.onPrimary else if (enabled) Color.White else Color.Gray,
-                                fontSize = 13.sp
-                            )
                         }
                     }
                 }
             }
 
-            if (activeCustomName != null) {
+            // Custom Equalizer profiles & curve editor
+            if (customEqSpec != null) {
+                if (showPresets) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                }
+
+                // Saved profiles list (realme / OnePlus / OPPO / Huawei)
+                if (customEqSpec.supportsMultipleProfiles && customProfiles.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        customProfiles.forEach { profile ->
+                            val isSelected = profile.isSelected || (activeCustomId != null && activeCustomId == profile.id)
+                            Surface(
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceContainerHigh
+                                },
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable(enabled = enabled) { onSelectCustomProfile(profile) }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isSelected) Icons.Rounded.CheckCircle else Icons.Rounded.GraphicEq,
+                                            contentDescription = null,
+                                            tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            text = profile.name,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(
+                                            onClick = { onEditCustomProfile(profile) },
+                                            enabled = enabled,
+                                            modifier = Modifier.size(36.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Tune,
+                                                contentDescription = stringResource(R.string.eq_custom_title),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { onDeleteCustomProfile(profile) },
+                                            enabled = enabled,
+                                            modifier = Modifier.size(36.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.DeleteOutline,
+                                                contentDescription = stringResource(R.string.delete),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Primary Custom EQ entry pill
                 Surface(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(8.dp),
+                    color = if (activeCustomName != null && !customEqSpec.supportsMultipleProfiles) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable(enabled = enabled) {
+                            if (customEqSpec.supportsMultipleProfiles) onCreateCustomProfile()
+                            else onOpenDirectCustomEq()
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = if (customEqSpec.supportsMultipleProfiles) Icons.Rounded.Add else Icons.Rounded.Tune,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = if (customEqSpec.supportsMultipleProfiles) {
+                                        stringResource(R.string.eq_custom_new_profile)
+                                    } else {
+                                        stringResource(R.string.eq_custom_title)
+                                    },
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                Text(
+                                    text = stringResource(
+                                        R.string.eq_custom_subtitle,
+                                        customEqSpec.bandLabels.size,
+                                        customEqSpec.minDb,
+                                        customEqSpec.maxDb
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"),
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                                )
+                            }
+                        }
+                        Icon(
+                            imageVector = Icons.Rounded.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            } else if (activeCustomName != null) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -1098,17 +1526,16 @@ fun EqPresetSelector(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Tune,
+                            imageVector = Icons.Rounded.Tune,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = stringResource(R.string.eq_custom_active, activeCustomName),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
                 }
@@ -1117,6 +1544,7 @@ fun EqPresetSelector(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ButtonSettingsCard(
     selectedSide: TouchSide,
@@ -1126,86 +1554,79 @@ fun ButtonSettingsCard(
     onSideSelected: (TouchSide) -> Unit,
     onGestureClick: (TouchGesture) -> Unit
 ) {
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(16.dp)
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(24.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Earbud selector (Left / Right)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF2A2A2A))
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                TouchSide.entries.forEach { side ->
-                    val isSelected = (side == selectedSide)
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
-                            .clickable(enabled = enabled) { onSideSelected(side) }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
+            val sides = TouchSide.entries
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                sides.forEachIndexed { index, side ->
+                    SegmentedButton(
+                        selected = side == selectedSide,
+                        enabled = enabled,
+                        onClick = { onSideSelected(side) },
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = sides.size),
+                        icon = {}
                     ) {
                         Text(
-                            text = stringResource(if (side == TouchSide.LEFT) R.string.touch_side_left_earbud else R.string.touch_side_right_earbud),
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary else if (enabled) Color.White else Color.Gray,
-                            fontSize = 13.sp
+                            text = stringResource(
+                                if (side == TouchSide.LEFT) R.string.touch_side_left_earbud
+                                else R.string.touch_side_right_earbud
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
             }
 
-            // List of supported gestures for current model
             gestures.forEachIndexed { index, gesture ->
                 val action = touchSettings[Pair(selectedSide, gesture)]
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(14.dp))
                         .clickable(enabled = enabled) { onGestureClick(gesture) }
-                        .padding(horizontal = 8.dp, vertical = 10.dp),
+                        .padding(horizontal = 10.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = stringResource(gesture.titleRes),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = if (enabled) Color.White else Color.Gray
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = if (action != null) stringResource(action.titleRes) else stringResource(R.string.dash),
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = when {
-                                !enabled -> Color.DarkGray
+                                !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
                                 action != null -> MaterialTheme.colorScheme.primary
-                                else -> Color.Gray
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
                             }
                         )
                     }
                     Icon(
-                        imageVector = Icons.Default.ChevronRight,
+                        imageVector = Icons.Rounded.ChevronRight,
                         contentDescription = null,
-                        tint = if (enabled) Color.Gray else Color(0xFF3A3A3A),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp)
                     )
                 }
                 if (index < gestures.lastIndex) {
-                    HorizontalDivider(color = Color(0xFF2C2C2C), thickness = 0.5.dp)
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
                 }
             }
         }
@@ -1239,11 +1660,12 @@ fun GestureActionSelectionDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(28.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         title = {
             Text(
                 text = stringResource(R.string.dialog_gesture_title, sideName, gestureName),
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.titleLarge
             )
         },
         text = {
@@ -1258,25 +1680,22 @@ fun GestureActionSelectionDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(14.dp))
                             .clickable { onActionSelected(action) }
                             .padding(vertical = 8.dp, horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         RadioButton(
                             selected = isSelected,
-                            onClick = { onActionSelected(action) },
-                            colors = RadioButtonDefaults.colors(
-                                selectedColor = MaterialTheme.colorScheme.primary,
-                                unselectedColor = Color.Gray
-                            )
+                            onClick = { onActionSelected(action) }
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = stringResource(action.titleRes),
-                            fontSize = 14.sp,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                            ),
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -1284,13 +1703,13 @@ fun GestureActionSelectionDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel), color = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.cancel))
             }
-        },
-        containerColor = Color(0xFF242424)
+        }
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SpatialAudioCard(
     spatialAudio: Boolean?,
@@ -1300,10 +1719,10 @@ fun SpatialAudioCard(
     onToggle: (Boolean) -> Unit,
     onToggleDemo: () -> Unit
 ) {
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(16.dp)
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(24.dp)
     ) {
         Column(
             modifier = Modifier
@@ -1311,98 +1730,102 @@ fun SpatialAudioCard(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = stringResource(R.string.section_spatial_audio),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = stringResource(R.string.spatial_audio_desc),
-                    fontSize = 12.sp,
-                    color = Color.Gray
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            // Options: [ Off ] [ On ]
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF2A2A2A))
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                val options = listOf(
-                    false to stringResource(R.string.spatial_audio_off),
-                    true to stringResource(R.string.spatial_audio_on)
-                )
-                options.forEach { (value, label) ->
-                    val isSelected = (spatialAudio == value)
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
-                            .clickable(enabled = enabled && spatialAudio != null) { onToggle(value) }
-                            .padding(vertical = 10.dp),
-                        contentAlignment = Alignment.Center
+            val options = listOf(
+                false to stringResource(R.string.spatial_audio_off),
+                true to stringResource(R.string.spatial_audio_on)
+            )
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                options.forEachIndexed { index, (value, label) ->
+                    SegmentedButton(
+                        selected = spatialAudio == value,
+                        enabled = enabled && spatialAudio != null,
+                        onClick = { onToggle(value) },
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
                     ) {
-                        Text(
-                            text = label,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary else if (enabled) Color.White else Color.Gray,
-                            fontSize = 13.sp
-                        )
+                        Text(label)
                     }
                 }
             }
 
             if (showRealmeDemo) {
-                HorizontalDivider(color = Color(0xFF2C2C2C), thickness = 0.5.dp)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
 
-                // Demo sound button from realme Link
-                Row(
+                Surface(
+                    color = if (isPlayingDemo) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                    },
+                    shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(if (isPlayingDemo) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color(0xFF222222))
+                        .clip(RoundedCornerShape(16.dp))
                         .clickable { onToggleDemo() }
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = if (isPlayingDemo) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = null,
-                            tint = if (isPlayingDemo) MaterialTheme.colorScheme.primary else Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = if (isPlayingDemo) stringResource(R.string.demo_audio_playing) else stringResource(R.string.demo_audio_play),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = if (isPlayingDemo) MaterialTheme.colorScheme.primary else Color.White
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = if (isPlayingDemo) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                contentDescription = null,
+                                tint = if (isPlayingDemo) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
+                                modifier = Modifier.size(22.dp)
                             )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = if (isPlayingDemo) stringResource(R.string.demo_audio_playing) else stringResource(R.string.demo_audio_play),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (isPlayingDemo) {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    }
+                                )
+                                Text(
+                                    text = if (spatialAudio == true) stringResource(R.string.demo_sample_spatial) else stringResource(R.string.demo_sample_stereo),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (isPlayingDemo) {
+                                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                            }
+                        }
+
+                        if (isPlayingDemo) {
                             Text(
-                                text = if (spatialAudio == true) stringResource(R.string.demo_sample_spatial) else stringResource(R.string.demo_sample_stereo),
-                                fontSize = 11.sp,
-                                color = Color.Gray
+                                text = stringResource(R.string.demo_audio_stop),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                         }
-                    }
-
-                    if (isPlayingDemo) {
-                        Text(
-                            text = stringResource(R.string.demo_audio_stop),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
                     }
                 }
             }
@@ -1411,62 +1834,77 @@ fun SpatialAudioCard(
 }
 
 @Composable
-fun GameModeCard(
-    gameMode: Boolean?,
-    enabled: Boolean,
-    onToggle: (Boolean) -> Unit
-) {
-    SwitchFeatureCard(
-        title = stringResource(R.string.game_mode_title),
-        description = stringResource(R.string.game_mode_desc),
-        checked = gameMode,
-        enabled = enabled,
-        onToggle = onToggle
-    )
-}
-
-@Composable
 fun SwitchFeatureCard(
     title: String,
     description: String,
+    icon: ImageVector? = null,
     checked: Boolean?,
     enabled: Boolean,
+    allowToggleWhenUnknown: Boolean = false,
     onToggle: (Boolean) -> Unit
 ) {
-    Card(
+    val isChecked = checked ?: false
+    val isInteractive = enabled && (checked != null || allowToggleWhenUnknown)
+
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(16.dp)
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(24.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = 14.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (icon != null) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isChecked) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceContainerHigh
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = if (isChecked) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+            }
             Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(
                     text = title,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = description,
-                    fontSize = 12.sp,
-                    color = Color.Gray
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Switch(
-                checked = checked ?: false,
-                enabled = enabled && checked != null,
+                checked = isChecked,
+                enabled = isInteractive,
                 onCheckedChange = { onToggle(it) },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.Black,
-                    checkedTrackColor = MaterialTheme.colorScheme.primary,
-                    uncheckedThumbColor = Color.Gray,
-                    uncheckedTrackColor = Color(0xFF2C2C2C)
-                )
+                thumbContent = if (isChecked) {
+                    {
+                        Icon(
+                            imageVector = Icons.Rounded.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(SwitchDefaults.IconSize)
+                        )
+                    }
+                } else null
             )
         }
     }
@@ -1479,10 +1917,11 @@ fun DualConnectionCard(
     enabled: Boolean,
     onToggle: (Boolean) -> Unit
 ) {
-    Card(
+    val isChecked = dualConnection ?: false
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(16.dp)
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(24.dp)
     ) {
         Column(
             modifier = Modifier
@@ -1495,37 +1934,60 @@ fun DualConnectionCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isChecked) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceContainerHigh
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Devices,
+                        contentDescription = null,
+                        tint = if (isChecked) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                     Text(
                         text = stringResource(R.string.dual_connection_title),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = stringResource(R.string.dual_connection_desc),
-                        fontSize = 12.sp,
-                        color = Color.Gray
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Switch(
-                    checked = dualConnection ?: false,
+                    checked = isChecked,
                     enabled = enabled && dualConnection != null,
                     onCheckedChange = { onToggle(it) },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.Black,
-                        checkedTrackColor = MaterialTheme.colorScheme.primary,
-                        uncheckedThumbColor = Color.Gray,
-                        uncheckedTrackColor = Color(0xFF2C2C2C)
-                    )
+                    thumbContent = if (isChecked) {
+                        {
+                            Icon(
+                                imageVector = Icons.Rounded.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(SwitchDefaults.IconSize)
+                            )
+                        }
+                    } else null
                 )
             }
 
             if (connectedDevices.isNotEmpty()) {
-                HorizontalDivider(color = Color(0xFF2C2C2C), thickness = 0.5.dp)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
                 Text(
                     text = stringResource(R.string.dual_connection_history),
-                    fontSize = 12.sp,
-                    color = Color.Gray
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     connectedDevices.forEach { dev ->
@@ -1539,23 +2001,22 @@ fun DualConnectionCard(
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Smartphone,
+                                    imageVector = Icons.Rounded.Smartphone,
                                     contentDescription = null,
-                                    tint = if (dev.isConnected) MaterialTheme.colorScheme.primary else Color.Gray,
+                                    tint = if (dev.isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column {
                                     Text(
                                         text = dev.name.ifBlank { dev.mac },
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color.White
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
                                         text = dev.mac,
-                                        fontSize = 11.sp,
-                                        color = Color.Gray
+                                        style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -1564,8 +2025,8 @@ fun DualConnectionCard(
                                     if (dev.isConnected) R.string.dual_connection_device_connected
                                     else R.string.dual_connection_device_disconnected
                                 ),
-                                fontSize = 12.sp,
-                                color = if (dev.isConnected) Color(0xFF4CAF50) else Color.Gray
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (dev.isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -1607,10 +2068,10 @@ fun UseTimeCard(
     leftMinutes: Int?,
     rightMinutes: Int?
 ) {
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(16.dp)
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(24.dp)
     ) {
         Column(
             modifier = Modifier
@@ -1620,9 +2081,8 @@ fun UseTimeCard(
         ) {
             Text(
                 text = stringResource(R.string.use_time_total),
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-                color = Color.LightGray
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1669,23 +2129,24 @@ private fun UseTimeSideItem(
     ) {
         Box(
             modifier = Modifier
-                .size(24.dp)
+                .size(28.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF2C2C2C)),
+                .background(MaterialTheme.colorScheme.secondaryContainer),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = badge,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSecondaryContainer
             )
         }
         Text(
             text = formatted,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            color = Color.White,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = FontWeight.Medium,
+                fontFeatureSettings = "tnum"
+            ),
+            color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1
         )
     }
@@ -1702,24 +2163,22 @@ fun LogsConsole(
     val context = LocalContext.current
     val listState = rememberLazyListState()
 
-    // Auto-scroll to the bottom of the log list
     LaunchedEffect(logs.size, isExpanded) {
         if (isExpanded && logs.isNotEmpty()) {
             listState.animateScrollToItem(logs.size - 1)
         }
     }
 
-    Card(
+    Surface(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0E0E0E)),
-        shape = RoundedCornerShape(14.dp)
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(24.dp)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            // Logs header and controls
+        Column(modifier = Modifier.padding(14.dp)) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .clickable { isExpanded = !isExpanded }
                     .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1727,7 +2186,7 @@ fun LogsConsole(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.Code,
+                        imageVector = Icons.Rounded.Code,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(18.dp)
@@ -1735,21 +2194,19 @@ fun LogsConsole(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = stringResource(R.string.logs_title),
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
-                        color = Color.White
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "(${logs.size})",
-                        fontSize = 12.sp,
-                        color = Color.Gray
+                        style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (isExpanded) {
-                        // Copy button
                         IconButton(
                             onClick = {
                                 if (logs.isNotEmpty()) {
@@ -1761,39 +2218,37 @@ fun LogsConsole(
                                     ).show()
                                 }
                             },
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.ContentCopy,
+                                imageVector = Icons.Rounded.ContentCopy,
                                 contentDescription = stringResource(R.string.logs_copy_desc),
-                                tint = Color.LightGray,
-                                modifier = Modifier.size(16.dp)
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
-                        // Clear button
                         IconButton(
                             onClick = onClearLogs,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.DeleteOutline,
+                                imageVector = Icons.Rounded.DeleteOutline,
                                 contentDescription = stringResource(R.string.logs_clear_desc),
-                                tint = Color.LightGray,
-                                modifier = Modifier.size(16.dp)
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
 
-                    // Collapse / Expand button
                     IconButton(
                         onClick = { isExpanded = !isExpanded },
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
-                            imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            imageVector = if (isExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
                             contentDescription = if (isExpanded) stringResource(R.string.logs_collapse_desc) else stringResource(R.string.logs_expand_desc),
-                            tint = Color.LightGray
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -1801,26 +2256,30 @@ fun LogsConsole(
 
             AnimatedVisibility(visible = isExpanded) {
                 Column(modifier = Modifier.padding(top = 8.dp)) {
-                    HorizontalDivider(color = Color(0xFF222222), thickness = 1.dp)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                     Spacer(modifier = Modifier.height(8.dp))
 
                     if (logs.isEmpty()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(80.dp),
+                                .height(72.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(stringResource(R.string.logs_empty), color = Color.DarkGray, fontSize = 12.sp)
+                            Text(
+                                text = stringResource(R.string.logs_empty),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     } else {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(220.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF050505))
-                                .padding(8.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                                .padding(10.dp)
                         ) {
                             LazyColumn(
                                 state = listState,
@@ -1833,11 +2292,10 @@ fun LogsConsole(
                                         fontFamily = FontFamily.Monospace,
                                         lineHeight = 15.sp,
                                         color = when {
-                                            log.contains("RX") -> Color(0xFF81C784)
-                                            log.contains("TX") -> Color(0xFF64B5F6)
-                                            log.contains("✓") -> Color(0xFFFFD54F)
-                                            log.contains("Error") || log.contains("unavailable") || log.contains("Ошибка") || log.contains("недоступны") -> Color(0xFFE57373)
-                                            else -> Color(0xFFB0BEC5)
+                                            log.contains("RX") -> MaterialTheme.colorScheme.tertiary
+                                            log.contains("TX") -> MaterialTheme.colorScheme.primary
+                                            log.contains("Error") || log.contains("unavailable") -> MaterialTheme.colorScheme.error
+                                            else -> MaterialTheme.colorScheme.onSurfaceVariant
                                         }
                                     )
                                 }

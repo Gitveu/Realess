@@ -3,7 +3,7 @@
 **English** | [Русский](AGENTS.ru.md)
 
 Last updated: 2026-11-23  
-Status: supports **13 protocol families across 15 brands** — **realme / OnePlus / OPPO / DIZO** (`TL + OPPOv1`), **HUAWEI / HONOR** (`Huawei SPP`), **HONOR CHOICE** (`HONOR CHOICE SPP`), **Nothing / CMF** (`Nothing SPP`, all 23 models), **Samsung Galaxy Buds** (`Galaxy Buds SPP`), **Sony** (`Sony MDR V1/V2 SPP`), **Bose** (`Bose BMAP SPP`), **Anker Soundcore** (`Soundcore SPP`), **Xiaomi / Redmi / POCO** (`Xiaomi SPP + SAFER+`), **Sennheiser** (`GAIA v3 SPP`), **Jabra** (`Jabra SPP`), **Google Pixel Buds** (`Maestro HDLC + Pigweed RPC`), and **JBL** (`JBL BLE GATT`); **realness** app (`uwu.realness.gitveu`, version `1.7`, `build 8`, release builds). Full list: [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md).
+Status: supports **13 protocol families across 15 brands** — **realme / OnePlus / OPPO / DIZO** (`TL + OPPOv1`), **HUAWEI / HONOR** (`Huawei SPP`), **HONOR CHOICE** (`HONOR CHOICE SPP`), **Nothing / CMF** (`Nothing SPP`, all 23 models), **Samsung Galaxy Buds** (`Galaxy Buds SPP`), **Sony** (`Sony MDR V1/V2 SPP`), **Bose** (`Bose BMAP SPP`), **Anker Soundcore** (`Soundcore SPP`), **Xiaomi / Redmi / POCO** (`Xiaomi SPP + SAFER+`), **Sennheiser** (`GAIA v3 SPP`), **Jabra** (`Jabra SPP`), **Google Pixel Buds** (`Maestro HDLC + Pigweed RPC`), and **JBL** (`JBL BLE GATT`); **realness** app (`uwu.realness.gitveu`, version `1.8`, `build 9`, native Material 3 Expressive release builds + `realness-tiny` classic compact build). Full list: [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md).
 
 ---
 

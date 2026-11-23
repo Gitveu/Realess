@@ -26,8 +26,15 @@ object SennheiserProtocol {
     const val CMD_GET_TRANSPARENT: Int = 0x1805
     const val CMD_SET_ANC_ENABLED: Int = 0x1A04
     const val CMD_GET_ANC_ENABLED: Int = 0x1A05
+    const val CMD_GET_EQ_CONFIG: Int = 0x1000
+    const val CMD_SET_EQ_BAND: Int = 0x1001
+    const val CMD_GET_EQ_GAINS: Int = 0x1003
     const val CMD_SET_SPATIAL: Int = 0x3604
     const val CMD_GET_SPATIAL: Int = 0x3605
+
+    fun buildEqGainsReq(): ByteArray = buildPacket(CMD_GET_EQ_GAINS, byteArrayOf(0x00))
+    fun buildEqBandSet(bandIdx: Int, gainDb: Int): ByteArray =
+        buildPacket(CMD_SET_EQ_BAND, byteArrayOf(bandIdx.toByte(), (gainDb.coerceIn(-6, 6) * 10).toByte()))
 
     data class Packet(val vendor: Int, val baseCmd: Int, val type: Int, val payload: ByteArray)
 
@@ -298,6 +305,23 @@ object PixelBudsProtocol {
     fun buildWriteSettingVarint(channel: Int, settingId: Int, value: Long): ByteArray {
         val sv = ByteArrayOutputStream()
         putVarintField(sv, settingId, value)
+        val msg = ByteArrayOutputStream()
+        putBytesField(msg, 4, sv.toByteArray())
+        return buildRpcFrame(channel, METHOD_WRITE_SETTING, msg.toByteArray())
+    }
+
+    const val SETTING_USER_EQ: Int = 16
+
+    fun buildWriteUserEq(channel: Int, gainsDb: List<Int>): ByteArray {
+        val eq = ByteArrayOutputStream()
+        for (i in 0 until 5) {
+            val f = gainsDb.getOrElse(i) { 0 }.coerceIn(-6, 6).toFloat()
+            if (f != 0f) {
+                putFixed32Field(eq, i + 1, java.lang.Float.floatToRawIntBits(f).toLong() and 0xFFFFFFFFL)
+            }
+        }
+        val sv = ByteArrayOutputStream()
+        putBytesField(sv, SETTING_USER_EQ, eq.toByteArray())
         val msg = ByteArrayOutputStream()
         putBytesField(msg, 4, sv.toByteArray())
         return buildRpcFrame(channel, METHOD_WRITE_SETTING, msg.toByteArray())

@@ -12,11 +12,14 @@ import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import uwu.realness.gitveu.R
+import uwu.realness.gitveu.audio.FindBudsChannel
+import uwu.realness.gitveu.audio.FindBudsPlayer
 import uwu.realness.gitveu.ble.BleConnectionState
 import uwu.realness.gitveu.ble.T300BleManager
 import uwu.realness.gitveu.protocol.HuaweiProtocol
 import uwu.realness.gitveu.protocol.T300Protocol.AncMode
 import uwu.realness.gitveu.protocol.T300Protocol.BudsModel
+import uwu.realness.gitveu.protocol.T300Protocol.CustomEqProfile
 import uwu.realness.gitveu.protocol.T300Protocol.EqPreset
 import uwu.realness.gitveu.protocol.T300Protocol.T300State
 import uwu.realness.gitveu.protocol.T300Protocol.TouchSide
@@ -26,6 +29,13 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+
+enum class RenameScope {
+    FIRMWARE,
+    OS_ALIAS,
+    LOCAL_ALIAS,
+    RESET
+}
 
 enum class SystemDeviceStatus {
     NO_PERMISSIONS,
@@ -45,10 +55,12 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_LAST_MAC = "last_device_mac"
         private const val KEY_LAST_NAME = "last_device_name"
         private const val KEY_LAST_MODEL = "last_device_model"
+        private const val KEY_ALIAS_PREFIX = "custom_alias_"
     }
 
     private val prefs = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val bleManager = T300BleManager(application)
+    private val findBudsPlayer = FindBudsPlayer(application)
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
         val manager = application.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         manager?.adapter
@@ -104,6 +116,15 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
     private var demoPlayer: MediaPlayer? = null
     private val _isPlayingDemo = MutableStateFlow(false)
     val isPlayingDemo: StateFlow<Boolean> = _isPlayingDemo.asStateFlow()
+
+    val findIsPlaying: StateFlow<Boolean> = findBudsPlayer.isPlaying
+    val findVolumeProgress: StateFlow<Float> = findBudsPlayer.volumeProgress
+    val findChannel: StateFlow<FindBudsChannel> = findBudsPlayer.channel
+
+    private val _customDeviceAlias = MutableStateFlow<String?>(
+        prefs.getString(KEY_LAST_MAC, null)?.let { prefs.getString(KEY_ALIAS_PREFIX + it, null) }
+    )
+    val customDeviceAlias: StateFlow<String?> = _customDeviceAlias.asStateFlow()
 
     private val bluetoothReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -232,11 +253,16 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun loadCustomAlias(mac: String?) {
+        _customDeviceAlias.value = if (mac != null) prefs.getString(KEY_ALIAS_PREFIX + mac, null) else null
+    }
+
     private fun saveLastDevice(device: BluetoothDevice, model: BudsModel) {
         val name = device.name ?: model.displayName
         val mac = device.address
         _lastDeviceName.value = name
         _lastDeviceMac.value = mac
+        loadCustomAlias(mac)
         prefs.edit()
             .putString(KEY_LAST_MAC, mac)
             .putString(KEY_LAST_NAME, name)
@@ -345,6 +371,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
                 _detectedBudsDevice.value = bondedLast
                 _lastDeviceName.value = bondedLast?.name ?: savedName
                 _lastDeviceMac.value = savedMac
+                loadCustomAlias(savedMac)
                 val autoFromSaved = BudsModel.fromDeviceName(bondedLast?.name ?: savedName).takeIf { it.isSupported } ?: savedModel
                 _autoDetectedModel.value = autoFromSaved
                 _detectedModel.value = manual ?: autoFromSaved
@@ -353,6 +380,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
                 _detectedBudsDevice.value = null
                 _lastDeviceName.value = null
                 _lastDeviceMac.value = null
+                _customDeviceAlias.value = null
                 _autoDetectedModel.value = BudsModel.UNKNOWN
                 _detectedModel.value = manual ?: BudsModel.UNKNOWN
                 _deviceStatus.value = SystemDeviceStatus.NO_PAIRED_DEVICE
@@ -406,6 +434,114 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshEq() {
         bleManager.refreshEq()
         bleManager.refreshAllEq()
+    }
+
+    fun saveCustomEq(
+        gains: List<Int>,
+        profileId: Int? = null,
+        profileName: String? = null,
+        createNew: Boolean = false
+    ) {
+        bleManager.setCustomEq(
+            gains = gains,
+            profileId = profileId,
+            profileName = profileName,
+            createNew = createNew,
+            delete = false
+        )
+    }
+
+    fun selectCustomEqProfile(profile: CustomEqProfile) {
+        bleManager.selectCustomEqProfile(profile)
+    }
+
+    fun deleteCustomEqProfile(profile: CustomEqProfile) {
+        bleManager.setCustomEq(
+            gains = profile.gains,
+            profileId = profile.id,
+            profileName = profile.name,
+            createNew = false,
+            delete = true
+        )
+    }
+
+    fun resetCustomEq() {
+        val spec = _detectedModel.value.customEqSpec() ?: return
+        val flat = List(spec.bandLabels.size) { 0 }
+        if (_detectedModel.value.isXiaomi) {
+            bleManager.setCustomEq(flat, delete = true)
+        } else {
+            val activeId = t300State.value.activeCustomEqId
+            val activeName = t300State.value.activeCustomEqName
+            bleManager.setCustomEq(flat, profileId = activeId, profileName = activeName)
+        }
+    }
+
+    fun startFindBuds(channel: FindBudsChannel = findChannel.value) {
+        stopDemoAudio()
+        findBudsPlayer.start(channel)
+    }
+
+    fun stopFindBuds() {
+        findBudsPlayer.stop()
+        if (t300State.value.hardwareFindActive) {
+            bleManager.setHardwareFindBuds(false, findChannel.value)
+        }
+    }
+
+    fun setFindChannel(channel: FindBudsChannel) {
+        findBudsPlayer.setChannel(channel)
+        if (t300State.value.hardwareFindActive && _detectedModel.value.isNothing) {
+            bleManager.setHardwareFindBuds(true, channel)
+        }
+    }
+
+    fun setHardwareFindBuds(enabled: Boolean) {
+        bleManager.setHardwareFindBuds(enabled, findChannel.value)
+    }
+
+    /**
+     * Renames the currently active or last-known device:
+     * 1) Firmware rename if supported (Bose BMAP)
+     * 2) Android BluetoothDevice.setAlias() if permitted by OS
+     * 3) Persistent per-MAC custom display alias in realness
+     */
+    fun renameCurrentDevice(newName: String): RenameScope? {
+        val device = _detectedBudsDevice.value
+        val mac = device?.address ?: _lastDeviceMac.value ?: return null
+        val trimmed = newName.trim()
+
+        if (trimmed.isEmpty()) {
+            prefs.edit().remove(KEY_ALIAS_PREFIX + mac).apply()
+            _customDeviceAlias.value = null
+            return RenameScope.RESET
+        }
+
+        val fwRenamed = if (_detectedModel.value.supportsFirmwareRename) {
+            bleManager.renameFirmwareDevice(trimmed)
+        } else {
+            false
+        }
+
+        var osAliasUpdated = false
+        if (device != null) {
+            try {
+                val m = BluetoothDevice::class.java.getMethod("setAlias", String::class.java)
+                val res = m.invoke(device, trimmed)
+                osAliasUpdated = (res == true) || (res == 0)
+            } catch (_: Throwable) {
+                osAliasUpdated = false
+            }
+        }
+
+        prefs.edit().putString(KEY_ALIAS_PREFIX + mac, trimmed).apply()
+        _customDeviceAlias.value = trimmed
+
+        return when {
+            fwRenamed -> RenameScope.FIRMWARE
+            osAliasUpdated -> RenameScope.OS_ALIAS
+            else -> RenameScope.LOCAL_ALIAS
+        }
     }
 
     fun setSpatialAudio(enabled: Boolean) {
@@ -522,7 +658,10 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
             }
             if (model.supportsAutoPlayPause) bleManager.refreshAutoPlayPause()
             if (model.supportsAutoAnswer) bleManager.refreshAutoAnswer()
-            if (model.supportsEq) bleManager.refreshEq()
+            if (model.supportsEq) {
+                bleManager.refreshEq()
+                bleManager.refreshAllEq()
+            }
             if (model.supportsTouchSettings) bleManager.refreshKeySettings()
             if (model.supportsUseTime) bleManager.refreshUseTime()
             bleManager.refreshBattery()
@@ -532,6 +671,8 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         stopDemoAudio()
+        stopFindBuds()
+        findBudsPlayer.release()
         try {
             getApplication<Application>().unregisterReceiver(bluetoothReceiver)
             a2dpProfile?.let { bluetoothAdapter?.closeProfileProxy(BluetoothProfile.A2DP, it) }

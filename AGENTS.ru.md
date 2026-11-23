@@ -3,7 +3,7 @@
 [English](AGENTS.md) | **Русский**
 
 Дата обновления: 2026-11-23  
-Статус: поддерживаются **13 семейств протоколов и 15 брендов** — **realme / OnePlus / OPPO / DIZO** (`TL + OPPOv1`), **HUAWEI / HONOR** (`Huawei SPP`), **HONOR CHOICE** (`HONOR CHOICE SPP`), **Nothing / CMF** (`Nothing SPP`, все 23 модели), **Samsung Galaxy Buds** (`Galaxy Buds SPP`), **Sony** (`Sony MDR V1/V2 SPP`), **Bose** (`Bose BMAP SPP`), **Anker Soundcore** (`Soundcore SPP`), **Xiaomi / Redmi / POCO** (`Xiaomi SPP + SAFER+`), **Sennheiser** (`GAIA v3 SPP`), **Jabra** (`Jabra SPP`), **Google Pixel Buds** (`Maestro HDLC + Pigweed RPC`) и **JBL** (`JBL BLE GATT`); приложение **realness** (`uwu.realness.gitveu`, версия `1.7`, `build 8`, release-сборки). Полный список: [SUPPORTED_DEVICES.ru.md](SUPPORTED_DEVICES.ru.md).
+Статус: поддерживаются **13 семейств протоколов и 15 брендов** — **realme / OnePlus / OPPO / DIZO** (`TL + OPPOv1`), **HUAWEI / HONOR** (`Huawei SPP`), **HONOR CHOICE** (`HONOR CHOICE SPP`), **Nothing / CMF** (`Nothing SPP`, все 23 модели), **Samsung Galaxy Buds** (`Galaxy Buds SPP`), **Sony** (`Sony MDR V1/V2 SPP`), **Bose** (`Bose BMAP SPP`), **Anker Soundcore** (`Soundcore SPP`), **Xiaomi / Redmi / POCO** (`Xiaomi SPP + SAFER+`), **Sennheiser** (`GAIA v3 SPP`), **Jabra** (`Jabra SPP`), **Google Pixel Buds** (`Maestro HDLC + Pigweed RPC`) и **JBL** (`JBL BLE GATT`); приложение **realness** (`uwu.realness.gitveu`, версия `1.8`, `build 9`, нативный Material 3 Expressive + компактная сборка `realness-tiny`). Полный список: [SUPPORTED_DEVICES.ru.md](SUPPORTED_DEVICES.ru.md).
 
 ---
 

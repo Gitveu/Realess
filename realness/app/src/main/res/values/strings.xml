@@ -6,6 +6,10 @@
     <!-- General / Symbols -->
     <string name="dash">—</string>
     <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+    <string name="apply">Apply</string>
+    <string name="reset">Reset</string>
+    <string name="delete">Delete</string>
     <string name="refresh_state_desc">Refresh state</string>
     <string name="drawer_menu_desc">Select model</string>
 
@@ -91,6 +95,38 @@
     <string name="eq_jbl_studio">Studio</string>
     <string name="eq_jbl_club">Club</string>
     <string name="eq_custom_active">Custom: %s (active)</string>
+    <string name="eq_custom_title">Custom equalizer</string>
+    <string name="eq_custom_subtitle">%1$d bands (%2$d..+%3$d dB)</string>
+    <string name="eq_custom_new_profile">New profile</string>
+    <string name="eq_custom_profile_name">Profile name</string>
+    <string name="eq_custom_low_freq">Bass</string>
+    <string name="eq_custom_high_freq">Treble</string>
+    <string name="eq_custom_drag_hint">Drag points vertically to shape the curve</string>
+    <string name="eq_custom_saved_toast">Equalizer applied</string>
+
+    <!-- Find My Earbuds -->
+    <string name="find_buds_title">Find earbuds</string>
+    <string name="find_buds_playing_badge">Ringing…</string>
+    <string name="find_buds_desc">Plays an escalating high-pitched locator tone through the connected earbuds and restores your media volume when stopped.</string>
+    <string name="find_buds_warning">Do not wear the earbuds while playing the locator sound.</string>
+    <string name="find_buds_channel_left">Left</string>
+    <string name="find_buds_channel_both">Both</string>
+    <string name="find_buds_channel_right">Right</string>
+    <string name="find_buds_volume_level">Volume ramp: %d%%</string>
+    <string name="find_buds_start">Play sound</string>
+    <string name="find_buds_stop">Stop sound</string>
+    <string name="find_buds_hardware_title">Built-in earbud chime</string>
+    <string name="find_buds_hardware_desc">Trigger native firmware ring command on supported earbuds.</string>
+
+    <!-- Rename Earbuds -->
+    <string name="rename_title">Rename earbuds</string>
+    <string name="rename_label">Earbud name</string>
+    <string name="rename_action">Rename</string>
+    <string name="rename_reset_hint">Leave empty to restore the default name</string>
+    <string name="rename_toast_firmware">Name sent to earbud firmware</string>
+    <string name="rename_toast_os">Bluetooth device alias updated</string>
+    <string name="rename_toast_local">Display name saved in realness</string>
+    <string name="rename_toast_reset">Default device name restored</string>
 
     <!-- Button Settings (Gestures) -->
     <string name="section_touch_settings">Button settings</string>
@@ -126,10 +162,12 @@
     <string name="demo_sample_spatial">Sample: Spatial 3D (fix)</string>
     <string name="demo_sample_stereo">Sample: Standard stereo (off)</string>
 
-    <!-- Game Mode -->
+    <!-- Game Mode / Low Latency -->
     <string name="section_other">Other</string>
     <string name="game_mode_title">Game mode</string>
     <string name="game_mode_desc">Provides smooth gameplay with ultra-low audio latency.</string>
+    <string name="low_latency_title">Low latency</string>
+    <string name="low_latency_desc">Synchronize audio in games and video to reduce delay.</string>
 
     <!-- High-Definition Audio (LDAC / LHDC 5.0 / Huawei) & Dynamic Audio / Ultra Bass -->
     <string name="high_quality_audio_title">High-definition audio</string>

@@ -4,8 +4,8 @@
 
 Автономное Android-приложение (**realness**, пакет `uwu.realness.gitveu`, Kotlin + Jetpack Compose) и документация протоколов для прямого управления наушниками **15 брендов (13 семейств протоколов)** — **realme**, **OnePlus**, **OPPO**, **HUAWEI**, **HONOR / HONOR CHOICE**, **Nothing / CMF**, **Samsung Galaxy Buds**, **Sony**, **Bose**, **Soundcore**, **Xiaomi / Redmi**, **Sennheiser**, **Jabra**, **Google Pixel Buds** и **JBL** — без фирменных комбайнов, без аккаунтов и облака, напрямую по Bluetooth.
 
-**Актуальная версия:** `v1.7 (build 8)` — release-сборки (`realness 1.7.apk` и `realness-tiny 1.7.apk`)  
-**Источники протоколов:** `realme Link.apkm` (`com.realme.iot.headset.tl.*`), [QuickBuds](https://github.com/spizganed/QuickBuds), [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds), [noctalia/honor-earbuds](https://github.com/noctalia-dev/community-plugins/tree/main/honor-earbuds), [swift-nothing-ear](https://github.com/bestK1ngArthur/swift-nothing-ear), [omarchy-nothing-ear](https://github.com/r-witz/omarchy-nothing-ear) и [kde-headphones](https://github.com/RodiAda/kde-headphones).
+**Актуальная версия:** `v1.8 (build 9)` — release-сборки (`realness 1.8.apk` с нативным Material 3 Expressive, `realness-tiny 1.8.apk` в классическом компактном дизайне)  
+**Источники протоколов:** `realme Link.apkm` (`com.realme.iot.headset.tl.*`), [QuickBuds](https://github.com/spizganed/QuickBuds), [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds), [noctalia/honor-earbuds](https://github.com/noctalia-dev/community-plugins/tree/main/honor-earbuds), [swift-nothing-ear](https://github.com/bestK1ngArthur/swift-nothing-ear), [omarchy-nothing-ear](https://github.com/r-witz/omarchy-nothing-ear), [kde-headphones](https://github.com/RodiAda/kde-headphones) и [MiBudsClient](https://github.com/CesurPolat/MiBudsClient).
 
 ---
 
@@ -49,9 +49,16 @@
 ### Шумоподавление (ANC)
 Быстрое переключение и чтение трёх режимов: **Шумоподавление**, **Выкл.**, **Прозрачность**, с автоматическим масштабированием шрифта, чтобы названия не переносились.
 
-### Звуковые эффекты (Эквалайзер)
-- Пресеты: **Серенада**, **Оригинальный звук**, **Чистые басы**, **Глубокие басы**.
-- Распознавание активного пользовательского профиля EQ по имени через команду `0x0122` с подсветкой в интерфейсе.
+### Звуковые эффекты и настраиваемый эквалайзер
+- Пресеты адаптированы под каждый бренд (Серенада, Оригинальный звук, Чистые басы, Глубокие басы и др.).
+- Интерактивный редактор кривой эквалайзера с учётом полос и диапазона каждого протокола: 6 полос (`-6..+6 дБ`, профили создание/сохранение/удаление) на **realme / OnePlus / OPPO**, 10 полос (`-6..+6 дБ`, профили) на **HUAWEI**, 10 полос (`-10..+10 дБ`) на **Xiaomi / Redmi** (`0x0037`), 6 полос (`-10..+10 дБ`) на **Sony**, 8 полос (`-6..+6 дБ`) на **Soundcore**, 5 полос (`-6..+6 дБ`) на **Sennheiser** и **Pixel Buds**, 3 полосы на **Nothing / CMF** и **Bose**.
+
+### Поиск наушников (для всех) и переименование
+- **Поиск наушников:** работает на **любых** подключённых наушниках — плавно нарастающий звуковой сигнал (`15% -> 100%` за 20 с) с выбором канала Левый / Оба / Правый и автоматическим возвратом громкости после остановки, плюс встроенный аппаратный сигнал там, где он есть (**realme / OnePlus / OPPO** `0x0400`, **Nothing / CMF** `0xF002`, **Galaxy Buds** `0xA0`/`0xA1`).
+- **Переименование наушников:** отправка имени в прошивку (**Bose** BMAP `Block=1, Func=2`), обновление системного имени Android `BluetoothDevice.setAlias()` при наличии прав и сохранение пользовательского имени по MAC в `realness`.
+
+### Низкая задержка / Игровой режим
+- Поддерживается на **realme / OnePlus / OPPO** (`0x06`), **Xiaomi / Redmi** (включая Redmi Buds 4 Active через RCSP `0x002F`), **HUAWEI** (`0x2B6C`), **Nothing / CMF** (`0xF040`), **Samsung Galaxy Buds** (`0x87`) и **Anker Soundcore** (`0x0187` / `0x1085`).
 
 ### Настройка кнопок (Сенсорные жесты)
 Чтение и изменение действий для **двойного касания**, **тройного касания** и **касания с удержанием** отдельно для левого и правого наушника, с фильтрацией допустимых действий для каждого жеста.

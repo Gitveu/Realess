@@ -19,9 +19,11 @@ object BoseProtocol {
     const val BLOCK_NOTIFY: Byte = 9
     const val BLOCK_AUDIO_MODES: Byte = 31
 
+    const val FUNC_PRODUCT_NAME: Byte = 2
     const val FUNC_BATTERY: Byte = 2
     const val FUNC_CNC: Byte = 5
     const val FUNC_ANR: Byte = 6
+    const val FUNC_EQUALIZER: Byte = 7
     const val FUNC_MULTIPOINT: Byte = 10
     const val FUNC_AUTO_PAUSE: Byte = 24
     const val FUNC_AUTO_ANSWER: Byte = 27
@@ -76,6 +78,15 @@ object BoseProtocol {
 
     fun buildAutoAnswerSet(on: Boolean): ByteArray =
         buildPacket(BLOCK_SETTINGS, FUNC_AUTO_ANSWER, OP_SET_GET, byteArrayOf(if (on) 0x01 else 0x00))
+
+    fun buildEqReq(): ByteArray = buildPacket(BLOCK_SETTINGS, FUNC_EQUALIZER, OP_GET)
+    fun buildEqBandSet(bandIdx: Int, gainDb: Int): ByteArray =
+        buildPacket(BLOCK_SETTINGS, FUNC_EQUALIZER, OP_SET_GET, byteArrayOf(gainDb.coerceIn(-10, 10).toByte(), bandIdx.toByte()))
+
+    fun buildRename(newName: String): ByteArray {
+        val bytes = newName.trim().toByteArray(Charsets.UTF_8).let { if (it.size > 31) it.copyOf(31) else it }
+        return buildPacket(BLOCK_SETTINGS, FUNC_PRODUCT_NAME, OP_SET_GET, bytes)
+    }
 
     fun parsePacketsFromStreamBuffer(buf: ByteArray): Pair<List<Packet>, ByteArray> {
         val packets = mutableListOf<Packet>()
@@ -141,6 +152,7 @@ object SoundcoreProtocol {
     const val CMD_GAMING_UPDATE: Int = 0x0111
     const val CMD_AUTO_PAUSE: Int = 0x0181
     const val CMD_GAMING_SET: Int = 0x0187
+    const val CMD_SET_EQ: Int = 0x0281
     const val CMD_SURROUND_SET: Int = 0x0286
     const val CMD_SOUND_UPDATE: Int = 0x0601
     const val CMD_SOUND_SET: Int = 0x0681
@@ -180,8 +192,22 @@ object SoundcoreProtocol {
         return buildPacket(CMD_SOUND_SET, body)
     }
 
-    fun buildGameModeSet(on: Boolean): ByteArray =
-        buildPacket(CMD_GAMING_SET, byteArrayOf(if (on) 0x01 else 0x00))
+    fun buildGameModeSet(on: Boolean, isLiberty: Boolean = false): ByteArray =
+        buildPacket(if (isLiberty) CMD_GAMING_LIBERTY else CMD_GAMING_SET, byteArrayOf(if (on) 0x01 else 0x00))
+
+    /**
+     * Soundcore 8-band Custom EQ (0x0281): [0xFE, 0xFE, 8 × (db*10 + 120)].
+     */
+    fun buildCustomEqSet(gainsDb: List<Int>): ByteArray {
+        val body = ByteArray(2 + 8)
+        body[0] = 0xFE.toByte()
+        body[1] = 0xFE.toByte()
+        for (i in 0 until 8) {
+            val db = gainsDb.getOrElse(i) { 0 }.coerceIn(-6, 6)
+            body[2 + i] = (db * 10 + 120).coerceIn(0, 255).toByte()
+        }
+        return buildPacket(CMD_SET_EQ, body)
+    }
 
     fun buildDualConnSet(on: Boolean): ByteArray =
         buildPacket(CMD_DUAL_CONN, byteArrayOf(if (on) 0x01 else 0x00))
