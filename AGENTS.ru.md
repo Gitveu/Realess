@@ -1,380 +1,187 @@
-# realme Link / realness — Документация протокола и приложения
+# realness — Руководство разработчика и справочник протоколов
 
 [English](AGENTS.md) | **Русский**
 
 Дата обновления: 2026-11-23  
-Статус: поддерживаются **13 семейств протоколов и 15 брендов** — **realme / OnePlus / OPPO / DIZO** (`TL + OPPOv1`), **HUAWEI / HONOR** (`Huawei SPP`), **HONOR CHOICE** (`HONOR CHOICE SPP`), **Nothing / CMF** (`Nothing SPP`, все 23 модели), **Samsung Galaxy Buds** (`Galaxy Buds SPP`), **Sony** (`Sony MDR V1/V2 SPP`), **Bose** (`Bose BMAP SPP`), **Anker Soundcore** (`Soundcore SPP`), **Xiaomi / Redmi / POCO** (`Xiaomi SPP + SAFER+`), **Sennheiser** (`GAIA v3 SPP`), **Jabra** (`Jabra SPP`), **Google Pixel Buds** (`Maestro HDLC + Pigweed RPC`) и **JBL** (`JBL BLE GATT`); приложение **realness** (`uwu.realness.gitveu`, версия `1.8`, `build 9`, нативный Material 3 Expressive + компактная сборка `realness-tiny`). Полный список: [SUPPORTED_DEVICES.ru.md](SUPPORTED_DEVICES.ru.md).
+Актуальный релиз: `v1.8 (build 9)` — **13 семейств протоколов и 15 брендов** (`realness` в нативном Material 3 Expressive + `realness-tiny` в классическом компактном дизайне). Полный список моделей: [SUPPORTED_DEVICES.ru.md](SUPPORTED_DEVICES.ru.md).
 
 ---
 
-## 1. Назначение и контекст
+## 1. Правила релизов, версионирования и разработки
 
-Цель проекта — полная документация протокола обмена TL TWS для наушников realme Buds и создание автономного Android-приложения (**realness**, пакет `uwu.realness.gitveu`), работающего напрямую с наушниками без realme Link:
-1. Чтение точного уровня заряда левого, правого наушника и зарядного кейса (с учётом статуса зарядки и корректной обработки закрытого кейса);
-2. Управление и мгновенное чтение режимов шумоподавления (ANC: Шумоподавление, Выкл., Прозрачность);
-3. Переключение и чтение состояния игрового режима (Game Mode / минимальная задержка);
-4. Чтение и переключение пресетов эквалайзера (Серенада, Оригинальный звук, Чистые басы, Глубокие басы), а также распознавание пользовательских профилей;
-5. Чтение и настройка действий сенсорных кнопок для обоих наушников (двойное касание, тройное касание, удержание);
-6. Управление и чтение пространственного аудио (Spatial Audio / 3D Sound) с локальным демо-воспроизведением оригинальных сэмплов;
-7. Поддержка модельных функций: звук высокой чёткости (LDAC на T200 / LHDC 5.0 на Air 7 Pro), динамическое аудио (T200 / Air 7 Pro), подключение к двум устройствам и история подключений (T200 / Air 7 Pro), автовоспроизведение/пауза и автоответ (Air 7 Pro);
-8. Чтение статистики общего времени использования L/R из памяти наушников (`0x0128`/`0x8128`);
-9. Подписка на асинхронные события наушников и определение неподдерживаемых устройств (предупреждение для сторонних гарнитур).
+### 1.1. Политика версионирования
+- **Функциональные / UI / протокольные релизы:** формат `1.x` (например, `1.8`, `1.9`).
+- **Небольшие исправления / хотфиксы** (например, фикс выбора пресета эквалайзера, опечатка в байте протокола, мелкий фикс UI): формат `1.x.y` (например, `1.8.1`, `1.8.2`, `1.9.1`).
+- **`versionCode`:** ВСЕГДА монотонно увеличивается на `+1` при каждом релизе (`9 -> 10 -> 11`), в том числе для патчей `1.x.y`.
+- **Синхронизация обеих сборок:** `versionName` и `versionCode` всегда одинаковы в:
+  - `realness/app/build.gradle.kts`
+  - `tiny-realness/AndroidManifest.xml`
+- **Имена APK и GitHub Releases:** артефакты всегда называются `realness <versionName>.apk` и `realness-tiny <versionName>.apk`. Workflow `.github/workflows/build-release.yml` читает `versionName` из `realness/app/build.gradle.kts` и публикует релиз с тегом `v<versionName>` (одинаково работает для `1.x` и `1.x.y`).
+- **Коммиты только в документацию** (только `*.md`) НЕ требуют поднятия `versionName` / `versionCode` и не запускают `build-release.yml`.
 
-Исходный артефакт анализа: `realme Link.apkm` (пакет `com.realme.link`, стек TL TWS `com.realme.iot.headset.tl.*`).
+### 1.2. Сборка, подпись и совместимость
+- Всегда собирать **release**-сборки:
+  - `cd realness && ./gradlew assembleRelease` (R8 minify + shrinkResources + `lintVitalRelease`)
+  - `./tiny-realness/build.sh` (чистый Java 8: `aapt2 -> javac -> R8 -> zipalign -> apksigner`)
+- Сохранять совместимость `compileSdk = 34` / `targetSdk = 34` с GitHub Actions (`platforms;android-34`, `build-tools;34.0.0`, `material3:1.3.1`).
+- **Никогда не коммитить** `.apk`, `realness-release.keystore` и `keystore.properties` (все в `.gitignore`). В CI ключ декодируется из GitHub Secrets (`REALNESS_KEYSTORE_BASE64`, `REALNESS_KEYSTORE_PASSWORD`, `REALNESS_KEY_ALIAS`, `REALNESS_KEY_PASSWORD`).
+- Проверять локально собранные APK через `apksigner verify --print-certs`.
 
----
+### 1.3. Правила UI и локализации
+- **`realness` (`uwu.realness.gitveu`):** нативный **Material 3 Expressive** (`ExpressiveTheme.kt`, `ExpressiveSheets.kt`, `MainActivity.kt`):
+  - `enableEdgeToEdge()`, динамические темы Material You на Android 12+ (`dynamicDarkColorScheme` / `dynamicLightColorScheme`) с тёплой тональной fallback-палитрой для Android 8–11.
+  - Использовать тональные токены `MaterialTheme.colorScheme.*` (`surfaceContainerLowest..Highest`, `primaryContainer`, `secondaryContainer`), без хардкодных тёмных hex-цветов.
+  - Expressive-скругления (`24.dp`/`28.dp` карточки, `CircleShape` кнопки), `SingleChoiceSegmentedButtonRow`, иконки `Icons.Rounded.*`, без эмодзи в UI, табличные цифры (`fontFeatureSettings = "tnum"`) для заряда, дБ, громкости и времени использования, сетка отступов кратна `4.dp`.
+- **`realness-tiny` (`uwu.realness.gitveu.tiny`):** сохранять классический компактный тёмный UI (~65 КБ, без AndroidX/Kotlin).
+- **Паритет локализации:** `realness/app/src/main/res/values/strings.xml` (EN по умолчанию) и `values-ru/strings.xml` (RU) должны иметь полностью совпадающий набор ключей (`diff -u`). Технические протокольные логи выводятся на английском.
 
-## 2. Архитектура транспорта и автоподключение
-
-### 2.1. Bluetooth Classic RFCOMM SPP (Основной транспорт)
-
-Наушники Realme Buds T300 сопрягаются с Android как стандартная гарнитура Bluetooth Classic (A2DP / HFP). Канал управления данными работает через **RFCOMM SPP**:
-* **Основной вендорный UUID realme**:
-  `0000079A-D102-11E1-9B23-00025B00A5A5`
-* **Вендорный UUID OnePlus Buds / OPPO Enco (QuickBuds)**:
-  `00001107-D102-11E1-9B23-00025B00A5A5`
-* **Стандартный SPP UUID (Fallback)**:
-  `00001101-0000-1000-8000-00805F9B34FB`
-* **Резервные вендорные UUID**:
-  `db764ac8-4b08-7f25-aafe-59d03c27bae4`, `db764ac8-4b08-7f25-aafe-59d03c27bae3`
-
-В приложении `T300BleManager.kt` подключение выполняется через:
-```kotlin
-device.createRfcommSocketToServiceRecord(REALME_VENDOR_SPP_UUID)
-```
-Чтение и запись ведутся напрямую через `socket.inputStream` и `socket.outputStream`.
-
-### 2.2. BLE GATT (Резервный транспорт)
-Если SPP-сокет недоступен, поддерживается резервный переход на BLE GATT через автодетект каналов записи (`PROPERTY_WRITE` / `PROPERTY_WRITE_NO_RESPONSE`) и уведомлений (`PROPERTY_NOTIFY` / `CCCD 00002902-0000-1000-8000-00805f9b34fb`).
-
-### 2.3. Zero-Touch автоматическое обнаружение и переподключение
-* Приложение регистрирует системный `BroadcastReceiver` (`ACTION_ACL_CONNECTED`, `ACTION_ACL_DISCONNECTED`, `ACTION_CONNECTION_STATE_CHANGED`).
-* При извлечении наушников из кейса телефон подключает профиль A2DP, а приложение автоматически открывает SPP-канал связи без участия пользователя.
-* При помещении обоих наушников в кейс статус автоматически переходит в `In case / disconnected`.
+### 1.4. Дисциплина Git и авторства
+- Индексировать файлы **явно** по путям (`git add <files>`) — никогда не использовать `git add -A` или `git add .`.
+- Проверять `git diff --cached --name-only` и отсутствие секретов, локальных путей или бинарных артефактов перед коммитом.
+- Сохранять автора репозитория `Gitveu <Gitveu@users.noreply.github.com>`. Не добавлять `Co-Authored-By`, ИИ-метки и эмодзи в сообщения коммитов.
+- После коммита проверять `git show -s --format=fuller HEAD` и `git log -1 --format=%B`.
+- Удалённый репозиторий: `https://github.com/Gitveu/Realess.git` (ветка `main`).
 
 ---
 
-## 3. Формат пакетов (Wire Frames)
+## 2. Архитектура и карта исходников
 
-Обмен между смартфоном и наушниками двухуровневый: внутренний кадр протокола **TL** всегда оборачивается в транспортный фрейм **OPPOv1**.
+### 2.1. `realness/` (Kotlin + Jetpack Compose)
+- `protocol/`:
+  - `T300Protocol.kt`: кадры TL+OPPOv1 для realme / OnePlus / OPPO / DIZO, перечисление `BudsModel` (15 брендов, флаги возможностей, `customEqSpec()`, `supportsGameMode`, `supportsHardwareFindBuds`, `supportsFirmwareRename`), `T300State`, `CustomEqProfile`, `CustomEqSpec`.
+  - `HuaweiProtocol.kt`, `NothingProtocol.kt`, `GalaxyProtocol.kt`, `SonyProtocol.kt`, `BoseSoundcoreProtocol.kt`, `XiaomiProtocol.kt`, `ExtraProtocols.kt` (Sennheiser, Jabra, Pixel Buds, JBL).
+- `ble/`:
+  - `T300GattConfig.kt`: все вендорные и стандартные RFCOMM SPP UUID и BLE GATT UUID.
+  - `T300BleManager.kt`: менеджер RFCOMM SPP и BLE GATT с защитой от гонок через `sessionGen` (`isConnectedOrConnectingTo`), потоковые парсеры всех 13 протоколов, опрос, асинхронные события, Custom EQ, аппаратный поиск наушников, переименование Bose и `unexpectedDisconnectFlow` для автовосстановления.
+- `audio/`:
+  - `FindBudsPlayer.kt`: универсальный нарастающий стерео-сигнал поиска через `AudioTrack` (`FindBudsChannel.LEFT / BOTH / RIGHT`, тройной тональный импульс `2950 Hz + 3450 Hz`, плавное нарастание громкости `15% -> 100%` за 20 с, сохранение и восстановление громкости `STREAM_MUSIC`).
+- `viewmodel/BudsViewModel.kt`: реактивный `StateFlow`, автоподключение по A2DP/ACL, backoff-переподключение при обрывах SPP, хранение последнего устройства / ручной модели / пользовательского имени по MAC в `SharedPreferences`, `MediaPlayer` для демо Spatial Audio, контроллер `FindBudsPlayer` и трёхуровневое переименование (`прошивка Bose -> BluetoothDevice.setAlias() -> локальный алиас по MAC`).
+- `ui/`:
+  - `ExpressiveTheme.kt`: `RealnessExpressiveTheme` (динамическая тема Material You + тональный fallback).
+  - `ExpressiveSheets.kt`: `CustomEqEditorSheet` (интерактивная кривая Безье в `ModalBottomSheet`), `FindBudsSheet` (`ModalBottomSheet`), `RenameDeviceDialog` (`AlertDialog`).
+  - `MainActivity.kt`: боковая панель выбора модели (`ModalNavigationDrawer`), карточка устройства с быстрыми действиями Поиск / Переименовать, карточки батареи, ANC, EQ и пользовательские профили, жесты, Spatial Audio, модельные переключатели, время работы, консоль логов.
 
-### 3.1. Транспортное обрамление OPPOv1 (SOF 0xAA)
-* **Байт 0**: `0xAA` (Start of Frame).
-* **Байты 1..K**: Длина пакета (varint 7-bit, равна `TL_FRAME_LENGTH + 2`). Для пакетов $< 128$ байт занимает ровно 1 байт.
-* **Байт K+1**: Флаги (`0x00` = одиночный пакет, без фрагментации).
-* **Байт K+2**: Резерв (`0x00`).
-* **Offset K+3..**: Внутренний TL-кадр.
-
-### 3.2. Внутренний TL-кадр (TL Wire Frame)
-* **Offset 0..1**: Command ID (2 байта, little-endian).
-* **Offset 2**: Device Address (байт `0x00`).
-* **Offset 3..4**: Payload Length (2 байта, little-endian).
-* **Offset 5..N**: Payload команды.
-
----
-
-## 4. Заряд батареи
-
-### 4.1. Запрос и ответ
-* **Команда запроса**: `0x0106` (262 decimal, `CMD_BATTERY_REQ`), payload пустой.
-  * TL Wire: `06 01 00 00 00`
-  * OPPOv1 Wire: `AA 07 00 00 06 01 00 00 00`
-* **Команда ответа**: `0x8106` (33030 decimal, `CMD_BATTERY_RSP`).
-
-### 4.2. Формат ответа
-Payload: `[status (0x00), count (N), (componentId, value)...]`
-* `status`: `0x00` = Success.
-* `count`: число переданных слотов (обычно 2 или 3).
-* Каждая запись (2 байта):
-  * Байт 0 (`componentId`):
-    * `0x01` = **Левый наушник** (`LEFT_EAR`)
-    * `0x02` = **Правый наушник** (`RIGHT_EAR`)
-    * `0x03` = **Кейс** (`CASE`)
-  * Байт 1 (`value`):
-    * `value & 0x7F` — уровень заряда (0..100%).
-    * `(value & 0x80) != 0` — признак зарядки (1 = заряжается).
-
-### 4.3. Нормализация оффлайн-кейса
-При закрытом кейсе или когда в кейсе нет наушника, прошивка присылает `03 00` (слот 3, уровень 0, не заряжается). Это означает оффлайн-состояние кейса, а не разряд до 0%. Парсер нормализует такое значение в `-1` (в UI отображается прочерк «—», а в лог батареи неактивный кейс не выводится).
+### 2.2. `tiny-realness/` (чистый Java 8)
+- `Protocol.java`, `HuaweiProto.java`, `NothingProto.java`, `GalaxyProto.java`, `ExtraProtos.java`: компактные реализации всех 13 семейств протоколов.
+- `BudsLink.java`: менеджер RFCOMM SPP и BLE GATT с защитой `sessionGen`.
+- `FindTone.java`: компактный нарастающий стерео-сигнал поиска на `AudioTrack`.
+- `MainActivity.java`: классический программный тёмный UI без зависимостей с диалогами выбора модели, поиска наушников, переименования и Custom EQ на `SeekBar`.
 
 ---
 
-## 5. Шумоподавление (ANC)
+## 3. Универсальные функции
 
-### 5.1. Запрос текущего режима
-* **Команда**: `0x010C` (268 decimal, `CMD_ANC_STATE_REQ`), payload: `01 01`.
-  * TL Wire: `0C 01 00 02 00 01 01`
-  * OPPOv1 Wire: `AA 07 00 00 0C 01 00 02 00 01 01`
-* **Ответ**: `0x810C` (33036 decimal, `CMD_ANC_STATE_RSP`).
-  * Payload: `[status (0x00), action (0x01), type (0x01), noiseStatus]`
+### 3.1. Поиск наушников
+- **Звуковой сигнал (ВСЕ наушники):** синтезируемый стерео-сигнал через `AudioTrack` (`USAGE_MEDIA`), плавно повышающий громкость `STREAM_MUSIC` с 15% до 100% за 20 с с панорамированием Левый / Оба / Правый и возвратом исходной громкости при остановке.
+- **Опциональный встроенный аппаратный сигнал прошивки:**
+  - realme / OnePlus / OPPO: `0x0400`, payload `[01]` (вкл) / `[00]` (выкл)
+  - Nothing / CMF: `0xF002`, payload `[sideByte (0x01=L, 0x03=R, 0x06=Both), 01/00]`
+  - Samsung Galaxy Buds: `0xA0` (старт) / `0xA1` (стоп), пустой payload
 
-### 5.2. Установка режима
-* **Команда**: `0x0404` (1028 decimal, `CMD_ANC_SET`), payload: `01 01 <noiseStatus>`.
-* **Значения `noiseStatus`**:
-  * `0x08` = **Шумоподавление** (Wire: `AA 0A 00 00 04 04 00 03 00 01 01 08`)
-  * `0x01` = **Выкл.** (Wire: `AA 0A 00 00 04 04 00 03 00 01 01 01`)
-  * `0x02` = **Прозрачность** (Wire: `AA 0A 00 00 04 04 00 03 00 01 01 02`)
-* **Ответ подтверждения**: `0x8404` (33796 decimal, `CMD_ANC_RSP`), payload: `[status]` (`0x00` = Success).
+### 3.2. Переименование наушников
+1. **Прошивка** (если поддерживается и подключено): Bose BMAP `Block=1, Func=2, Op=SET_GET`, UTF-8 до 31 байта.
+2. **Системный алиас Android:** вызов `BluetoothDevice.setAlias(String)` через reflection (с безопасным перехватом `SecurityException` на Android 12+ без CDM-ассоциации).
+3. **Локальный алиас:** сохранение по MAC в `SharedPreferences` (`custom_alias_<MAC>` / `alias_<MAC>`); пустая строка восстанавливает исходное имя.
 
 ---
 
-## 6. Асинхронные события и подписка
+## 4. Семейство 1: realme / OnePlus / OPPO / DIZO (`TL + OPPOv1`)
 
-### 6.1. Регистрация на события
-* **Команда**: `0x0201` (513 decimal, `CMD_NOTIFICATION_REGISTER`).
-* **Payload**: `[eventType]` (по 1 байту):
-  * `0x03` — события смены ANC (переключение датчиком на наушнике);
-  * `0x05` — события переключателей функций (Game Mode);
-  * `0x01` — события батареи;
-  * `0x02` — статус наушников (в ухе / в кейсе).
-* **Ответ**: `0x8201` (33281 decimal), payload `[status]` (`0x00` = Success).
+По анализу `realme Link.apkm` (`com.realme.iot.headset.tl.*`) и [QuickBuds](https://github.com/spizganed/QuickBuds).
 
-### 6.2. Входящие события устройства (CMD_EVENT 0x0204)
-Все события от наушников приходят с опкодом команды **`0x0204`** (516 decimal):
-* **Событие ANC (`payload[0] == 0x03`)**: активный режим находится в `payload[3]` (при `payload.size >= 4`) или `payload[2]`.
-* **Событие Game Mode (`payload[0] == 0x05`)**: `[05, value]` (`value == 1` ВКЛ, `0` ВЫКЛ).
-* **Прочие события**: инициируют безопасный отложенный опрос полного снимка состояния через `scheduleStateRefresh(120 ms)`.
+### 4.1. Транспорт и кадрирование
+- **RFCOMM SPP UUID:**
+  - realme основной: `0000079A-D102-11E1-9B23-00025B00A5A5`
+  - OnePlus / OPPO основной: `00001107-D102-11E1-9B23-00025B00A5A5`
+  - Стандартный SPP (fallback): `00001101-0000-1000-8000-00805F9B34FB`
+  - Резервные вендорные: `db764ac8-4b08-7f25-aafe-59d03c27bae4`, `db764ac8-4b08-7f25-aafe-59d03c27bae3`
+- **BLE GATT Fallback:** автодетект характеристик записи и уведомлений (`CCCD 00002902-0000-1000-8000-00805f9b34fb`).
+- **Внешний кадр OPPOv1:** `[0xAA, lenVarint (TL_LEN + 2), flags (0x00), reserved (0x00), innerTL...]`
+- **Внутренний кадр TL:** `[cmdLo, cmdHi, devAddr (0x00), payloadLenLo, payloadLenHi, payload...]`
 
----
+### 4.2. Таблица команд
 
-## 7. Игровой режим (Game Mode)
+| Функция | TX Cmd | TX Payload | RX Cmd | RX Payload |
+|---|:---:|---|:---:|---|
+| Запрос батареи | `0x0106` | *пусто* | `0x8106` | `[00, count, (slot, level\|chgBit)...]` (`03 00` = закрытый кейс -> `-1`) |
+| Запрос ANC | `0x010C` | `01 01` | `0x810C` | `[00, 01, 01, mode]` (`08`=ANC, `01`=Выкл., `02`=Прозрачность) |
+| Установка ANC | `0x0404` | `01 01 <mode>` | `0x8404` | `[00]` |
+| Запрос SwitchFeature | `0x010D` | `01 <featId>` | `0x810D` | `[00, count, (featId, 01/00)...]` |
+| Установка SwitchFeature | `0x0403` | `<featId> <01/00>` | `0x8403` | `[00]` |
+| Запрос пресета EQ | `0x010F` | *пусто* | `0x810F` | `[00, eqId]` (`02`=Серенада, `00`=Оригинал, `03`=Чистые басы, `01`=Глубокие басы) |
+| Установка пресета EQ | `0x0406` | `<eqId>` | `0x8406` | `[00]` |
+| Запрос профилей Custom EQ | `0x0122` | *пусто* | `0x8122` | `[00, count, (selected, tag 2B, id, nameLen, name, bands, [freq u16 LE, gain s8]...)...]` |
+| Создание/Сохранение/Удаление Custom EQ | `0x0418` | `<action: 1/2/3> <tag 2B> <id> <nameLen> <name> <bands> [freq u16 LE, gain s8]...` | `0x8418` | `[00]` |
+| Поиск наушников (аппаратный) | `0x0400` | `<01/00>` | — | — |
+| Запрос кнопок | `0x0108` | `0E 01 03 04 05 06 0B 0C 08 0D 11 1F 1A 1B 00` | `0x8108` | `[00, count, (dev 1=L/2=R, 01, act 2/3/4, func)...]` |
+| Настройка кнопки | `0x0401` | `01 <dev> 01 <act> <func>` | `0x8401` | `[00]` |
+| Список устройств MultiConnect | `0x0112` | *пусто* | `0x8112` | `[00, count, (6B MAC rev, entryLen, state, flag, nameLen, UTF-8)...]` |
+| Время использования L/R | `0x0128` | *пусто* | `0x8128` | `[00, count, (role 1B, totalMinutes u32 LE)...]` |
+| Подписка на события | `0x0201` | `<eventType>` (`01,02,03,05,06`) | `0x8201` | `[00]` |
+| Асинхронные события | — | — | `0x0204` | `[03, ...]` ANC, `[05, val]` Game Mode, `[06, ...]` MultiConnect |
 
-* **Подсистема**: `SwitchFeature` (идентификатор `0x06`).
-* **Запрос**: `0x010D` (269 decimal), payload: `[01, 06]`.
-  * OPPOv1 Wire: `AA 07 00 00 0D 01 00 02 00 01 06`
-* **Ответ**: `0x810D` (33037 decimal), payload: `[status (0x00), count, (06, value)...]` (`value == 1` ВКЛ, `0` ВЫКЛ).
-* **Установка**: `0x0403` (1027 decimal), payload: `[06, 01]` (ВКЛ) или `[06, 00]` (ВЫКЛ).
-  * Включить Wire: `AA 07 00 00 03 04 00 02 00 06 01`
-  * Выключить Wire: `AA 07 00 00 03 04 00 02 00 06 00`
-* **Подтверждение**: `0x8403` (33795 decimal), payload `[status]`.
-
----
-
-## 8. Эквалайзер (Звуковые эффекты)
-
-### 8.1. Чтение и установка пресетов
-* **Запрос пресета**: `0x010F` (271 decimal), payload пустой.
-  * OPPOv1 Wire: `AA 05 00 00 0F 01 00 00 00`
-* **Ответ**: `0x810F` (33039 decimal), payload: `[status (0x00), eqId]`.
-* **Установка пресета**: `0x0406` (1030 decimal), payload: `[eqId]`.
-* **Подтверждение**: `0x8406` (33798 decimal), payload `[status]`.
-
-### 8.2. Таблица пресетов
-| Пресет эквалайзера | Wire `eqId` | OPPOv1 Wire установки |
-|---|:---:|---|
-| **Серенада** (Clear Vocals / Serenade) | `0x02` | `AA 06 00 00 06 04 00 01 00 02` |
-| **Оригинальный звук** (Original Sound) | `0x00` | `AA 06 00 00 06 04 00 01 00 00` |
-| **Чистые басы** (Pure Bass) | `0x03` | `AA 06 00 00 06 04 00 01 00 03` |
-| **Глубокие басы** (Deep Bass) | `0x01` | `AA 06 00 00 06 04 00 01 00 01` |
-| **Пользовательский** (Custom EQ) | `> 0x03` / `0xFF` | Распознаётся через команду `0x0122` |
-
-### 8.3. Пользовательские профили
-* **Запрос списка профилей**: `0x0122` (290 decimal), ответ `0x8122` (33058 decimal).
-* Содержит флаг активности `isSelected`, `eqId`, имя профиля в UTF-8 и сетку частот. Если активен кастомный профиль, UI подсвечивает плашку с его именем.
+- **ID `SwitchFeature` (`0x010D` / `0x0403`):** `0x04` Автопауза, `0x06` Игровой режим, `0x08` Автоответ, `0x11` Двойное подключение, `0x18` LDAC / LHDC 5.0, `0x1B` Пространственное аудио, `0x1D` Динамическое аудио.
+- **`functionId` жестов:** `0x01` Пауза, `0x06` След. трек, `0x05` Пред. трек, `0x03` Ассистент, `0x08` ANC, `0x0D` Смена устройства, `0x11` Игровой режим, `0x0B` Громче, `0x0C` Тише, `0x00` Нет.
+- **Демо Spatial Audio:** локальное воспроизведение `MediaPlayer` встроенных сэмплов `headset_spatial_audio_fix.mp3` (3D) и `headset_spatial_audio_off.m4a` (стерео).
 
 ---
 
-## 9. Настройки кнопок (Сенсорные жесты)
+## 5. Семейства 2–3: HUAWEI и HONOR (`Huawei SPP` и `HONOR CHOICE SPP`)
 
-### 9.1. Чтение настроек
-* **Команда**: `0x0108` (264 decimal), payload (15 байт):
-  `0E 01 03 04 05 06 0B 0C 08 0D 11 1F 1A 1B 00`
-  * OPPOv1 Wire: `AA 16 00 00 08 01 00 0F 00 0E 01 03 04 05 06 0B 0C 08 0D 11 1F 1A 1B 00`
-* **Ответ**: `0x8108` (33032 decimal), payload: `[status (0x00), count (N), (deviceType, button, actionId, functionId)...]`.
-  * Каждая запись (4 байта):
-    * `deviceType`: `0x01` = Левый наушник, `0x02` = Правый наушник;
-    * `button`: `0x01` (сенсорная панель);
-    * `actionId`: `0x02` = Двойное касание, `0x03` = Тройное касание, `0x04` = Долгое нажатие (1 с);
-    * `functionId`: идентификатор назначенного действия.
+По базе [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds) и [noctalia/honor-earbuds](https://github.com/noctalia-dev/community-plugins/tree/main/honor-earbuds).
 
-### 9.2. Установка настройки
-* **Команда**: `0x0401` (1025 decimal), payload (5 байт):
-  `[01, deviceType, 01, actionId, functionId]`
-  * OPPOv1 Wire: `AA 0C 00 00 01 04 00 05 00 01 <deviceType> 01 <actionId> <functionId>`
-* **Подтверждение**: `0x8401` (33793 decimal), payload `[status]`.
-
-### 9.3. Таблица функций жестов
-| Действие | Wire `functionId` | Допустимо для жестов |
-|---|:---:|---|
-| **Воспроизведение / Пауза** | `0x01` | Двойное касание |
-| **Следующая композиция** | `0x06` | Двойное, Тройное касание |
-| **Предыдущая композиция** | `0x05` | Тройное касание |
-| **Голосовой помощник** | `0x03` | Двойное, Тройное касание, Долгое нажатие |
-| **Шумоподавление** | `0x08` | Долгое нажатие |
-| **Переключить устройства** | `0x0D` | Тройное касание |
-| **Игровой режим** | `0x11` | Тройное касание, Долгое нажатие |
-| **Увеличение громкости** | `0x0B` | Тройное касание |
-| **Уменьшение громкости** | `0x0C` | Тройное касание |
-| **Нет действия** | `0x00` | Любой жест |
+- **UUID:** Стандартный SPP `00001101-0000-1000-8000-00805F9B34FB` (канал 1) и Huawei Private `96cc203e-5068-46ad-b32d-e316f5e069ba` (канал 16: FreeBuds 4i / 5i / SE / FreeLace Pro / Honor Earbuds 2).
+- **Кадр:** `[0x5A, lenHi, lenLo, 0x00, cmdHi, cmdLo, TLV(type, len, val)..., crc16XmodemHi, crc16XmodemLo]`.
+- **Команды:**
+  - Батарея: чтение `0x0108`, уведомление `0x0127` (param 2 `[L, R, Case]`, param 3 флаги зарядки, param 1 общий).
+  - ANC: `0x2B2A` чтение, `0x2B04` запись (`0=Выкл, 1=ANC, 2=Прозрачность`; уровни `1=Комфорт, 0=Обычный, 2=Ультра, 3=Динам.`), событие `0x2B03`.
+  - Низкая задержка: `0x2B6C`; Автопауза: `0x2B11`/`0x2B10`; Приоритет качества звука: `0x2BA3`/`0x2BA2`.
+  - EQ и Custom EQ (10 полос, `-6..+6 дБ`): чтение `0x2B4A` (param 2 активный ID, param 8 36-байтные блоки `[id, count, gains(0.1 дБ s8), имя UTF-8]`), запись `0x2B49` (`1=id, 2=bandCount, 3=gains, 4=name, 5=action(1=сохранить, 2=удалить)`).
+  - Двойное подключение: `0x2B2F`/`0x2B2E`, перечисление `0x2B31`, событие `0x2B36`.
+  - Жесты: двойное `0x0120`/`0x011F`, тройное `0x0126`/`0x0125`, удержание `0x2B17`/`0x2B16`.
+- **Вариант HONOR CHOICE** (X8 / X5 / X5 Pro / X3 / X2 / X): тот же кадр `0x5A`, 1-байтная запись ANC `0x2B04` (`[0/1/2]`), запись EQ `0x2701` (`[0=Баланс, 1=Бас, 2=Голос]`).
 
 ---
 
-## 10. Пространственное аудио (Spatial Audio / 3D Sound)
+## 6. Семейства 4–5: Nothing / CMF и Samsung Galaxy Buds
 
-* **Подсистема**: `SwitchFeature` (идентификатор `0x1B` / 27 decimal).
-* **Запрос**: `0x010D` (269 decimal), payload: `[01, 1B]`.
-  * OPPOv1 Wire: `AA 09 00 00 0D 01 00 02 00 01 1B`
-* **Ответ**: `0x810D` (33037 decimal), payload: `[status (0x00), count, (1B, value)]` (`value == 1` ВКЛ, `0` ВЫКЛ).
-* **Установка**: `0x0403` (1027 decimal), payload: `[1B, 01]` (ВКЛ) или `[1B, 00]` (ВЫКЛ).
-  * Включить Wire: `AA 09 00 00 03 04 00 02 00 1B 01`
-  * Выключить Wire: `AA 09 00 00 03 04 00 02 00 1B 00`
-* **Подтверждение**: `0x8403` (33795 decimal), payload `[status]`.
-* **Демо-звук из realme Link**: воспроизведение демо является **локальной функцией смартфона** (через Android `MediaPlayer`), а не командой в наушники. В приложение интегрированы оригинальные треки `headset_spatial_audio_fix.mp3` (3D) и `headset_spatial_audio_off.m4a` (стерео) с мгновенным переключением на лету.
+### 6.1. Nothing / CMF (`Nothing SPP`)
+По базе [swift-nothing-ear](https://github.com/bestK1ngArthur/swift-nothing-ear), [omarchy-nothing-ear](https://github.com/r-witz/omarchy-nothing-ear) и [kde-headphones](https://github.com/RodiAda/kde-headphones).
+- **UUID:** `AEAC4A03-DFF5-498F-843A-34487CF133EB` (+ Standard SPP fallback).
+- **Кадр:** `[0x55, 0x60, 0x01, cmdLo, cmdHi, lenLo, lenHi, opId, payload..., crc16ModbusLo, crc16ModbusHi]`.
+- **Команды:** Handshake `0xC006`/`0x4006`; Батарея `0xC007`/`0x4007`/`0xE001` (`2=L, 3=R, 4=Case, 6=Main`); ANC `0xC01E`/`0x401E`/`0xE003`/`0xF00F` (`1=Выс, 2=Сред, 3=Низк, 4=Адапт, 5=Выкл, 7=Прозрачность`); Classic EQ `0xC01F`/`0xF010`, ListeningMode EQ `0xC050`/`0xF01D`; 3-полосный float Custom EQ `0xC044`/`0x4044`/`0xF041` (`[3, totalGain f32 LE, 3 × (type, gain, freq, Q)]`); In-Ear `0xC00E`/`0xF004`; Низкая задержка `0xC041`/`0xF040`; Ultra Bass `0xC04E`/`0xF051`; Поиск `0xF002`.
 
----
-
-## 11. Дополнительные функции Realme Buds T200 и Buds Air 7 Pro `[по коду]`
-
-По статическому анализу `ItemFactory`, `TLHeadsetConnectionImp`, `PollCommandManager`, `SetCommandManager`, `NotificationCommandManager` и `CommandUtil` в `realme Link.apkm` (функции жестко привязаны к `BudsModel`, т.к. прошивка T300 возвращает `status=0, val=0` на неподдерживаемые `SwitchFeature`):
-
-### 11.1. Звук высокой чёткости (LDAC на T200 / LHDC 5.0 на Air 7 Pro)
-* **Подсистема**: `SwitchFeature` (идентификатор `0x18` / 24 decimal, `settingType = 31`, `ItemFactory.I/J`, `TLHeadsetConnectionImp.J5`).
-* **Запрос**: `0x010D`, payload `[01, 18]` (OPPOv1 Wire: `AA 09 00 00 0D 01 00 02 00 01 18`).
-* **Ответ**: `0x810D`, payload `[00, count, (18, value)...]` (`value == 1` ВКЛ, `0` ВЫКЛ).
-* **Установка**: `0x0403`, payload `[18, 01]` / `[18, 00]` (OPPOv1 Wire: `AA 09 00 00 03 04 00 02 00 18 01`).
-* **Подтверждение**: `0x8403`, payload `[status]`.
-
-### 11.2. Динамическое аудио (T200 / Air 7 Pro)
-* **Подсистема**: `SwitchFeature` (идентификатор `0x1D` / 29 decimal, `settingType = 36`, `TLHeadsetConnectionImp.E5`).
-* **Запрос**: `0x010D`, payload `[01, 1D]` (OPPOv1 Wire: `AA 09 00 00 0D 01 00 02 00 01 1D`).
-* **Ответ**: `0x810D`, payload `[00, count, (1D, value)...]` (`value == 1` ВКЛ, `0` ВЫКЛ).
-* **Установка**: `0x0403`, payload `[1D, 01]` / `[1D, 00]` (OPPOv1 Wire: `AA 09 00 00 03 04 00 02 00 1D 01`).
-* **Подтверждение**: `0x8403`, payload `[status]`.
-
-### 11.3. Подключение к двум устройствам (T200 / Air 7 Pro)
-* **Переключатель (`SwitchFeature` `0x11` / 17 decimal, `settingType = 20`, `TLHeadsetConnectionImp.D5`)**:
-  * **Запрос**: `0x010D`, payload `[01, 11]` (OPPOv1 Wire: `AA 09 00 00 0D 01 00 02 00 01 11`).
-  * **Ответ**: `0x810D`, payload `[00, count, (11, value)...]`.
-  * **Установка**: `0x0403`, payload `[11, 01]` / `[11, 00]` (OPPOv1 Wire: `AA 09 00 00 03 04 00 02 00 11 01`).
-  * **Подтверждение**: `0x8403`, payload `[status]`.
-* **История подключений / список устройств (`PollCommandManager.w`, `CommandUtil.h`)**:
-  * **Запрос**: `0x0112` (274 decimal), payload пустой (OPPOv1 Wire: `AA 07 00 00 12 01 00 00 00`).
-  * **Ответ**: `0x8112` (33042 decimal), payload `[status (0x00), count, (6B MAC, entryLen, connectState, flag, nameLen, UTF-8 name, ...)...]`.
-  * **Событие**: `0x0204` с типом `0x06` (`NotificationCommandManager.k`, case 6).
-
-### 11.4. Автовоспроизведение/пауза — датчик ношения (Air 7 Pro) `[по коду]`
-* **Подсистема**: `SwitchFeature` (идентификатор `0x04` / 4 decimal, `settingType = 11`, `ItemFactory.i0/B`, `TLHeadsetConnectionImp.L5`).
-* **Запрос**: `0x010D`, payload `[01, 04]` (OPPOv1 Wire: `AA 09 00 00 0D 01 00 02 00 01 04`).
-* **Ответ**: `0x810D`, payload `[00, count, (04, value)...]` (`value == 1` ВКЛ, `0` ВЫКЛ).
-* **Установка**: `0x0403`, payload `[04, 01]` / `[04, 00]` (OPPOv1 Wire: `AA 09 00 00 03 04 00 02 00 04 01`).
-* **Подтверждение**: `0x8403`, payload `[status]`.
-
-### 11.5. Автоответ на вызов (Air 7 Pro) `[по коду]`
-* **Подсистема**: `SwitchFeature` (идентификатор `0x08` / 8 decimal, `settingType = 16`, `ItemFactory.o`, `TLHeadsetConnectionImp.A5`).
-* **Запрос**: `0x010D`, payload `[01, 08]` (OPPOv1 Wire: `AA 09 00 00 0D 01 00 02 00 01 08`).
-* **Ответ**: `0x810D`, payload `[00, count, (08, value)...]` (`value == 1` ВКЛ, `0` ВЫКЛ).
-* **Установка**: `0x0403`, payload `[08, 01]` / `[08, 00]` (OPPOv1 Wire: `AA 09 00 00 03 04 00 02 00 08 01`).
-* **Подтверждение**: `0x8403`, payload `[status]`.
-
-### 11.6. Статистика времени использования L / R
-* **Запрос**: `0x0128` (296 decimal), payload пустой (OPPOv1 Wire: `AA 07 00 00 28 01 00 00 00`).
-* **Ответ**: `0x8128` (33064 decimal), payload `[status (0x00), count, (roleByte 1B, totalMinutes 4B uint32 LE)...]` (`roleByte`: `0x01` = L, `0x02` = R).
-
-### 11.7. Функции стороны приложения realme Link (намеренно пропущены)
-* **MindFlow** (`ItemFactory.r0`, `settingType = 0`) — локальный/облачный плеер белого шума O Relax;
-* **Golden Hearing / Проверка слуха**, **Перевод с ИИ**, **Проверка прилегания наушников**, **Поиск телефона** — интерактивные/облачные функции приложения realme Link.
+### 6.2. Samsung Galaxy Buds (`Galaxy Buds SPP`)
+По базе [kde-headphones](https://github.com/RodiAda/kde-headphones).
+- **UUID:** Modern `2E73A4AD-332D-41FC-90E2-16BEF06523F2`, Legacy Buds (2019) `00001102-0000-1000-8000-00805F9B34FD`, Buds+ `00001101-0000-1000-8000-00805F9B34FB`.
+- **Кадры:** Modern `[0xFD, sizeLo, sizeHi&0x03, msgId, payload..., crc16CcittLo, crc16CcittHi, 0xDD]` и Legacy `[0xFE, 0x00, size, msgId, payload..., crcLo, crcHi, 0xEE]`.
+- **Сообщения:** Push `0x61` (`ExtendedStatusUpdated`) и `0x60` (`StatusUpdated`); Handshake `0x88` (`ManagerInfo [01 02 22]`); ANC `0x78` / `0x98` / `0x80`; EQ `0x86`; Игровой режим `0x87`; Бесшовное переключение `0xAF`; Поиск наушников `0xA0` (старт) / `0xA1` (стоп).
 
 ---
 
-## 12. Сводная таблица протокола Realme Buds T300 / T200 / Air 7 Pro
+## 7. Семейство 6: Xiaomi / Redmi / POCO (`Xiaomi SPP + SAFER+`)
 
-Все кадры передаются через RFCOMM SPP (`UUID: 0000079A-D102-11E1-9B23-00025B00A5A5`) в обёртке OPPOv1 (`SOF 0xAA`):
+По базе [kde-headphones](https://github.com/RodiAda/kde-headphones) и [MiBudsClient](https://github.com/CesurPolat/MiBudsClient).
 
-| Функция | TX Cmd | TX Payload | RX Cmd | RX Payload | Статус |
-|---|:---:|---|:---:|---|:---:|
-| **Запрос батареи** | `0x0106` | *пустой* | `0x8106` | `[00, count, (slot, level\|flag)...]` | Подтверждено (лог) |
-| **Установка ANC** | `0x0404` | `01 01 <mode>` | `0x8404` | `[00]` | Подтверждено (лог) |
-| **Запрос режима ANC** | `0x010C` | `01 01` | `0x810C` | `[00, 01, 01, <mode>]` | Подтверждено (лог) |
-| **Запрос Game Mode** | `0x010D` | `01 06` | `0x810D` | `[00, count, (06, val)...]` | Подтверждено (лог) |
-| **Установка Game Mode** | `0x0403` | `06 <01/00>` | `0x8403` | `[00]` | Подтверждено (лог) |
-| **Запрос Spatial Audio** | `0x010D` | `01 1B` | `0x810D` | `[00, count, (1B, val)...]` | Подтверждено (лог) |
-| **Установка Spatial Audio** | `0x0403` | `1B <01/00>` | `0x8403` | `[00]` | Подтверждено (лог) |
-| **Запрос LDAC / LHDC 5.0** | `0x010D` | `01 18` | `0x810D` | `[00, count, (18, val)...]` | Подтверждено (T200) / `[по коду]` |
-| **Установка LDAC / LHDC 5.0** | `0x0403` | `18 <01/00>` | `0x8403` | `[00]` | Подтверждено (T200) / `[по коду]` |
-| **Запрос Dynamic Audio** | `0x010D` | `01 1D` | `0x810D` | `[00, count, (1D, val)...]` | Подтверждено (T200) / `[по коду]` |
-| **Установка Dynamic Audio** | `0x0403` | `1D <01/00>` | `0x8403` | `[00]` | Подтверждено (T200) / `[по коду]` |
-| **Запрос Dual Connection** | `0x010D` | `01 11` | `0x810D` | `[00, count, (11, val)...]` | Подтверждено (T200) / `[по коду]` |
-| **Установка Dual Connection** | `0x0403` | `11 <01/00>` | `0x8403` | `[00]` | Подтверждено (T200) / `[по коду]` |
-| **Список устройств MultiConnect** | `0x0112` | *пустой* | `0x8112` | `[00, count, (MAC, len, state, ...)]` | Подтверждено (T200) |
-| **Запрос Auto Play/Pause (Air 7 Pro)** | `0x010D` | `01 04` | `0x810D` | `[00, count, (04, val)...]` | `[по коду]` |
-| **Установка Auto Play/Pause** | `0x0403` | `04 <01/00>` | `0x8403` | `[00]` | `[по коду]` |
-| **Запрос Auto Answer (Air 7 Pro)** | `0x010D` | `01 08` | `0x810D` | `[00, count, (08, val)...]` | `[по коду]` |
-| **Установка Auto Answer** | `0x0403` | `08 <01/00>` | `0x8403` | `[00]` | `[по коду]` |
-| **Статистика времени L/R** | `0x0128` | *пустой* | `0x8128` | `[00, count, (role, min4B LE)...]` | `[по коду]` |
-| **Запрос пресета EQ** | `0x010F` | *пустой* | `0x810F` | `[00, <eqId>]` | Подтверждено (лог) |
-| **Установка пресета EQ** | `0x0406` | `<eqId>` | `0x8406` | `[00]` | Подтверждено (лог) |
-| **Запрос кастомных EQ** | `0x0122` | *пустой* | `0x8122` | `[00, count, (selected, ..., name)...]` | `[по коду]` |
-| **Запрос настроек кнопок** | `0x0108` | `0E 01 03 04 ... 00` | `0x8108` | `[00, count, (dev, 1, act, func)...]` | `[по коду]` |
-| **Установка настройки кнопки** | `0x0401` | `01 dev 01 act func` | `0x8401` | `[00]` | `[по коду]` |
-| **Подписка на события** | `0x0201` | `<eventType>` | `0x8201` | `[00]` | `[по коду]` |
-| **Асинхронные события** | — | — | `0x0204` | `[03, ...]`, `[05, val]`, `[06, ...]` | Подтверждено (лог) |
+- **UUID:** `0000FD2D-0000-1000-8000-00805F9B34FB` (+ Standard SPP fallback).
+- **Кадр:** `[0xFE, 0xDC, 0xBA, type, opcode, bodyLenHi, bodyLenLo, (status если ответ), seq, payload..., 0xEF]`.
+- **Аутентификация SAFER+:** Хост начинает `0x50 [00, 16B rand]`, отвечает на вызов гарнитуры `0x50` через шифр SAFER+ (`0x50` response) и подтверждает `0x51`.
+- **Информация устройства и состояния:** `0x03` (`FF FF FF FF`) триплет батареи (`idx 0x07`), `0x07` (`FF FF FF FF`) ANC (`idx 0x09`) и датчик уха (`idx 0x0A`), `0x02` асинхронные статусы.
+- **RCSP-конфигурация (`0xF3` Get / `0xF2` Set / `0xF4` Notify):**
+  - Payload запроса `0xF3` — ровно **2-байтный big-endian ключ** `[keyHi, keyLo]` (без байта длины).
+  - Payload записи `0xF2` — `[2 + valLen, keyHi, keyLo, val...]`.
+  - В ответах `0xF3`/`0xF4` поддержаны обычные `[len, keyHi, keyLo, val...]` и расширенные `0xFF` `[0xFF, keyHi, keyLo, lenHi, lenLo, val...]` записи.
+  - Ключи: `0x0003` Автоответ, `0x0004` Multipoint, `0x0007` пресет EQ, `0x000B` сила ANC, **`0x002F` Низкая задержка** (Redmi Buds 4 Active и линейка Xiaomi/Redmi), **`0x0037` 10-полосный Custom EQ** (`-10..+10 дБ`, знако-модульное кодирование `g >= 0 ? g : 128 - g`, сброс `[04, 01, 01, 01]`).
 
 ---
 
-## 13. Протокол Huawei SPP (по базе OpenFreebuds)
+## 8. Семейства 7–13 (`kde-headphones`)
 
-Реализован в `HuaweiProtocol.kt` (`realness`) и `HuaweiProto.java` (`tiny-realness`) по спецификации [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds):
-
-* **Транспорт RFCOMM SPP**:
-  * Стандартный SPP UUID: `00001101-0000-1000-8000-00805F9B34FB` (channel 1: FreeBuds 3 / 6i / Pro / Pro 2 / Pro 3 / Pro 4 / Pro 5 / FreeClip / FreeClip 2 / SE 2 / SE 4 / Studio / FreeLace Pro 2 / Honor Earbuds S2);
-  * Приватный Huawei SPP UUID: `96cc203e-5068-46ad-b32d-e316f5e069ba` (channel 16: FreeBuds 4i / 5i / SE / FreeLace Pro / Honor Earbuds 2).
-* **Формат кадра**: `[0x5A, lenHi, lenLo, 0x00, cmdHi, cmdLo, TLV(type, len, value)..., crcHi, crcLo]` (`CRC16-XMODEM`, полная длина = `length + 5`).
-* **Основные команды**:
-  * Батарея: запрос `0x0108` (params `1, 2, 3`), уведомление `0x0127` (param 2 = `[L, R, Case]`, param 3 = флаги зарядки, param 1 = общий заряд для Studio/FreeLace);
-  * ANC и уровни шумоподавления: чтение `0x2B2A`, запись `0x2B04` (режим `0=Off, 1=ANC, 2=Transparency`; уровни ANC `1=Comfort, 0=General, 2=Ultra, 3=Dynamic`), событие `0x2B03`;
-  * Low Latency (Игровой режим): `0x2B6C` (чтение param 2, запись param 1);
-  * Автовоспроизведение/пауза: чтение `0x2B11`, запись `0x2B10`;
-  * Приоритет качества звука: чтение `0x2BA3` (param 2), запись `0x2BA2` (param 1);
-  * Эквалайзер: чтение `0x2B4A` (param 2 = активный ID, param 8 = кастомные профили по 36 байт), запись `0x2B49` (param 1);
-  * Dual-Device Connection: чтение `0x2B2F`, запись `0x2B2E`, список устройств `0x2B31`, событие `0x2B36`;
-  * Жесты кнопок: двойное касание `0x0120`/`0x011F`, тройное `0x0126`/`0x0125`, долгое нажатие `0x2B17`/`0x2B16`.
-* **Вариант HONOR CHOICE Earbuds** (X8 / X5 / X5 Pro / X3 / X2 / X, по базе [noctalia/honor-earbuds](https://github.com/noctalia-dev/community-plugins/tree/main/honor-earbuds)): тот же фрейминг `0x5A` + CRC16-XMODEM (`0x0108` батарея, `0x2B2A` чтение ANC), но **1-байтовая** запись ANC `0x2B04` (`[0=Off, 1=ANC, 2=Transparency]`) и запись EQ `0x2701` (`[0=Balanced, 1=Bass, 2=Vocal]`).
-
----
-
-## 14. Протоколы Nothing / CMF и Samsung Galaxy Buds
-
-### 14.1. Nothing / CMF RFCOMM SPP (`NothingProtocol.kt` / `NothingProto.java`)
-По базам [swift-nothing-ear](https://github.com/bestK1ngArthur/swift-nothing-ear), [omarchy-nothing-ear](https://github.com/r-witz/omarchy-nothing-ear) и [kde-headphones](https://github.com/RodiAda/kde-headphones):
-* **RFCOMM UUID**: `AEAC4A03-DFF5-498F-843A-34487CF133EB` (+ fallback Standard SPP).
-* **Формат кадра**: `[0x55, 0x60, 0x01, cmdLo, cmdHi, lenLo, lenHi, opId, payload..., crcLo, crcHi]` (`CRC16/MODBUS`, init `0xFFFF`, poly `0xA001`).
-* **Команды**: Handshake `0xC006`/`0x4006`; Батарея `0xC007`/`0x4007`/`0xE001` (`2=L, 3=R, 4=Case, 6=Main`); ANC `0xC01E`/`0x401E`/`0xE003`/`0xF00F` (`1=High, 2=Mid, 3=Low, 4=Adaptive, 5=Off, 7=Transparency`); Classic EQ `0xC01F`/`0xF010` и ListeningMode EQ `0xC050`/`0xF01D`; In-Ear `0xC00E`/`0xF004`; Low Latency `0xC041`/`0xF040`; Ultra Bass `0xC04E`/`0xF051`.
-
-### 14.2. Samsung Galaxy Buds RFCOMM SPP (`GalaxyProtocol.kt` / `GalaxyProto.java`)
-По базе [kde-headphones](https://github.com/RodiAda/kde-headphones):
-* **RFCOMM UUID**: Современные `2E73A4AD-332D-41FC-90E2-16BEF06523F2`, Legacy Buds (2019) `00001102-0000-1000-8000-00805F9B34FD`, Buds+ `00001101-0000-1000-8000-00805F9B34FB`.
-* **Формат кадра**: Современный `[0xFD, sizeLo, sizeHi&0x03, msgId, payload..., crcLo, crcHi, 0xDD]` и Legacy `[0xFE, 0x00, size, msgId, payload..., crcLo, crcHi, 0xEE]` (`CRC16-CCITT` по `msgId + payload`, little-endian).
-* **Сообщения**: Push `0x61` (`ExtendedStatusUpdated`) и `0x60` (`StatusUpdated`); Handshake `0x88` (`ManagerInfo [01 02 22]`); ANC `0x78` (современные) / `0x98` (Buds Live) / `0x80` (Buds/Buds+); EQ `0x86`; Seamless Connection `0xAF`.
-
-### 14.3. Дополнительные протоколы `kde-headphones` (`SonyProtocol.kt`, `BoseSoundcoreProtocol.kt`, `XiaomiProtocol.kt`, `ExtraProtocols.kt` / `ExtraProtos.java`)
-* **Sony MDR (V1/V2)**: UUID `956C7B26-D49A-4BA8-B03F-B17D393CB6E2` (V2) / `96CC203E-5068-46AD-B32D-E316F5E069BA` (V1); кадр `0x3E..0x3C` с экранированием `0x3D`, sum8, ACK `0x01`; Батарея `0x22`/`0x23`/`0x25`, NCASM `0x66`..`0x69`, EQ `0x56`..`0x59`.
-* **Bose BMAP**: Standard SPP `00001101`; `[block, func, op, len, payload]`; Батарея `0x02/0x02`, ANC `0x01/0x06`, Мультипоинт `0x01/0x07`.
-* **Anker Soundcore**: Standard SPP `00001101`; `08 EE 00 00 00` TX / `09 FF 00 00 01` RX + sum8; Статус `0x01/0x01`, Батарея `0x01/0x03`, ANC `0x06/0x01`/`0x81`, Game Mode `0x01/0x11`.
-* **Xiaomi / Redmi / POCO**: UUID `0000FD2D-0000-1000-8000-00805F9B34FB`; `FE DC BA .. EF` + полная аутентификация **SAFER+** challenge-response (`0x50`/`0x51`); Батарея `0x09`, ANC `0x08`, датчик ношения `0x0E`, Config `0xF2`/`0xF3`/`0xF4` (AutoAnswer `0x03`, Multipoint `0x04`, EQ `0x07`, уровень ANC `0x0B`).
-* **Sennheiser GAIA v3**: UUID `A2129FF3-081B-4C45-8AFE-469D9C4842EC`; `0xFF 0x03`, vendor `0x0495`; Батарея `0x06/0x02`, ANC `0x05/0x01..0x04`, Spatial `0x06/0x06`.
-* **Jabra**: Standard SPP `00001101`; `04 09 seq (type|len) feat16 payload`; Батарея `0x0101`, ANC `0x0104`, Мультипоинт `0x0107`.
-* **Google Pixel Buds**: UUID `25E97FF7-24CE-4C4C-8951-F764A708F7B5`; HDLC (`0x7E`, экранирование `0x7D`, CRC32) + Pigweed RPC (`maestro_pw.Maestro`); поток батареи + настройки `11` (ANC), `5` (In-Ear), `21` (Multipoint).
-* **JBL BLE GATT**: Сервис `65786365-6c70-6f69-6e74-2e636f6d0000`; `0xAA cmd len payload`; Батарея `0x25`, Noise `0x91`, EQ `0x40`, AutoPlay `0x35`, Spatial `0x9D`.
-* **Примечание по Apple AirPods / Beats**: В `kde-headphones` используется сырой BR/EDR L2CAP `PSM 0x1001`, который заблокирован на нерутованном Android SDK.
-
----
-
-## 15. Архитектура приложения realness
-
-1. **Стек**: Kotlin, Jetpack Compose (Material3), Coroutines/Flow, MinSdk 26, TargetSdk 34, пакет `uwu.realness.gitveu` (папка проекта `realness/`). Также доступна облегчённая сборка `tiny-realness/` (`uwu.realness.gitveu.tiny`) на чистой Java 8 без Gradle/AndroidX (`aapt2 -> javac -> R8 -> zipalign -> apksigner`, ~58 КБ).
-2. **Версионирование и release-сборки**:
-   * Обязательно увеличивать `versionCode` и `versionName` после каждого изменения в `realness/app/build.gradle.kts` и `tiny-realness/AndroidManifest.xml` (текущая: `versionName = "1.7"`, `versionCode = 8`).
-   * Все сборки выполняются в режиме **release** (`./gradlew assembleRelease` с R8 minify + shrinkResources, а также `./tiny-realness/build.sh`).
-   * Ключ подписи (`realness-release.keystore`) **не хранится в git** (добавлен в `.gitignore` вместе с `keystore.properties`) — хранится в **GitHub Actions Secrets** (`REALNESS_KEYSTORE_BASE64`, `REALNESS_KEYSTORE_PASSWORD`, `REALNESS_KEY_ALIAS`, `REALNESS_KEY_PASSWORD`) и локально на машине разработчика.
-   * Скомпилированные `.apk` **не коммитятся в git** (`*.apk` добавлен в `.gitignore`). Workflow `.github/workflows/build-release.yml` автоматически собирает подписанные `realness <versionName>.apk` и `realness-tiny <versionName>.apk` и публикует их в **GitHub Releases** с тегом `v<versionName>`.
-3. **Структура исходного кода**:
-   * `T300Protocol.kt`, `HuaweiProtocol.kt`, `NothingProtocol.kt`, `GalaxyProtocol.kt`, `SonyProtocol.kt`, `BoseSoundcoreProtocol.kt`, `XiaomiProtocol.kt`, `ExtraProtocols.kt`: построение и разбор кадров всех 13 семейств протоколов и capability-флаги `BudsModel` для 15 брендов.
-   * `T300BleManager.kt`: защищённый поколением сессии (`sessionGen`) менеджер RFCOMM SPP и BLE GATT (исключает гонки параллельных подключений, генерирует `unexpectedDisconnectFlow` для автовосстановления при смене ведущего наушника TWS), потоковые парсеры всех 13 протоколов, ручной выбор модели, события и опрос.
-   * `BudsViewModel.kt`: реактивное состояние `StateFlow`, защита от дублирующихся `ACTION_ACL_CONNECTED`, автоматический переконнект с экспоненциальной паузой при кратковременных обрывах SPP (пока A2DP в сети), сохранение в `SharedPreferences` **последнего подключённого устройства** и **выбранной вручную модели**, определение неподдерживаемых устройств, управление демо-плеером `MediaPlayer`.
-   * `MainActivity.kt`: Material3 UI — **боковая панель выбора модели** (`ModalNavigationDrawer` с пунктом «Автоматически» и группировкой по брендам), баннер неподдерживаемого устройства, карточки батареи, селектор ANC (+ уровни интенсивности для Huawei и Nothing), пресеты эквалайзера (+ кастомные профили), редактор жестов кнопок, переключатели Spatial Audio, LDAC/LHDC 5.0/Качество звука, Dynamic Audio / Ultra Bass, Game Mode, Dual-Device / Seamless Connection, Auto Play/Pause, Auto Answer, статистика использования L/R, сворачиваемая панель логов, динамическая версия и номер билда.
-4. **Локализация**:
-   * Язык по умолчанию — английский (`values/strings.xml`), полная русская локализация (`values-ru/strings.xml`), `res/xml/locales_config.xml`.
-   * Технические логи протокола выводятся на английском языке.
-5. **Сборка и репозиторий**:
-   * Репозиторий GitHub: `https://github.com/Gitveu/Realess.git` (ветка `main`).
-   * Release APK (`realness <versionName>.apk` и `realness-tiny <versionName>.apk`) автоматически публикуются в GitHub Releases через GitHub Actions.
+- **Sony MDR (V1/V2):** UUID `956C7B26-D49A-4BA8-B03F-B17D393CB6E2` (V2) / `96CC203E-5068-46AD-B32D-E316F5E069BA` (V1); кадрирование `0x3E..0x3C` с экранированием `0x3D`, sum8, ACK `0x01`; Батарея `0x22`/`0x23`/`0x25`, NCASM `0x66..0x69`, пресеты и 6-полосный Custom EQ `0x56..0x59` (`0xA0`, `gain + 10`).
+- **Bose BMAP:** Стандартный SPP `00001101`; `[block, func, op, len, payload]`; Батарея `0x02/0x02`, ANC `0x01/0x05` (CNC) и `0x01/0x06` (ANR), 3-полосный EQ `0x01/0x07`, Multipoint `0x01/0x0A`, Автопауза `0x01/0x18`, Автоответ `0x01/0x1B`, **Переименование в прошивке** `0x01/0x02` (`OP_SET_GET`, UTF-8 <= 31B).
+- **Anker Soundcore:** Стандартный SPP `00001101`; `08 EE 00 00 00` TX / `09 FF 00 00 01` RX + sum8; Статус `0x0101`, Батарея `0x0103`/`0x0104`, ANC `0x0601`/`0x0681`, Игровой режим `0x0187` (`0x1085` Liberty), 8-полосный Custom EQ `0x0281` (`[FE FE, 8 × (db*10 + 120)]`), Dual-Conn `0x0B84`, Автопауза `0x0181`.
+- **Sennheiser GAIA v3:** UUID `A2129FF3-081B-4C45-8AFE-469D9C4842EC`; `0xFF 0x03`, vendor `0x0495`; Батарея `0x0603`/`0x0602`, ANC `0x1A04`/`0x1A05`, Прозрачность `0x1804`/`0x1805`, 5-полосный Custom EQ `0x1003`/`0x1001`, Spatial `0x3604`/`0x3605`, Автопауза `0x080C`/`0x080D`, Автоответ `0x080A`/`0x080B`.
+- **Jabra:** Стандартный SPP `00001101`; `04 09 seq (type|len) feat16 payload`; Батарея `0x1202`, Ambience `0x13BE`, Noise Mode `0x1387`.
+- **Google Pixel Buds:** UUID `25E97FF7-24CE-4C4C-8951-F764A708F7B5`; HDLC (`0x7E`, `0x7D`, CRC32) + Pigweed RPC (`maestro_pw.Maestro`); поток батареи + настройки `13` (ANC), `2` (OHD), `11` (Multipoint), `16` (5-полосный float User EQ).
+- **JBL BLE GATT:** Сервис `65786365-6c70-6f69-6e74-2e636f6d0000`; `0xAA cmd len payload`; Батарея `0x25`, Шум `0x91`, Статус `0x21`/`0x22`, EQ `0x40`, Автопауза `0x35`, Spatial `0x9D`.
+- **Apple AirPods / Beats:** в `kde-headphones` используется сырой BR/EDR L2CAP `PSM 0x1001`, который недоступен в Android SDK без root.
