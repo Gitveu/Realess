@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_mini_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:paddingHorizontal="6dp"
+    android:paddingVertical="6dp">
+
+    <!-- Top Battery Row: Icon + Compact % -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:layout_width="13dp"
+            android:layout_height="13dp"
+            android:contentDescription="@string/app_name"
+            android:src="@drawable/ic_widget_headset" />
+
+        <TextView
+            android:id="@+id/widget_mini_battery"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="3dp"
+            android:ellipsize="end"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:text="—"
+            android:textColor="@color/widget_on_surface"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Bottom ANC Toggle Pill (hidden if device does not support ANC) -->
+    <TextView
+        android:id="@+id/widget_mini_anc_btn"
+        android:layout_width="match_parent"
+        android:layout_height="24dp"
+        android:layout_marginTop="4dp"
+        android:background="@drawable/widget_pill_selected"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:paddingHorizontal="4dp"
+        android:text="@string/widget_anc_mini"
+        android:textColor="@color/widget_on_primary_container"
+        android:textSize="10sp"
+        android:textStyle="bold" />
+
+    <!-- Fallback Progress Bar when device has no ANC -->
+    <ProgressBar
+        android:id="@+id/widget_mini_bar"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:layout_marginHorizontal="4dp"
+        android:layout_marginTop="4dp"
+        android:max="100"
+        android:progress="0"
+        android:progressDrawable="@drawable/widget_progress_bar"
+        android:visibility="gone" />
+</LinearLayout>

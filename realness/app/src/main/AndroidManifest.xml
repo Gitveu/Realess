@@ -124,6 +124,20 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_realness_vertical_info" />
         </receiver>
+
+        <!-- Material You 1x1 Mini Widget (Icon + Battery % + Mini ANC Toggle) -->
+        <receiver
+            android:name=".widget.RealnessMiniWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_mini_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="uwu.realness.gitveu.widget.ACTION_MINI_CYCLE_ANC" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_realness_mini_info" />
+        </receiver>
     </application>
 
 </manifest>

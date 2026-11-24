@@ -221,6 +221,13 @@
     <string name="widget_square_desc">Компактная плитка 2×2 с зарядом L/R/кейса и переключением ANC.</string>
     <string name="widget_vertical_label">realness · Вертикальный (1×2)</string>
     <string name="widget_vertical_desc">Узкий вертикальный виджет 1×2 с зарядом наушников и кнопкой ANC.</string>
+    <string name="widget_mini_label">realness · Мини (1×1)</string>
+    <string name="widget_mini_desc">Сверхкомпактный виджет 1×1 с зарядом и быстрой кнопкой ANC.</string>
+    <string name="widget_preview_device">realme Buds</string>
+    <string name="widget_preview_case_time">2 ч назад</string>
+    <string name="widget_preview_case_short">2ч</string>
+    <string name="widget_preview_case_short_dot">· 2ч</string>
+    <string name="widget_preview_compact_bat" formatted="false">L 95% · R 95% · C 60% (2ч)</string>
     <string name="widget_anc_short">Шумодав</string>
     <string name="widget_trans_short">Прозрач.</string>
     <string name="widget_anc_mini">ANC</string>

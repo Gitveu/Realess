@@ -221,6 +221,13 @@
     <string name="widget_square_desc">Compact 2×2 Material You tile with L/R/Case battery and quick ANC switch.</string>
     <string name="widget_vertical_label">realness · Vertical (1×2)</string>
     <string name="widget_vertical_desc">Slim vertical 1×2 widget with stacked battery levels and ANC switch.</string>
+    <string name="widget_mini_label">realness · Mini (1×1)</string>
+    <string name="widget_mini_desc">Tiny 1×1 Material You tile with battery and one-tap ANC toggle.</string>
+    <string name="widget_preview_device">realme Buds</string>
+    <string name="widget_preview_case_time">2h ago</string>
+    <string name="widget_preview_case_short">2h</string>
+    <string name="widget_preview_case_short_dot">· 2h</string>
+    <string name="widget_preview_compact_bat" formatted="false">L 95% · R 95% · C 60% (2h)</string>
     <string name="widget_anc_short">ANC</string>
     <string name="widget_trans_short">Transp.</string>
     <string name="widget_anc_mini">ANC</string>

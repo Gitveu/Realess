@@ -2,8 +2,8 @@
 
 [English](AGENTS.md) | **Русский**
 
-Дата обновления: 2026-11-24  
-Актуальный релиз: `v1.9.1 (build 11)` — **14 семейств протоколов и 16 брендов** (`realness` в нативном Material 3 Expressive + виджеты Material You + `realness-tiny` в классическом компактном дизайне). Полный список моделей: [SUPPORTED_DEVICES.ru.md](SUPPORTED_DEVICES.ru.md).
+Дата обновления: 2026-11-25  
+Актуальный релиз: `v1.9.2 (build 12)` — **14 семейств протоколов и 16 брендов** (`realness` в нативном Material 3 Expressive + виджеты Material You + `realness-tiny` в классическом компактном дизайне). Полный список моделей: [SUPPORTED_DEVICES.ru.md](SUPPORTED_DEVICES.ru.md).
 
 ---
 
@@ -85,7 +85,7 @@
 
 ### 3.3. Виджеты Material You и последний заряд кейса
 - `RealnessApp` держит общие `T300BleManager` и `LogitechUsbManager`; `WidgetStateStore` сохраняет снимок заряда/ANC и per-MAC **последний заряд кейса + время** при каждом валидном `caseBattery.level in 0..100`.
-- `RealnessWidgetProvider` (4×2 Material You), `RealnessCompactWidgetProvider` (4×1, сжимается до 2×1), `RealnessSquareWidgetProvider` (2×2 квадратный) и `RealnessVerticalWidgetProvider` (1×2 вертикальный) показывают L / Кейс (с временем «когда» при закрытом кейсе) / R и переключают ANC напрямую или через быстрое фоновое подключение (`goAsync()`).
+- `RealnessWidgetProvider` (4×2 Material You), `RealnessCompactWidgetProvider` (4×1, сжимается до 2×1), `RealnessSquareWidgetProvider` (2×2 квадратный), `RealnessVerticalWidgetProvider` (1×2 вертикальный) и `RealnessMiniWidgetProvider` (1×1 мини) — все с динамическим Material You превью `android:previewLayout` — показывают L / Кейс (с временем «когда» при закрытом кейсе) / R и переключают ANC напрямую или через быстрое фоновое подключение (`goAsync()`).
 
 ---
 

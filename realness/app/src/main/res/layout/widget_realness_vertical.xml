@@ -7,11 +7,11 @@
     android:gravity="center_horizontal"
     android:orientation="vertical"
     android:paddingHorizontal="6dp"
-    android:paddingVertical="10dp">
+    android:paddingVertical="7dp">
 
     <ImageView
-        android:layout_width="18dp"
-        android:layout_height="18dp"
+        android:layout_width="15dp"
+        android:layout_height="15dp"
         android:contentDescription="@string/app_name"
         android:src="@drawable/ic_widget_headset" />
 
@@ -19,7 +19,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="2dp"
         android:layout_weight="1"
         android:gravity="center"
         android:orientation="vertical">
@@ -41,14 +41,16 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
                     android:text="L "
                     android:textColor="@color/widget_on_surface_variant"
-                    android:textSize="10sp" />
+                    android:textSize="9sp" />
 
                 <TextView
                     android:id="@+id/widget_vertical_left"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
                     android:maxLines="1"
                     android:text="—"
                     android:textColor="@color/widget_on_surface"
@@ -59,21 +61,23 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
+                android:layout_marginTop="2dp"
                 android:gravity="center"
                 android:orientation="horizontal">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
                     android:text="R "
                     android:textColor="@color/widget_on_surface_variant"
-                    android:textSize="10sp" />
+                    android:textSize="9sp" />
 
                 <TextView
                     android:id="@+id/widget_vertical_right"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
                     android:maxLines="1"
                     android:text="—"
                     android:textColor="@color/widget_on_surface"
@@ -84,21 +88,23 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
+                android:layout_marginTop="2dp"
                 android:gravity="center"
                 android:orientation="horizontal">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
                     android:text="C "
                     android:textColor="@color/widget_on_surface_variant"
-                    android:textSize="10sp" />
+                    android:textSize="9sp" />
 
                 <TextView
                     android:id="@+id/widget_vertical_case"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
                     android:maxLines="1"
                     android:text="—"
                     android:textColor="@color/widget_on_surface"
@@ -110,8 +116,10 @@
                 android:id="@+id/widget_vertical_case_time"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
                 android:ellipsize="end"
                 android:gravity="center"
+                android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text=""
                 android:textColor="@color/widget_on_surface_variant"
@@ -132,6 +140,7 @@
                 android:id="@+id/widget_vertical_single_value"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="—"
                 android:textColor="@color/widget_on_surface"
@@ -154,11 +163,12 @@
     <TextView
         android:id="@+id/widget_vertical_anc_btn"
         android:layout_width="match_parent"
-        android:layout_height="30dp"
-        android:layout_marginTop="4dp"
+        android:layout_height="26dp"
+        android:layout_marginTop="3dp"
         android:background="@drawable/widget_pill_selected"
         android:ellipsize="end"
         android:gravity="center"
+        android:includeFontPadding="false"
         android:maxLines="1"
         android:paddingHorizontal="4dp"
         android:text="@string/widget_anc_mini"

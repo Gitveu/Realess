@@ -4,7 +4,7 @@
 
 Standalone open-source Android app (`uwu.realness.gitveu`) for direct Bluetooth & USB-OTG control of **16 audio brands across 14 protocol families** — no vendor companion apps, no accounts, no cloud services.
 
-- **Latest release:** `v1.9.1 (build 11)` — `realness 1.9.1.apk` and `realness-tiny 1.9.1.apk`
+- **Latest release:** `v1.9.2 (build 12)` — `realness 1.9.2.apk` and `realness-tiny 1.9.2.apk`
 - **Supported models:** [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md) ([Русский](SUPPORTED_DEVICES.ru.md))
 - **Technical & protocol reference:** [AGENTS.md](AGENTS.md) ([Русский](AGENTS.ru.md))
 
@@ -14,7 +14,7 @@ Standalone open-source Android app (`uwu.realness.gitveu`) for direct Bluetooth 
 
 | Edition | Package | Size | UI & Stack | Notes |
 |---|---|---|---|---|
-| **realness** | `uwu.realness.gitveu` | ~1.7 MB | Kotlin, Jetpack Compose, native **Material 3 Expressive** (Material You dynamic color + 4×2 / 4×1 / 2×2 / 1×2 home screen widgets, interactive spline EQ graph, Logitech USB-OTG HID, bundled realme Spatial Audio demo) | Recommended main build |
+| **realness** | `uwu.realness.gitveu` | ~1.7 MB | Kotlin, Jetpack Compose, native **Material 3 Expressive** (Material You dynamic color + 4×2 / 4×1 / 2×2 / 1×2 / 1×1 home screen widgets with live Material You previews, interactive spline EQ graph, Logitech USB-OTG HID, bundled realme Spatial Audio demo) | Recommended main build |
 | **realness-tiny** | `uwu.realness.gitveu.tiny` | ~69 KB | Pure Java 8 + Android SDK (no Gradle, no AndroidX), classic compact dark UI | Installs side-by-side with `realness`, full 14-protocol support |
 
 ---
@@ -47,7 +47,7 @@ The **Model** side drawer lets you keep **Automatic** detection or pick any mode
 ## Features
 
 - **Zero-Touch Auto-Connect:** Listens to Android Bluetooth events (`ACTION_ACL_CONNECTED`, `ACTION_ACL_DISCONNECTED`, A2DP state changes) and opens the SPP/GATT control link automatically as soon as earbuds connect. Includes backoff auto-reconnect on transient RFCOMM drops.
-- **Material You / QuickBuds Home Screen Widgets:** 4×2 full card (device name, L / Case / R battery bars, last known case charge with relative timestamp when closed, and one-tap ANC / Off / Transparency pills), 4×1 compact pill (resizable down to 2×1), 2×2 square tile, and 1×2 vertical widget with stacked L/R/Case levels and quick ANC toggle.
+- **Material You / QuickBuds Home Screen Widgets:** 5 sizes with live Material You picker previews (`previewLayout`): 4×2 full card (device name, L / Case / R battery bars, last known case charge with relative timestamp when closed, and one-tap ANC / Off / Transparency pills), 4×1 compact pill (resizable down to 2×1), 2×2 square tile, 1×2 vertical widget, and tiny 1×1 mini tile.
 - **Battery Levels (L / Case / R) & Last Known Case Charge:** Exact percentages with charging indicator, closed-case normalization, and automatic persistence of the last reported case battery + relative timestamp (e.g. `60% · 5h ago`) both in-app and on home screen widgets.
 - **Noise Control (ANC) & Full Intensity Levels:** Noise Cancellation, Off, Transparency, plus ANC intensity levels across realme / OnePlus / OPPO, HUAWEI, Nothing / CMF, Xiaomi / Redmi, Bose CNC, Soundcore, and Samsung Galaxy Buds 3 Pro / 4 (Adaptive).
 - **Sound Effects & Protocol-Aware Custom Equalizer:**

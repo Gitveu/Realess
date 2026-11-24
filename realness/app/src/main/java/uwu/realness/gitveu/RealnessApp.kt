@@ -13,6 +13,7 @@ import uwu.realness.gitveu.ble.T300BleManager
 import uwu.realness.gitveu.protocol.T300Protocol
 import uwu.realness.gitveu.usb.LogitechUsbManager
 import uwu.realness.gitveu.widget.RealnessCompactWidgetProvider
+import uwu.realness.gitveu.widget.RealnessMiniWidgetProvider
 import uwu.realness.gitveu.widget.RealnessSquareWidgetProvider
 import uwu.realness.gitveu.widget.RealnessVerticalWidgetProvider
 import uwu.realness.gitveu.widget.RealnessWidgetProvider
@@ -39,6 +40,7 @@ class RealnessApp : Application() {
         RealnessCompactWidgetProvider.updateAll(this)
         RealnessSquareWidgetProvider.updateAll(this)
         RealnessVerticalWidgetProvider.updateAll(this)
+        RealnessMiniWidgetProvider.updateAll(this)
     }
 
     /**
