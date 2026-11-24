@@ -7,32 +7,39 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbManager
 import android.media.MediaPlayer
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import uwu.realness.gitveu.R
-import uwu.realness.gitveu.audio.FindBudsChannel
-import uwu.realness.gitveu.audio.FindBudsPlayer
-import uwu.realness.gitveu.ble.BleConnectionState
-import uwu.realness.gitveu.ble.T300BleManager
-import uwu.realness.gitveu.protocol.HuaweiProtocol
-import uwu.realness.gitveu.protocol.T300Protocol.AncMode
-import uwu.realness.gitveu.protocol.T300Protocol.BudsModel
-import uwu.realness.gitveu.protocol.T300Protocol.CustomEqProfile
-import uwu.realness.gitveu.protocol.T300Protocol.EqPreset
-import uwu.realness.gitveu.protocol.T300Protocol.T300State
-import uwu.realness.gitveu.protocol.T300Protocol.TouchSide
-import uwu.realness.gitveu.protocol.T300Protocol.TouchGesture
-import uwu.realness.gitveu.protocol.T300Protocol.TouchAction
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import uwu.realness.gitveu.R
+import uwu.realness.gitveu.RealnessApp
+import uwu.realness.gitveu.audio.FindBudsChannel
+import uwu.realness.gitveu.audio.FindBudsPlayer
+import uwu.realness.gitveu.ble.BleConnectionState
+import uwu.realness.gitveu.protocol.HuaweiProtocol
+import uwu.realness.gitveu.protocol.T300Protocol.AncMode
+import uwu.realness.gitveu.protocol.T300Protocol.BatteryInfo
+import uwu.realness.gitveu.protocol.T300Protocol.BudsModel
+import uwu.realness.gitveu.protocol.T300Protocol.ComponentRole
+import uwu.realness.gitveu.protocol.T300Protocol.CustomEqProfile
+import uwu.realness.gitveu.protocol.T300Protocol.EqPreset
+import uwu.realness.gitveu.protocol.T300Protocol.T300State
+import uwu.realness.gitveu.protocol.T300Protocol.TouchAction
+import uwu.realness.gitveu.protocol.T300Protocol.TouchGesture
+import uwu.realness.gitveu.protocol.T300Protocol.TouchSide
+import uwu.realness.gitveu.usb.LogitechUsbManager
+import uwu.realness.gitveu.widget.WidgetStateStore
 
 enum class RenameScope {
     FIRMWARE,
     OS_ALIAS,
+    NEEDS_CDM_ASSOCIATION,
     LOCAL_ALIAS,
     RESET
 }
@@ -42,8 +49,8 @@ enum class SystemDeviceStatus {
     NO_PAIRED_DEVICE,
     UNSUPPORTED_DEVICE,  // Подключено аудиоустройство, но модель не поддерживается
     DEVICE_DISCONNECTED, // Последнее подключённое устройство сейчас отключено (в кейсе)
-    DEVICE_CONNECTED_OS, // Поддерживаемые наушники подключены в Android Bluetooth как аудиоустройство
-    APP_LINK_ACTIVE      // Подключен канал управления (SPP/GATT)
+    DEVICE_CONNECTED_OS, // Поддерживаемые наушники подключены в Android Bluetooth / USB
+    APP_LINK_ACTIVE      // Подключен канал управления (SPP / GATT / USB HID)
 }
 
 @SuppressLint("MissingPermission")
@@ -58,8 +65,10 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_ALIAS_PREFIX = "custom_alias_"
     }
 
+    private val app = application as RealnessApp
     private val prefs = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    private val bleManager = T300BleManager(application)
+    private val bleManager = app.bleManager
+    private val usbManager = app.usbManager
     private val findBudsPlayer = FindBudsPlayer(application)
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
         val manager = application.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -72,8 +81,36 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
     private var autoReconnectJob: Job? = null
     private var reconnectAttempt = 0
 
-    val connectionState: StateFlow<BleConnectionState> = bleManager.connectionState
-    val t300State: StateFlow<T300State> = bleManager.t300State
+    val usbHeadsetInfo: StateFlow<LogitechUsbManager.UsbHeadsetInfo?> = usbManager.detectedUsbHeadset
+
+    val connectionState: StateFlow<BleConnectionState> = combine(
+        bleManager.connectionState,
+        usbManager.connected
+    ) { bleState, usbConn ->
+        if (usbConn) BleConnectionState.CONNECTED else bleState
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, BleConnectionState.DISCONNECTED)
+
+    val t300State: StateFlow<T300State> = combine(
+        bleManager.t300State,
+        usbManager.connected,
+        usbManager.telemetry
+    ) { bleState, usbConn, usbTel ->
+        if (usbConn && usbTel != null) {
+            val lvl = if (usbTel.online) usbTel.percent else -1
+            T300State(
+                leftBattery = BatteryInfo(ComponentRole.LEFT_EAR, lvl, usbTel.charging),
+                rightBattery = BatteryInfo(ComponentRole.RIGHT_EAR, lvl, usbTel.charging),
+                caseBattery = BatteryInfo(ComponentRole.CASE, -1, false),
+                batteryVoltageMv = usbTel.voltageMv,
+                batteryHoursLeft = usbTel.hoursLeft,
+                sidetoneLevel = usbTel.sidetoneLevel,
+                lightsEnabled = usbTel.lightsEnabled,
+                inactiveMinutes = usbTel.inactiveMinutes
+            )
+        } else {
+            bleState
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, T300State())
 
     private val _deviceStatus = MutableStateFlow(SystemDeviceStatus.NO_PAIRED_DEVICE)
     val deviceStatus: StateFlow<SystemDeviceStatus> = _deviceStatus.asStateFlow()
@@ -81,23 +118,19 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
     private val _detectedBudsDevice = MutableStateFlow<BluetoothDevice?>(null)
     val detectedBudsDevice: StateFlow<BluetoothDevice?> = _detectedBudsDevice.asStateFlow()
 
-    // Автоматически определённая модель подключённого (или последнего) устройства
     private val _autoDetectedModel = MutableStateFlow(BudsModel.UNKNOWN)
     val autoDetectedModel: StateFlow<BudsModel> = _autoDetectedModel.asStateFlow()
 
-    // Ручной выбор модели из боковой панели (null = Автоматически)
     private val _manualModelOverride = MutableStateFlow(
         BudsModel.fromNameOrNull(prefs.getString(KEY_MANUAL_MODEL, null))
     )
     val manualModelOverride: StateFlow<BudsModel?> = _manualModelOverride.asStateFlow()
 
-    // Активная модель (manualOverride ?: autoDetectedModel)
     private val _detectedModel = MutableStateFlow(
         _manualModelOverride.value ?: BudsModel.fromNameOrNull(prefs.getString(KEY_LAST_MODEL, null)) ?: BudsModel.UNKNOWN
     )
     val detectedModel: StateFlow<BudsModel> = _detectedModel.asStateFlow()
 
-    // Последнее подключённое устройство (сохраняется между запусками, вместо подстановки T300)
     private val _lastDeviceName = MutableStateFlow<String?>(prefs.getString(KEY_LAST_NAME, null))
     val lastDeviceName: StateFlow<String?> = _lastDeviceName.asStateFlow()
 
@@ -126,6 +159,12 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
     )
     val customDeviceAlias: StateFlow<String?> = _customDeviceAlias.asStateFlow()
 
+    // Last known case battery (level 0..100, timestampMs) for active/last device
+    private val _lastCaseBattery = MutableStateFlow<Pair<Int, Long>?>(
+        WidgetStateStore.getLastCaseBattery(application, prefs.getString(KEY_LAST_MAC, null))
+    )
+    val lastCaseBattery: StateFlow<Pair<Int, Long>?> = _lastCaseBattery.asStateFlow()
+
     private val bluetoothReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val action = intent?.action ?: return
@@ -141,7 +180,6 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
                         val autoModel = BudsModel.fromDeviceName(device.name)
                         val effectiveModel = _manualModelOverride.value ?: autoModel
                         if (effectiveModel.isSupported) {
-                            // Never disrupt an active or in-flight connection to the same device & model!
                             if (bleManager.isConnectedOrConnectingTo(device.address, effectiveModel)) {
                                 return
                             }
@@ -179,6 +217,36 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private val usbReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val action = intent?.action ?: return
+            val device: UsbDevice? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+            }
+            when (action) {
+                LogitechUsbManager.ACTION_USB_PERMISSION -> {
+                    val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
+                    usbManager.onPermissionResult(device, granted)
+                    checkAndAutoConnect()
+                }
+                UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
+                    val info = usbManager.scanDevices()
+                    if (info != null && !info.hasPermission) {
+                        usbManager.requestPermission(info.device)
+                    }
+                    checkAndAutoConnect()
+                }
+                UsbManager.ACTION_USB_DEVICE_DETACHED -> {
+                    usbManager.scanDevices()
+                    checkAndAutoConnect()
+                }
+            }
+        }
+    }
+
     private val profileListener = object : BluetoothProfile.ServiceListener {
         override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {
             if (profile == BluetoothProfile.A2DP) {
@@ -195,16 +263,23 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
-        val filter = IntentFilter().apply {
+        val btFilter = IntentFilter().apply {
             addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
             addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
             addAction(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED)
             addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
         }
+        val usbFilter = IntentFilter().apply {
+            addAction(LogitechUsbManager.ACTION_USB_PERMISSION)
+            addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+            addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            application.registerReceiver(bluetoothReceiver, filter, Context.RECEIVER_EXPORTED)
+            application.registerReceiver(bluetoothReceiver, btFilter, Context.RECEIVER_EXPORTED)
+            application.registerReceiver(usbReceiver, usbFilter, Context.RECEIVER_EXPORTED)
         } else {
-            application.registerReceiver(bluetoothReceiver, filter)
+            application.registerReceiver(bluetoothReceiver, btFilter)
+            application.registerReceiver(usbReceiver, usbFilter)
         }
 
         try {
@@ -213,12 +288,18 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             bleManager.logFlow.collect { newLog ->
-                _recentLogs.update { (it + newLog).takeLast(80) }
+                _recentLogs.update { (it + newLog).takeLast(100) }
             }
         }
 
         viewModelScope.launch {
-            bleManager.connectionState.collect { state ->
+            usbManager.logFlow.collect { newLog ->
+                _recentLogs.update { (it + newLog).takeLast(100) }
+            }
+        }
+
+        viewModelScope.launch {
+            connectionState.collect { state ->
                 if (state == BleConnectionState.CONNECTED) {
                     reconnectAttempt = 0
                     autoReconnectJob?.cancel()
@@ -226,15 +307,53 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
                 } else if (_deviceStatus.value == SystemDeviceStatus.APP_LINK_ACTIVE) {
                     _deviceStatus.value = SystemDeviceStatus.DEVICE_CONNECTED_OS
                 }
+                syncWidgets()
             }
         }
 
-        // Seamless automatic reconnect on transient RFCOMM drops (e.g. TWS L/R master switch)
+        // Persist last known case battery + sync widgets whenever state changes
+        viewModelScope.launch {
+            t300State.collect { st ->
+                val mac = _detectedBudsDevice.value?.address ?: _lastDeviceMac.value
+                if (!mac.isNullOrBlank() && st.caseBattery.level in 0..100) {
+                    val now = System.currentTimeMillis()
+                    WidgetStateStore.saveLastCaseBattery(app, mac, st.caseBattery.level, now)
+                    _lastCaseBattery.value = st.caseBattery.level to now
+                }
+                syncWidgets()
+            }
+        }
+
+        // Seamless automatic reconnect on transient RFCOMM drops
         viewModelScope.launch {
             bleManager.unexpectedDisconnectFlow.collect {
                 scheduleAutoReconnect()
             }
         }
+
+        // Initial USB scan (works even without Bluetooth permissions!)
+        usbManager.scanDevices()
+        checkUsbDeviceState()
+    }
+
+    private fun syncWidgets() {
+        val usb = usbManager.detectedUsbHeadset.value
+        val activeName = _customDeviceAlias.value?.takeIf { it.isNotBlank() }
+            ?: usb?.displayName
+            ?: _detectedBudsDevice.value?.name
+            ?: _lastDeviceName.value
+        val activeMac = usb?.usbId ?: _detectedBudsDevice.value?.address ?: _lastDeviceMac.value
+        val model = _detectedModel.value
+        val connected = connectionState.value == BleConnectionState.CONNECTED
+        WidgetStateStore.saveSnapshot(
+            context = app,
+            deviceName = activeName,
+            deviceMac = activeMac,
+            model = model,
+            connected = connected,
+            state = t300State.value
+        )
+        app.updateWidgets()
     }
 
     private fun scheduleAutoReconnect() {
@@ -253,8 +372,9 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun loadCustomAlias(mac: String?) {
+    private fun loadDeviceMetadata(mac: String?) {
         _customDeviceAlias.value = if (mac != null) prefs.getString(KEY_ALIAS_PREFIX + mac, null) else null
+        _lastCaseBattery.value = WidgetStateStore.getLastCaseBattery(app, mac)
     }
 
     private fun saveLastDevice(device: BluetoothDevice, model: BudsModel) {
@@ -262,11 +382,22 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         val mac = device.address
         _lastDeviceName.value = name
         _lastDeviceMac.value = mac
-        loadCustomAlias(mac)
+        loadDeviceMetadata(mac)
         prefs.edit()
             .putString(KEY_LAST_MAC, mac)
             .putString(KEY_LAST_NAME, name)
             .putString(KEY_LAST_MODEL, model.name)
+            .apply()
+    }
+
+    private fun saveLastUsbDevice(info: LogitechUsbManager.UsbHeadsetInfo) {
+        _lastDeviceName.value = info.displayName
+        _lastDeviceMac.value = info.usbId
+        loadDeviceMetadata(info.usbId)
+        prefs.edit()
+            .putString(KEY_LAST_MAC, info.usbId)
+            .putString(KEY_LAST_NAME, info.displayName)
+            .putString(KEY_LAST_MODEL, info.model.name)
             .apply()
     }
 
@@ -283,7 +414,6 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
             if (model == null) remove(KEY_MANUAL_MODEL) else putString(KEY_MANUAL_MODEL, model.name)
         }.apply()
 
-        // Если сейчас подключено A2DP-устройство, сразу переподключаемся с выбранной моделью/протоколом
         autoReconnectJob?.cancel()
         reconnectAttempt = 0
         bleManager.disconnect()
@@ -298,15 +428,37 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onPermissionsDenied() {
         _hasPermissions.value = false
-        _deviceStatus.value = SystemDeviceStatus.NO_PERMISSIONS
+        if (!checkUsbDeviceState()) {
+            _deviceStatus.value = SystemDeviceStatus.NO_PERMISSIONS
+        }
     }
 
-    /**
-     * Автоматическое обнаружение активного A2DP-устройства.
-     * Если ничего не подключено — отображаем ПОСЛЕДНЕЕ подключённое устройство
-     * (а не произвольную сопряжённую модель вроде T300).
-     */
+    fun requestUsbPermission() {
+        usbManager.requestPermission()
+    }
+
+    private fun checkUsbDeviceState(): Boolean {
+        val usbInfo = usbManager.scanDevices() ?: return false
+        saveLastUsbDevice(usbInfo)
+        _detectedBudsDevice.value = null
+        _autoDetectedModel.value = usbInfo.model
+        _detectedModel.value = _manualModelOverride.value ?: usbInfo.model
+        _unsupportedDeviceName.value = null
+        _deviceStatus.value = if (usbInfo.hasPermission && usbManager.connected.value) {
+            SystemDeviceStatus.APP_LINK_ACTIVE
+        } else {
+            SystemDeviceStatus.DEVICE_CONNECTED_OS
+        }
+        syncWidgets()
+        return true
+    }
+
     fun checkAndAutoConnect() {
+        // 0. Check Logitech USB-OTG dongle first (works with or without BT permissions)
+        if (checkUsbDeviceState()) {
+            return
+        }
+
         if (!_hasPermissions.value) return
 
         try {
@@ -314,7 +466,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
             val bonded = bluetoothAdapter?.bondedDevices?.toList() ?: emptyList()
             val manual = _manualModelOverride.value
 
-            // 1. Ищем среди активно подключённых по A2DP поддерживаемую модель (или любую при ручном выборе)
+            // 1. Active supported A2DP headset (or any A2DP device when manual override is chosen)
             val connectedSupported = connectedA2dp.firstOrNull { isSupportedBuds(it) }
                 ?: if (manual != null) connectedA2dp.firstOrNull() else null
 
@@ -338,10 +490,11 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
                 if (!alreadyActive) {
                     connectToDevice(connectedSupported, effectiveModel)
                 }
+                syncWidgets()
                 return
             }
 
-            // Нет активного поддерживаемого A2DP-устройства -> закрываем старый канал
+            // No active supported A2DP device -> close stale link
             autoReconnectJob?.cancel()
             reconnectAttempt = 0
             if (bleManager.connectionState.value != BleConnectionState.DISCONNECTED) {
@@ -349,7 +502,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
             }
             lastConnectedAddress = null
 
-            // 2. Подключено другое (неподдерживаемое) аудиоустройство по A2DP
+            // 2. Unsupported A2DP device connected
             val connectedUnsupported = connectedA2dp.firstOrNull()
             if (connectedUnsupported != null) {
                 _detectedBudsDevice.value = null
@@ -357,10 +510,11 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
                 _detectedModel.value = BudsModel.UNKNOWN
                 _unsupportedDeviceName.value = connectedUnsupported.name ?: connectedUnsupported.address
                 _deviceStatus.value = SystemDeviceStatus.UNSUPPORTED_DEVICE
+                syncWidgets()
                 return
             }
 
-            // 3. Ничего не подключено по A2DP -> показываем последнее подключённое устройство (если оно было)
+            // 3. No active A2DP device -> show last connected device (with last known case battery!)
             val savedMac = prefs.getString(KEY_LAST_MAC, null)
             val savedName = prefs.getString(KEY_LAST_NAME, null)
             val savedModel = BudsModel.fromNameOrNull(prefs.getString(KEY_LAST_MODEL, null)) ?: BudsModel.UNKNOWN
@@ -371,7 +525,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
                 _detectedBudsDevice.value = bondedLast
                 _lastDeviceName.value = bondedLast?.name ?: savedName
                 _lastDeviceMac.value = savedMac
-                loadCustomAlias(savedMac)
+                loadDeviceMetadata(savedMac)
                 val autoFromSaved = BudsModel.fromDeviceName(bondedLast?.name ?: savedName).takeIf { it.isSupported } ?: savedModel
                 _autoDetectedModel.value = autoFromSaved
                 _detectedModel.value = manual ?: autoFromSaved
@@ -381,12 +535,14 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
                 _lastDeviceName.value = null
                 _lastDeviceMac.value = null
                 _customDeviceAlias.value = null
+                _lastCaseBattery.value = null
                 _autoDetectedModel.value = BudsModel.UNKNOWN
                 _detectedModel.value = manual ?: BudsModel.UNKNOWN
                 _deviceStatus.value = SystemDeviceStatus.NO_PAIRED_DEVICE
             }
+            syncWidgets()
         } catch (_: Exception) {
-            // Исключения безопасности при отсутствии разрешений
+            // SecurityException when permissions revoked
         }
     }
 
@@ -396,6 +552,12 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun manualReconnect() {
+        val usb = usbManager.detectedUsbHeadset.value
+        if (usb != null) {
+            if (!usb.hasPermission) usbManager.requestPermission(usb.device)
+            else usbManager.refreshNow()
+            return
+        }
         val device = _detectedBudsDevice.value ?: return
         val model = _manualModelOverride.value ?: BudsModel.fromDeviceName(device.name)
         if (model.isSupported) {
@@ -420,7 +582,8 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshBattery() {
-        bleManager.refreshBattery()
+        if (usbManager.connected.value) usbManager.refreshNow()
+        else bleManager.refreshBattery()
     }
 
     fun refreshAncState() {
@@ -500,20 +663,39 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         bleManager.setHardwareFindBuds(enabled, findChannel.value)
     }
 
+    private fun trySetOsAlias(device: BluetoothDevice, alias: String?): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val res = device.setAlias(alias)
+                res == BluetoothStatusCodes.SUCCESS
+            } else {
+                val m = BluetoothDevice::class.java.getMethod("setAlias", String::class.java)
+                val res = m.invoke(device, alias)
+                (res == true) || (res == 0)
+            }
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
     /**
      * Renames the currently active or last-known device:
      * 1) Firmware rename if supported (Bose BMAP)
-     * 2) Android BluetoothDevice.setAlias() if permitted by OS
-     * 3) Persistent per-MAC custom display alias in realness
+     * 2) Android BluetoothDevice.setAlias() (direct on API 31+; signals NEEDS_CDM_ASSOCIATION if Android 12+ requires CDM approval)
+     * 3) Persistent per-MAC custom display alias in realness + widgets
      */
     fun renameCurrentDevice(newName: String): RenameScope? {
         val device = _detectedBudsDevice.value
-        val mac = device?.address ?: _lastDeviceMac.value ?: return null
+        val mac = usbManager.detectedUsbHeadset.value?.usbId ?: device?.address ?: _lastDeviceMac.value ?: return null
         val trimmed = newName.trim()
 
         if (trimmed.isEmpty()) {
             prefs.edit().remove(KEY_ALIAS_PREFIX + mac).apply()
             _customDeviceAlias.value = null
+            if (device != null) {
+                trySetOsAlias(device, null)
+            }
+            syncWidgets()
             return RenameScope.RESET
         }
 
@@ -523,25 +705,29 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
             false
         }
 
-        var osAliasUpdated = false
-        if (device != null) {
-            try {
-                val m = BluetoothDevice::class.java.getMethod("setAlias", String::class.java)
-                val res = m.invoke(device, trimmed)
-                osAliasUpdated = (res == true) || (res == 0)
-            } catch (_: Throwable) {
-                osAliasUpdated = false
-            }
-        }
+        val osAliasUpdated = if (device != null) trySetOsAlias(device, trimmed) else false
 
         prefs.edit().putString(KEY_ALIAS_PREFIX + mac, trimmed).apply()
         _customDeviceAlias.value = trimmed
+        syncWidgets()
 
         return when {
             fwRenamed -> RenameScope.FIRMWARE
             osAliasUpdated -> RenameScope.OS_ALIAS
+            device != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> RenameScope.NEEDS_CDM_ASSOCIATION
             else -> RenameScope.LOCAL_ALIAS
         }
+    }
+
+    /**
+     * Called immediately after CompanionDeviceManager grants association on Android 12+,
+     * so BluetoothDevice.setAlias() succeeds and updates the real name in Android Bluetooth settings.
+     */
+    fun completeOsAliasRename(newName: String): RenameScope {
+        val device = _detectedBudsDevice.value ?: return RenameScope.LOCAL_ALIAS
+        val trimmed = newName.trim()
+        val ok = trySetOsAlias(device, trimmed.ifEmpty { null })
+        return if (ok) RenameScope.OS_ALIAS else RenameScope.LOCAL_ALIAS
     }
 
     fun setSpatialAudio(enabled: Boolean) {
@@ -549,6 +735,10 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         if (_isPlayingDemo.value) {
             startDemoAudio()
         }
+    }
+
+    fun setSpatialAudioMode(mode: Int) {
+        bleManager.setSpatialAudioMode(mode)
     }
 
     fun refreshSpatialAudio() {
@@ -565,6 +755,10 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setDynamicAudio(enabled: Boolean) {
         bleManager.setDynamicAudio(enabled)
+    }
+
+    fun setBassLevel(level: Int) {
+        bleManager.setBassLevel(level)
     }
 
     fun refreshDynamicAudio() {
@@ -597,6 +791,19 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refreshAutoAnswer() {
         bleManager.refreshAutoAnswer()
+    }
+
+    // Logitech G733 USB-OTG controls
+    fun setSidetone(level: Int) {
+        usbManager.setG733Sidetone(level)
+    }
+
+    fun setLights(enabled: Boolean) {
+        usbManager.setG733Lights(enabled)
+    }
+
+    fun setInactiveTime(minutes: Int) {
+        usbManager.setG733InactiveTime(minutes)
     }
 
     fun toggleDemoAudio() {
@@ -645,7 +852,11 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshAll() {
-        if (connectionState.value == BleConnectionState.CONNECTED) {
+        if (usbManager.connected.value) {
+            usbManager.refreshNow()
+            return
+        }
+        if (bleManager.connectionState.value == BleConnectionState.CONNECTED) {
             val model = _detectedModel.value
             if (model.supportsAnc) bleManager.refreshAncState()
             if (model.supportsGameMode) bleManager.refreshGameMode()
@@ -675,8 +886,9 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         findBudsPlayer.release()
         try {
             getApplication<Application>().unregisterReceiver(bluetoothReceiver)
+            getApplication<Application>().unregisterReceiver(usbReceiver)
             a2dpProfile?.let { bluetoothAdapter?.closeProfileProxy(BluetoothProfile.A2DP, it) }
         } catch (_: Exception) {}
-        bleManager.disconnect()
+        // Keep shared bleManager/usbManager alive in RealnessApp so home screen widgets stay responsive
     }
 }

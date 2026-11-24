@@ -2,9 +2,9 @@
 
 **English** | [Русский](README.ru.md)
 
-Standalone open-source Android app (`uwu.realness.gitveu`) for direct Bluetooth control of **15 earbud brands across 13 protocol families** — no vendor companion apps, no accounts, no cloud services.
+Standalone open-source Android app (`uwu.realness.gitveu`) for direct Bluetooth & USB-OTG control of **16 audio brands across 14 protocol families** — no vendor companion apps, no accounts, no cloud services.
 
-- **Latest release:** `v1.8 (build 9)` — `realness 1.8.apk` and `realness-tiny 1.8.apk`
+- **Latest release:** `v1.9 (build 10)` — `realness 1.9.apk` and `realness-tiny 1.9.apk`
 - **Supported models:** [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md) ([Русский](SUPPORTED_DEVICES.ru.md))
 - **Technical & protocol reference:** [AGENTS.md](AGENTS.md) ([Русский](AGENTS.ru.md))
 
@@ -14,12 +14,12 @@ Standalone open-source Android app (`uwu.realness.gitveu`) for direct Bluetooth 
 
 | Edition | Package | Size | UI & Stack | Notes |
 |---|---|---|---|---|
-| **realness** | `uwu.realness.gitveu` | ~1.6 MB | Kotlin, Jetpack Compose, native **Material 3 Expressive** (Material You dynamic color, interactive spline EQ graph, bundled realme Spatial Audio demo) | Recommended main build |
-| **realness-tiny** | `uwu.realness.gitveu.tiny` | ~65 KB | Pure Java 8 + Android SDK (no Gradle, no AndroidX), classic compact dark UI | Installs side-by-side with `realness`, full 13-protocol support |
+| **realness** | `uwu.realness.gitveu` | ~1.7 MB | Kotlin, Jetpack Compose, native **Material 3 Expressive** (Material You dynamic color + 4×2 / 4×1 home screen widgets, interactive spline EQ graph, Logitech USB-OTG HID, bundled realme Spatial Audio demo) | Recommended main build |
+| **realness-tiny** | `uwu.realness.gitveu.tiny` | ~69 KB | Pure Java 8 + Android SDK (no Gradle, no AndroidX), classic compact dark UI | Installs side-by-side with `realness`, full 14-protocol support |
 
 ---
 
-## Supported Brands (13 Protocol Families)
+## Supported Brands (14 Protocol Families)
 
 Full per-model capability matrix: **[SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md)**.
 
@@ -38,6 +38,7 @@ Full per-model capability matrix: **[SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md)
 - **Jabra** — Elite 4..10 / 75t / 85t, Evolve2 (`Jabra SPP`)
 - **Google Pixel Buds** — Pro, Pro 2, A-Series, 2a (`Maestro HDLC + Pigweed RPC`)
 - **JBL** — Tour, Live, Tune, Wave, Reflect, Club (`JBL BLE GATT`)
+- **Logitech G** — G733 LIGHTSPEED (USB-OTG HID++ 2.0: battery voltage/%, hours left, sidetone, RGB lighting, auto power-off) & G435 LIGHTSPEED / Bluetooth (USB-OTG `046D:0ACB` FFC0 bridge with 22-point Li-Po curve + charging inference + hours left, and Bluetooth HFP / BLE Battery Service)
 
 The **Model** side drawer lets you keep **Automatic** detection or pick any model/protocol manually. When disconnected, `realness` remembers and displays the last connected device instead of a hardcoded placeholder.
 
@@ -46,8 +47,9 @@ The **Model** side drawer lets you keep **Automatic** detection or pick any mode
 ## Features
 
 - **Zero-Touch Auto-Connect:** Listens to Android Bluetooth events (`ACTION_ACL_CONNECTED`, `ACTION_ACL_DISCONNECTED`, A2DP state changes) and opens the SPP/GATT control link automatically as soon as earbuds connect. Includes backoff auto-reconnect on transient RFCOMM drops.
-- **Battery Levels (L / Case / R):** Exact percentages with charging indicator and closed-case normalization (offline case reports `—` instead of `0%`).
-- **Noise Control (ANC):** Noise Cancellation, Off, Transparency, plus ANC intensity levels (Comfort / General / Ultra / Dynamic or Low / Mid / High / Adaptive) on Huawei, Nothing/CMF, and Xiaomi.
+- **Material You / QuickBuds Home Screen Widgets:** 4×2 full card (device name, L / Case / R battery bars, last known case charge with relative timestamp when closed, and one-tap ANC / Off / Transparency pills) and 4×1 compact pill with quick ANC switcher.
+- **Battery Levels (L / Case / R) & Last Known Case Charge:** Exact percentages with charging indicator, closed-case normalization, and automatic persistence of the last reported case battery + relative timestamp (e.g. `60% · 5h ago`) both in-app and on home screen widgets.
+- **Noise Control (ANC) & Full Intensity Levels:** Noise Cancellation, Off, Transparency, plus ANC intensity levels across realme / OnePlus / OPPO, HUAWEI, Nothing / CMF, Xiaomi / Redmi, Bose CNC, Soundcore, and Samsung Galaxy Buds 3 Pro / 4 (Adaptive).
 - **Sound Effects & Protocol-Aware Custom Equalizer:**
   - Brand-native presets.
   - Interactive custom EQ curve editor tailored to each protocol's native band count and dB range:
@@ -59,10 +61,11 @@ The **Model** side drawer lets you keep **Automatic** detection or pick any mode
     - **Sennheiser GAIA** & **Pixel Buds**: 5 bands (`-6..+6 dB`).
     - **Nothing / CMF** (`-6..+6 dB`) & **Bose** (`-10..+10 dB`): 3 bands (Bass / Mid / Treble).
 - **Universal Find My Earbuds:** Works on **all** Bluetooth headsets via a synthesized escalating stereo locator tone (`15% -> 100%` over 20s) with Left / Both / Right channel panning and automatic media volume restoration on Stop, plus optional native firmware chime on supported models (realme / OnePlus / OPPO, Nothing / CMF, Galaxy Buds).
-- **Rename Earbuds:** Updates headset firmware name where supported (Bose BMAP), attempts Android `BluetoothDevice.setAlias()` when allowed by the OS, and saves a persistent per-MAC display alias inside `realness`.
+- **Rename Earbuds (Android OS + Firmware):** Updates headset firmware name where supported (Bose BMAP), renames the device in Android Bluetooth settings via `BluetoothDevice.setAlias()` with automatic Android 12+ `CompanionDeviceManager` association, and saves a persistent per-MAC display alias inside `realness` and widgets.
 - **Low Latency / Game Mode:** Supported on realme / OnePlus / OPPO, Xiaomi / Redmi (including Redmi Buds 4 Active via `0x002F`), HUAWEI, Nothing / CMF, Samsung Galaxy Buds, and Soundcore.
-- **Touch Controls:** Configure Double Tap, Triple Tap, and Touch & Hold independently for Left and Right earbuds (realme / OnePlus / OPPO, HUAWEI).
-- **Spatial Audio, Hi-Res Codecs & Wear Detection:** Spatial Audio (with local realme demo samples), LDAC / LHDC 5.0 / Sound Quality Priority, Dynamic Audio / Ultra Bass, Dual-Device / Seamless Connection with device history, Auto Play/Pause, Auto Answer, and L/R cumulative usage time.
+- **Touch Controls:** Configure Double Tap, Triple Tap, and Touch & Hold independently for Left and Right earbuds (realme / OnePlus / OPPO, HUAWEI, Nothing / CMF).
+- **Spatial Audio, Enhanced Bass & Wear Detection:** Multi-mode Spatial Audio (realme + demo, Nothing / CMF Fixed / Head-tracking / Cinema / Concert, Soundcore Surround, Sennheiser, JBL), Enhanced Bass / Ultra Bass with 1–5 intensity levels on Nothing / CMF, LDAC / LHDC 5.0 / Sound Quality Priority, Dual-Device / Seamless Connection with device history, Auto Play/Pause, Auto Answer, and L/R cumulative usage time.
+- **Logitech G733 / G435 Support:** USB-OTG HID++ 2.0 for G733 (battery voltage + calibrated %, sidetone slider `0–100%`, RGB lighting toggle, auto power-off timer `0–90m`) and G435 (USB-OTG `046D:0ACB` FFC0 bridge with calibrated 22-point voltage curve, smoothing, charging detection, and remaining hours estimate + Bluetooth HFP / BLE BAS battery).
 - **Live Protocol Console:** Collapsible real-time hex/event log with copy and clear actions.
 
 > **Intentionally omitted:** vendor cloud features (MindFlow, Hearing Test, AI Translate, Fit Test, Find My Phone) and risky write operations (OTA firmware flashing, factory reset).
@@ -121,4 +124,4 @@ cd .. && ./tiny-realness/build.sh
 
 ## Protocol Credits
 
-Reverse-engineering and open-source protocol references: `realme Link` (`com.realme.iot.headset.tl.*`), [QuickBuds](https://github.com/spizganed/QuickBuds), [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds), [noctalia/honor-earbuds](https://github.com/noctalia-dev/community-plugins/tree/main/honor-earbuds), [swift-nothing-ear](https://github.com/bestK1ngArthur/swift-nothing-ear), [omarchy-nothing-ear](https://github.com/r-witz/omarchy-nothing-ear), [kde-headphones](https://github.com/RodiAda/kde-headphones), and [MiBudsClient](https://github.com/CesurPolat/MiBudsClient).
+Reverse-engineering and open-source protocol references: `realme Link` (`com.realme.iot.headset.tl.*`), [QuickBuds](https://github.com/spizganed/QuickBuds), [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds), [noctalia/honor-earbuds](https://github.com/noctalia-dev/community-plugins/tree/main/honor-earbuds), [swift-nothing-ear](https://github.com/bestK1ngArthur/swift-nothing-ear), [omarchy-nothing-ear](https://github.com/r-witz/omarchy-nothing-ear), [kde-headphones](https://github.com/RodiAda/kde-headphones), [MiBudsClient](https://github.com/CesurPolat/MiBudsClient), [HeadsetControl](https://github.com/Sapd/HeadsetControl) / [HeadsetControl-G733-Tray](https://github.com/Spider19996/HeadsetControl-G733-Tray), and [g435-hub](https://github.com/minchiki/g435-hub).

@@ -132,6 +132,18 @@ object GalaxyProtocol {
         }
     }
 
+    fun buildAncLevelWrite(level: HuaweiProtocol.AncLevel, model: T300Protocol.BudsModel): ByteArray {
+        // Buds3 Pro / Buds4 support Adaptive ANC (0x03) on MSG_NOISE_CONTROLS
+        val code: Byte = if (level == HuaweiProtocol.AncLevel.DYNAMIC &&
+            (model == T300Protocol.BudsModel.GALAXY_BUDS_3_PRO || model == T300Protocol.BudsModel.GALAXY_BUDS_4)
+        ) {
+            0x03
+        } else {
+            0x01
+        }
+        return buildPacket(MSG_NOISE_CONTROLS, byteArrayOf(code), false)
+    }
+
     fun buildEqWrite(preset: T300Protocol.EqPreset, legacy: Boolean): ByteArray {
         val code: Int = when (preset) {
             T300Protocol.EqPreset.ORIGINAL_SOUND -> 0 // Normal

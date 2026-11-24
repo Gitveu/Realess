@@ -52,6 +52,10 @@ object T300GattConfig {
     // JBL BLE GATT Service UUID (kde-headphones)
     val JBL_GATT_SERVICE: UUID = UUID.fromString("65786365-6c70-6f69-6e74-2e636f6d0000")
 
+    // Standard BLE Battery Service (used by Logitech G435 in Bluetooth mode)
+    val BATTERY_SERVICE: UUID = UUID.fromString("0000180F-0000-1000-8000-00805F9B34FB")
+    val BATTERY_LEVEL_CHAR: UUID = UUID.fromString("00002A19-0000-1000-8000-00805F9B34FB")
+
     val KNOWN_SPP_UUIDS = listOf(
         REALME_VENDOR_SPP_UUID,
         OPPO_ONEPLUS_SPP_UUID,

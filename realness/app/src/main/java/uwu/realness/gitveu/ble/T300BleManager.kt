@@ -51,7 +51,8 @@ enum class BleConnectionState {
 enum class ActiveTransport {
     NONE,
     RFCOMM_SPP,
-    BLE_GATT
+    BLE_GATT,
+    BT_BATTERY_ONLY
 }
 
 @SuppressLint("MissingPermission")
@@ -83,6 +84,8 @@ class T300BleManager(private val context: Context) {
     private var bluetoothGatt: BluetoothGatt? = null
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
     private var notifyCharacteristic: BluetoothGattCharacteristic? = null
+    private var batteryLevelCharacteristic: BluetoothGattCharacteristic? = null
+    private var activeBtDevice: BluetoothDevice? = null
 
     private var activeTransport = ActiveTransport.NONE
     private var activeModel = T300Protocol.BudsModel.UNKNOWN
@@ -191,12 +194,24 @@ class T300BleManager(private val context: Context) {
         closeResourcesOnly()
         activeModel = targetModel
         activeDeviceAddress = device.address
+        activeBtDevice = device
         _connectionState.value = BleConnectionState.CONNECTING
         val name = device.name ?: "Headset"
         log("Starting connection to $name (${device.address}, model=$activeModel, proto=${activeModel.protocolFamily})...")
 
         connectJob = scope.launch {
             if (gen != sessionGen.get()) return@launch
+
+            // Logitech G435 / G733 over Bluetooth: read HFP battery level + BLE Battery Service (0x180F/0x2A19)
+            if (activeModel.isLogitech) {
+                log("Connecting Logitech BT battery monitor (HFP + BLE BAS 0x180F)...")
+                activeTransport = ActiveTransport.BT_BATTERY_ONLY
+                _connectionState.value = BleConnectionState.CONNECTED
+                pollStandardBluetoothBattery(device)
+                connectGatt(device, gen)
+                startPolling(gen)
+                return@launch
+            }
 
             // JBL uses BLE GATT directly
             if (activeModel.isJbl) {
@@ -464,6 +479,8 @@ class T300BleManager(private val context: Context) {
         bluetoothGatt = null
         writeCharacteristic = null
         notifyCharacteristic = null
+        batteryLevelCharacteristic = null
+        activeBtDevice = null
 
         activeTransport = ActiveTransport.NONE
         huaweiMultiDevices.clear()
@@ -606,7 +623,7 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
-     * Set ANC intensity level (Huawei / Nothing / Xiaomi)
+     * Set ANC intensity level (Huawei / Nothing / Xiaomi / realme / OnePlus / OPPO / Bose / Soundcore / Galaxy)
      */
     fun setAncLevel(level: HuaweiProtocol.AncLevel) {
         when (activeModel.protocolFamily) {
@@ -627,6 +644,27 @@ class T300BleManager(private val context: Context) {
             T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
                 log("TX Xiaomi ANC Level [${level.name}]")
                 sendRawBytes(XiaomiProtocol.buildAncStrengthSet(level))
+                _t300State.value = _t300State.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
+            }
+            T300Protocol.ProtocolFamily.REALME_TL -> {
+                val frame = T300Protocol.buildAncLevelCommandFrame(level)
+                log("TX Realme ANC Level [${level.name}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
+                sendData(frame)
+                _t300State.value = _t300State.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
+            }
+            T300Protocol.ProtocolFamily.BOSE_BMAP_SPP -> {
+                log("TX Bose CNC Level [${level.name}]")
+                sendRawBytes(BoseProtocol.buildCncLevelSet(level))
+                _t300State.value = _t300State.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
+            }
+            T300Protocol.ProtocolFamily.SOUNDCORE_SPP -> {
+                log("TX Soundcore ANC Level [${level.name}]")
+                sendRawBytes(SoundcoreProtocol.buildAncLevelSet(level, soundcoreLastSound))
+                _t300State.value = _t300State.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
+            }
+            T300Protocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
+                log("TX Galaxy ANC Level [${level.name}]")
+                sendRawBytes(GalaxyProtocol.buildAncLevelWrite(level, activeModel))
                 _t300State.value = _t300State.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
             }
             else -> return
@@ -665,6 +703,14 @@ class T300BleManager(private val context: Context) {
             }
             T300Protocol.ProtocolFamily.JABRA_SPP -> sendRawBytes(JabraProtocol.buildBatteryReq())
             T300Protocol.ProtocolFamily.JBL_GATT -> sendRawBytes(JblProtocol.buildBatteryReq())
+            T300Protocol.ProtocolFamily.LOGITECH_HID -> {
+                activeBtDevice?.let { pollStandardBluetoothBattery(it) }
+                val gatt = bluetoothGatt
+                val bChar = batteryLevelCharacteristic
+                if (gatt != null && bChar != null) {
+                    try { gatt.readCharacteristic(bChar) } catch (_: Exception) {}
+                }
+            }
             else -> {
                 val frame = T300Protocol.buildBatteryRequestFrame()
                 log("TX Battery Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
@@ -694,7 +740,10 @@ class T300BleManager(private val context: Context) {
                 sendRawBytes(BoseProtocol.buildCncReq())
                 sendRawBytes(BoseProtocol.buildAnrReq())
             }
-            T300Protocol.ProtocolFamily.XIAOMI_SPP -> if (xiaomiAuthenticated) sendRawBytes(XiaomiProtocol.buildRunInfoReq())
+            T300Protocol.ProtocolFamily.XIAOMI_SPP -> if (xiaomiAuthenticated) {
+                sendRawBytes(XiaomiProtocol.buildRunInfoReq())
+                sendRawBytes(XiaomiProtocol.buildGetConfigReq(XiaomiProtocol.CFG_EFFECT_STRENGTH))
+            }
             T300Protocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
                 sendRawBytes(SennheiserProtocol.buildPacket(SennheiserProtocol.CMD_GET_ANC_ENABLED))
                 sendRawBytes(SennheiserProtocol.buildPacket(SennheiserProtocol.CMD_GET_TRANSPARENT))
@@ -790,13 +839,22 @@ class T300BleManager(private val context: Context) {
     }
 
     /**
-     * Request Spatial Audio state (Feature 27 / 0x1B)
+     * Request Spatial Audio state (realme Feature 0x1B / Nothing 0xC04F)
      */
     fun refreshSpatialAudio() {
-        if (!activeModel.isRealme) return
-        val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_SPATIAL_AUDIO)
-        log("TX SpatialAudio Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
-        sendData(frame)
+        when (activeModel.protocolFamily) {
+            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+                if (!activeModel.supportsNothingSpatial) return
+                log("TX Nothing SpatialAudio Req")
+                sendRawBytes(NothingProtocol.buildSpatialRead())
+            }
+            T300Protocol.ProtocolFamily.REALME_TL -> {
+                val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_SPATIAL_AUDIO)
+                log("TX SpatialAudio Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
+                sendData(frame)
+            }
+            else -> return
+        }
     }
 
     /**
@@ -804,8 +862,18 @@ class T300BleManager(private val context: Context) {
      */
     fun setSpatialAudio(enabled: Boolean) {
         when (activeModel.protocolFamily) {
+            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+                val modes = activeModel.nothingSpatialModes
+                val mode = if (enabled) modes.firstOrNull { it != NothingProtocol.SPATIAL_OFF } ?: NothingProtocol.SPATIAL_FIXED else NothingProtocol.SPATIAL_OFF
+                setSpatialAudioMode(mode)
+            }
             T300Protocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
                 sendRawBytes(SennheiserProtocol.buildPacket(SennheiserProtocol.CMD_SET_SPATIAL, byteArrayOf(if (enabled) 0x01 else 0x00)))
+                _t300State.value = _t300State.value.copy(spatialAudio = enabled)
+            }
+            T300Protocol.ProtocolFamily.SOUNDCORE_SPP -> {
+                log("TX Soundcore Surround [${if (enabled) "ON" else "OFF"}]")
+                sendRawBytes(SoundcoreProtocol.buildSurroundSet(enabled))
                 _t300State.value = _t300State.value.copy(spatialAudio = enabled)
             }
             T300Protocol.ProtocolFamily.JBL_GATT -> {
@@ -820,6 +888,20 @@ class T300BleManager(private val context: Context) {
             }
             else -> return
         }
+    }
+
+    /**
+     * Set multi-mode Nothing / CMF Spatial Audio (0=Off, 1=Fixed, 2=Head-tracking, 3=Concert, 4=Cinema)
+     */
+    fun setSpatialAudioMode(mode: Int) {
+        if (!activeModel.isNothing || !activeModel.supportsNothingSpatial) return
+        log("TX Nothing SpatialAudio [mode=$mode]")
+        sendRawBytes(NothingProtocol.buildSpatialWrite(mode))
+        _t300State.value = _t300State.value.copy(
+            spatialAudioMode = mode,
+            spatialAudio = mode != NothingProtocol.SPATIAL_OFF
+        )
+        scope.launch { delay(200); refreshSpatialAudio() }
     }
 
     /**
@@ -887,7 +969,7 @@ class T300BleManager(private val context: Context) {
             T300Protocol.ProtocolFamily.NOTHING_SPP -> {
                 log("TX Nothing BassBoost [${if (enabled) "ON" else "OFF"}, lvl=$nothingLastBassLevel]")
                 sendRawBytes(NothingProtocol.buildBassBoostWrite(enabled, nothingLastBassLevel))
-                _t300State.value = _t300State.value.copy(dynamicAudio = enabled)
+                _t300State.value = _t300State.value.copy(dynamicAudio = enabled, bassLevel = nothingLastBassLevel)
                 scope.launch { delay(200); refreshDynamicAudio() }
             }
             T300Protocol.ProtocolFamily.REALME_TL -> {
@@ -898,6 +980,19 @@ class T300BleManager(private val context: Context) {
             }
             else -> return
         }
+    }
+
+    /**
+     * Set Nothing / CMF Enhanced Bass intensity level (1..5)
+     */
+    fun setBassLevel(level: Int) {
+        if (!activeModel.isNothing) return
+        val clamped = level.coerceIn(1, 5)
+        nothingLastBassLevel = clamped
+        log("TX Nothing BassBoost Level [$clamped]")
+        sendRawBytes(NothingProtocol.buildBassBoostWrite(true, clamped))
+        _t300State.value = _t300State.value.copy(dynamicAudio = true, bassLevel = clamped)
+        scope.launch { delay(200); refreshDynamicAudio() }
     }
 
     /**
@@ -1425,6 +1520,16 @@ class T300BleManager(private val context: Context) {
         }
     }
 
+    private fun applyStandardEqState(preset: EqPreset) {
+        val cur = _t300State.value
+        _t300State.value = cur.copy(
+            eqPreset = preset,
+            activeCustomEqId = null,
+            activeCustomEqName = null,
+            customEqProfiles = cur.customEqProfiles.map { if (it.isSelected) it.copy(isSelected = false) else it }
+        )
+    }
+
     /**
      * Set EQ preset
      */
@@ -1434,49 +1539,47 @@ class T300BleManager(private val context: Context) {
                 val hwId = HuaweiProtocol.eqPresetToHuaweiId(preset, activeModel.huaweiEqUsesPro3Ids)
                 log("TX Huawei EQ [${preset.name} -> id=$hwId]")
                 sendRawBytes(HuaweiProtocol.buildEqWrite(hwId))
-                _t300State.value = _t300State.value.copy(eqPreset = preset, activeCustomEqName = null)
+                applyStandardEqState(preset)
                 scope.launch { delay(200); refreshEq() }
             }
             T300Protocol.ProtocolFamily.HONOR_CHOICE_SPP -> {
                 log("TX HonorChoice EQ [${preset.name}]")
                 sendRawBytes(HuaweiProtocol.buildHonorChoiceEqWrite(preset))
-                _t300State.value = _t300State.value.copy(eqPreset = preset, activeCustomEqName = null)
+                applyStandardEqState(preset)
             }
             T300Protocol.ProtocolFamily.NOTHING_SPP -> {
                 log("TX Nothing EQ [${preset.name}]")
-                sendRawBytes(NothingProtocol.buildEqWrite(preset, activeModel.nothingUsesListeningModeEq))
-                _t300State.value = _t300State.value.copy(eqPreset = preset, activeCustomEqName = null)
+                val isBuds2a = activeModel == T300Protocol.BudsModel.CMF_BUDS_2A
+                sendRawBytes(NothingProtocol.buildEqWrite(preset, activeModel.nothingUsesListeningModeEq, isBuds2a))
+                applyStandardEqState(preset)
                 scope.launch { delay(200); refreshEq() }
             }
             T300Protocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
                 log("TX Galaxy EQ [${preset.name}]")
                 val legacy = activeModel == T300Protocol.BudsModel.GALAXY_BUDS
                 sendRawBytes(GalaxyProtocol.buildEqWrite(preset, legacy))
-                _t300State.value = _t300State.value.copy(eqPreset = preset, activeCustomEqName = null)
+                applyStandardEqState(preset)
             }
             T300Protocol.ProtocolFamily.SONY_MDR_SPP -> {
                 log("TX Sony EQ [${preset.name}]")
                 sendRawBytes(SonyProtocol.buildEqSet(sonySeq, preset))
-                _t300State.value = _t300State.value.copy(eqPreset = preset, activeCustomEqName = null)
+                applyStandardEqState(preset)
             }
             T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
                 log("TX Xiaomi EQ [${preset.name}]")
                 sendRawBytes(XiaomiProtocol.buildEqSet(preset))
-                _t300State.value = _t300State.value.copy(eqPreset = preset, activeCustomEqName = null)
+                applyStandardEqState(preset)
             }
             T300Protocol.ProtocolFamily.JBL_GATT -> {
                 log("TX JBL EQ [${preset.name}]")
                 sendRawBytes(JblProtocol.buildEqSet(preset))
-                _t300State.value = _t300State.value.copy(eqPreset = preset, activeCustomEqName = null)
+                applyStandardEqState(preset)
             }
             else -> {
                 val frame = T300Protocol.buildEqCommandFrame(preset)
                 log("TX EQ [${preset.name}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
-                _t300State.value = _t300State.value.copy(
-                    eqPreset = preset,
-                    activeCustomEqName = null
-                )
+                applyStandardEqState(preset)
             }
         }
     }
@@ -1501,6 +1604,10 @@ class T300BleManager(private val context: Context) {
                     }
                 }
             }
+            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+                log("TX Nothing Gestures Req")
+                sendRawBytes(NothingProtocol.buildGestureRead())
+            }
             T300Protocol.ProtocolFamily.REALME_TL -> {
                 val frame = T300Protocol.buildKeyFunctionRequestFrame()
                 log("TX KeySettings Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
@@ -1520,6 +1627,13 @@ class T300BleManager(private val context: Context) {
                 val code = HuaweiProtocol.actionToHuaweiTapCode(action, gesture, isFb3)
                 log("TX Huawei Key [${side.name} ${gesture.name} -> ${action.name} (code=$code)]")
                 sendRawBytes(HuaweiProtocol.buildKeyWrite(gesture, side, code))
+                val currentMap = _t300State.value.touchSettings.toMutableMap()
+                currentMap[Pair(side, gesture)] = action
+                _t300State.value = _t300State.value.copy(touchSettings = currentMap)
+            }
+            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+                log("TX Nothing Gesture [${side.name} ${gesture.name} -> ${action.name}]")
+                sendRawBytes(NothingProtocol.buildGestureWrite(side, gesture, action))
                 val currentMap = _t300State.value.touchSettings.toMutableMap()
                 currentMap[Pair(side, gesture)] = action
                 _t300State.value = _t300State.value.copy(touchSettings = currentMap)
@@ -1596,6 +1710,7 @@ class T300BleManager(private val context: Context) {
                             log("Error sending GATT: ${e.message}")
                         }
                     }
+                    ActiveTransport.BT_BATTERY_ONLY,
                     ActiveTransport.NONE -> {
                         log("Error: no active connection")
                     }
@@ -1774,12 +1889,17 @@ class T300BleManager(private val context: Context) {
         pollJob = scope.launch {
             while (isActive && gen == sessionGen.get() && _connectionState.value == BleConnectionState.CONNECTED) {
                 val interval = when {
+                    activeModel.isLogitech -> 15_000L
                     activeModel.isBose || activeModel.isSennheiser || activeModel.isJabra || activeModel.isSony || activeModel.isXiaomi -> 10_000L
                     activeModel.isSoundcore || activeModel.isJbl -> 5_000L
                     else -> POLL_INTERVAL_MS
                 }
                 delay(interval)
                 if (gen != sessionGen.get() || _connectionState.value != BleConnectionState.CONNECTED) break
+                if (activeModel.isLogitech) {
+                    refreshBattery()
+                    continue
+                }
                 if (activeModel.isBose || activeModel.isSoundcore || activeModel.isSennheiser || activeModel.isJabra || activeModel.isSony || activeModel.isXiaomi || activeModel.isJbl) {
                     refreshBattery()
                     delay(80)
@@ -1827,17 +1947,48 @@ class T300BleManager(private val context: Context) {
         }
     }
 
+    private fun pollStandardBluetoothBattery(device: BluetoothDevice) {
+        try {
+            val m = BluetoothDevice::class.java.getMethod("getBatteryLevel")
+            val raw = m.invoke(device) as? Int ?: -1
+            if (raw in 0..100) {
+                val hours = if (activeModel == T300Protocol.BudsModel.LOGITECH_G435) (raw / 100f) * 18.0f else null
+                log("RX BT HFP Battery (${device.name}): $raw%")
+                updateBatteryState(
+                    listOf(
+                        T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, raw, false),
+                        T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, raw, false),
+                        T300Protocol.BatteryInfo(ComponentRole.CASE, -1, false)
+                    ),
+                    isSnapshot = true
+                )
+                if (hours != null) {
+                    _t300State.value = _t300State.value.copy(batteryHoursLeft = hours)
+                }
+            }
+        } catch (_: Throwable) {
+            // getBatteryLevel not exposed on this OEM/API
+        }
+    }
+
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     log("GATT connected (status=$status). Discovering services...")
-                    _connectionState.value = BleConnectionState.DISCOVERING_SERVICES
+                    if (!activeModel.isLogitech) {
+                        _connectionState.value = BleConnectionState.DISCOVERING_SERVICES
+                    }
                     gatt.discoverServices()
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     log("GATT disconnected (status=$status)")
-                    disconnect()
+                    if (activeModel.isLogitech) {
+                        // Keep HFP battery monitoring active even if BLE GATT disconnects
+                        batteryLevelCharacteristic = null
+                    } else {
+                        disconnect()
+                    }
                 }
             }
         }
@@ -1845,7 +1996,26 @@ class T300BleManager(private val context: Context) {
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 log("GATT service discovery failed: status=$status")
-                disconnect()
+                if (!activeModel.isLogitech) disconnect()
+                return
+            }
+
+            // Logitech G435 Bluetooth mode: read standard BLE Battery Service (0x180F / 0x2A19)
+            if (activeModel.isLogitech) {
+                val bas = gatt.getService(T300GattConfig.BATTERY_SERVICE)
+                val lvlChar = bas?.getCharacteristic(T300GattConfig.BATTERY_LEVEL_CHAR)
+                if (lvlChar != null) {
+                    batteryLevelCharacteristic = lvlChar
+                    log("✓ Found BLE Battery Service (0x180F/0x2A19)")
+                    try {
+                        gatt.readCharacteristic(lvlChar)
+                        if ((lvlChar.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0) {
+                            enableNotifications(gatt, lvlChar)
+                        }
+                    } catch (_: Exception) {}
+                } else {
+                    log("BLE Battery Service (0x180F) not present; using Android HFP battery level")
+                }
                 return
             }
 
@@ -1950,12 +2120,49 @@ class T300BleManager(private val context: Context) {
         }
 
         private fun finishGattConnection() {
+            if (activeModel.isLogitech) return
             _connectionState.value = BleConnectionState.CONNECTED
             finishConnectionReady(sessionGen.get())
         }
 
+        private fun handleBatteryCharValue(bytes: ByteArray) {
+            if (bytes.isEmpty()) return
+            val lvl = bytes[0].toInt() and 0xFF
+            if (lvl in 0..100) {
+                val hours = if (activeModel == T300Protocol.BudsModel.LOGITECH_G435) (lvl / 100f) * 18.0f else null
+                log("RX BLE Battery Service (0x2A19): $lvl%")
+                updateBatteryState(
+                    listOf(
+                        T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, lvl, false),
+                        T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, lvl, false),
+                        T300Protocol.BatteryInfo(ComponentRole.CASE, -1, false)
+                    ),
+                    isSnapshot = true
+                )
+                if (hours != null) {
+                    _t300State.value = _t300State.value.copy(batteryHoursLeft = hours)
+                }
+            }
+        }
+
+        override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == T300GattConfig.BATTERY_LEVEL_CHAR) {
+                handleBatteryCharValue(value)
+            }
+        }
+
+        @Deprecated("Deprecated in Java")
+        override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == T300GattConfig.BATTERY_LEVEL_CHAR) {
+                @Suppress("DEPRECATION")
+                characteristic.value?.let { handleBatteryCharValue(it) }
+            }
+        }
+
         private fun handleGattRx(bytes: ByteArray) {
-            if (activeModel.isJbl) {
+            if (activeModel.isLogitech) {
+                handleBatteryCharValue(bytes)
+            } else if (activeModel.isJbl) {
                 jblAcc += bytes
                 val (pkts, rem) = JblProtocol.parsePacketsFromStreamBuffer(jblAcc)
                 jblAcc = rem
@@ -2003,9 +2210,13 @@ class T300BleManager(private val context: Context) {
             T300Protocol.CMD_ANC_STATE_RSP -> {
                 log("RX $hexCmd [$hexPayload]")
                 val mode = T300Protocol.parseAncStatePayload(frame.payload)
+                val level = T300Protocol.parseAncStateLevel(frame.payload)
                 if (mode != null) {
-                    log("RX ANC State: ${mode.name}")
-                    _t300State.value = _t300State.value.copy(ancMode = mode)
+                    log("RX ANC State: ${mode.name}${if (level != null) " (${level.name})" else ""}")
+                    _t300State.value = _t300State.value.copy(
+                        ancMode = mode,
+                        ancLevel = level ?: _t300State.value.ancLevel
+                    )
                 }
             }
             T300Protocol.CMD_SWITCH_FEATURE_RSP -> {
@@ -2100,10 +2311,7 @@ class T300BleManager(private val context: Context) {
                 val preset = T300Protocol.parseEqPayload(frame.payload)
                 if (preset != null) {
                     log("RX EQ State: ${preset.name} (id=$rawId)")
-                    _t300State.value = _t300State.value.copy(
-                        eqPreset = preset,
-                        activeCustomEqName = null
-                    )
+                    applyStandardEqState(preset)
                 } else if (rawId != null) {
                     log("RX EQ State: Custom (rawId=$rawId)")
                     _t300State.value = _t300State.value.copy(
@@ -2176,9 +2384,13 @@ class T300BleManager(private val context: Context) {
                 log("RX Event $hexCmd [$hexPayload]")
                 if (frame.payload.isNotEmpty() && frame.payload[0].toInt() == 0x03) {
                     val mode = T300Protocol.parseAncEventPayload(frame.payload)
+                    val level = T300Protocol.parseAncEventLevel(frame.payload)
                     if (mode != null) {
-                        log("RX Event: ANC switched to ${mode.name}")
-                        _t300State.value = _t300State.value.copy(ancMode = mode)
+                        log("RX Event: ANC switched to ${mode.name}${if (level != null) " (${level.name})" else ""}")
+                        _t300State.value = _t300State.value.copy(
+                            ancMode = mode,
+                            ancLevel = level ?: _t300State.value.ancLevel
+                        )
                     }
                 } else if (frame.payload.isNotEmpty() && frame.payload[0] == T300Protocol.EVENT_TYPE_GAME_MODE) {
                     val gm = T300Protocol.parseGameModeEventPayload(frame.payload)
@@ -2474,7 +2686,8 @@ class T300BleManager(private val context: Context) {
                 }
             }
             NothingProtocol.CMD_ANC_RSP,
-            NothingProtocol.CMD_ANC_EVENT -> {
+            NothingProtocol.CMD_ANC_EVENT,
+            NothingProtocol.CMD_ANC_EVENT_C -> {
                 val parsed = NothingProtocol.parseAncPayload(p)
                 if (parsed != null) {
                     val (mode, level) = parsed
@@ -2484,12 +2697,16 @@ class T300BleManager(private val context: Context) {
             }
             NothingProtocol.CMD_EQ_CLASSIC_RSP,
             NothingProtocol.CMD_EQ_LISTENING_RSP -> {
-                if (p.isNotEmpty()) {
-                    val id = p[0].toInt() and 0xFF
+                val id = NothingProtocol.parseEqIdFromPayload(p)
+                if (id != null) {
                     val useListening = pkg.commandId == NothingProtocol.CMD_EQ_LISTENING_RSP
                     val (preset, customName) = NothingProtocol.nothingIdToEqPreset(id, useListening)
                     log("RX Nothing EQ: ${preset?.name ?: customName ?: "id=$id"}")
-                    _t300State.value = _t300State.value.copy(eqPreset = preset, activeCustomEqName = customName)
+                    if (preset != null) {
+                        applyStandardEqState(preset)
+                    } else {
+                        _t300State.value = _t300State.value.copy(eqPreset = null, activeCustomEqName = customName)
+                    }
                 }
             }
             NothingProtocol.CMD_CUSTOM_EQ_RSP -> {
@@ -2500,8 +2717,8 @@ class T300BleManager(private val context: Context) {
                 }
             }
             NothingProtocol.CMD_IN_EAR_RSP -> {
-                if (p.size >= 3) {
-                    val on = (p[2].toInt() and 0xFF) == 1
+                val on = NothingProtocol.parseInEarPayload(p)
+                if (on != null) {
                     log("RX Nothing InEar: ${if (on) "ON" else "OFF"}")
                     _t300State.value = _t300State.value.copy(autoPlayPause = on)
                 }
@@ -2514,14 +2731,31 @@ class T300BleManager(private val context: Context) {
                 }
             }
             NothingProtocol.CMD_BASS_BOOST_RSP -> {
-                if (p.isNotEmpty()) {
-                    val on = (p[0].toInt() and 0xFF) == 1
-                    if (p.size >= 2) {
-                        val lvl = p[1].toInt() and 0xFF
-                        if (lvl in 1..5) nothingLastBassLevel = lvl
-                    }
-                    log("RX Nothing BassBoost: ${if (on) "ON" else "OFF"} (lvl=$nothingLastBassLevel)")
-                    _t300State.value = _t300State.value.copy(dynamicAudio = on)
+                val parsed = NothingProtocol.parseBassBoostPayload(p)
+                if (parsed != null) {
+                    val (on, lvl) = parsed
+                    nothingLastBassLevel = lvl
+                    log("RX Nothing BassBoost: ${if (on) "ON" else "OFF"} (lvl=$lvl)")
+                    _t300State.value = _t300State.value.copy(dynamicAudio = on, bassLevel = lvl)
+                }
+            }
+            NothingProtocol.CMD_SPATIAL_RSP -> {
+                val mode = NothingProtocol.parseSpatialPayload(p)
+                if (mode != null) {
+                    log("RX Nothing SpatialAudio: mode=$mode")
+                    _t300State.value = _t300State.value.copy(
+                        spatialAudioMode = mode,
+                        spatialAudio = mode != NothingProtocol.SPATIAL_OFF
+                    )
+                }
+            }
+            NothingProtocol.CMD_GESTURE_RSP -> {
+                val items = NothingProtocol.parseGesturesPayload(p)
+                if (items.isNotEmpty()) {
+                    log("RX Nothing Gestures: ${items.size} mappings")
+                    val map = _t300State.value.touchSettings.toMutableMap()
+                    for (it in items) map[Pair(it.side, it.gesture)] = it.action
+                    _t300State.value = _t300State.value.copy(touchSettings = map)
                 }
             }
             else -> {
@@ -2720,7 +2954,15 @@ class T300BleManager(private val context: Context) {
                             raw >= steps - 1 -> AncMode.TRANSPARENCY
                             else -> AncMode.NOISE_REDUCTION
                         }
-                        _t300State.value = _t300State.value.copy(ancMode = mode)
+                        val lvl = when {
+                            raw <= 1 -> HuaweiProtocol.AncLevel.ULTRA
+                            raw <= 4 -> HuaweiProtocol.AncLevel.GENERAL
+                            else -> HuaweiProtocol.AncLevel.COMFORT
+                        }
+                        _t300State.value = _t300State.value.copy(
+                            ancMode = mode,
+                            ancLevel = if (mode == AncMode.NOISE_REDUCTION) lvl else _t300State.value.ancLevel
+                        )
                     }
                     BoseProtocol.FUNC_ANR.toInt() -> {
                         val mode = when (p[0].toInt() and 0xFF) {
@@ -2800,7 +3042,16 @@ class T300BleManager(private val context: Context) {
                         1 -> AncMode.TRANSPARENCY
                         else -> AncMode.OFF
                     }
-                    _t300State.value = _t300State.value.copy(ancMode = mode)
+                    val lvl = when (b[1].toInt() and 0xFF) {
+                        0 -> HuaweiProtocol.AncLevel.ULTRA
+                        1 -> HuaweiProtocol.AncLevel.GENERAL
+                        2 -> HuaweiProtocol.AncLevel.COMFORT
+                        else -> null
+                    }
+                    _t300State.value = _t300State.value.copy(
+                        ancMode = mode,
+                        ancLevel = if (mode == AncMode.NOISE_REDUCTION) (lvl ?: _t300State.value.ancLevel) else _t300State.value.ancLevel
+                    )
                 }
             }
             SoundcoreProtocol.CMD_GAMING_UPDATE -> {

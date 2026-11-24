@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Старые разрешения для Android <= 11 -->
+    <!-- Legacy Bluetooth permissions for Android <= 11 -->
     <uses-permission
         android:name="android.permission.BLUETOOTH"
         android:maxSdkVersion="30" />
@@ -16,7 +16,7 @@
         android:name="android.permission.ACCESS_COARSE_LOCATION"
         android:maxSdkVersion="30" />
 
-    <!-- Новые разрешения для Android 12+ (API 31+) -->
+    <!-- Android 12+ (API 31+) Bluetooth permissions -->
     <uses-permission
         android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission
@@ -24,15 +24,22 @@
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="s" />
 
-    <!-- Поддержка Bluetooth и BLE -->
+    <!-- Hardware features -->
     <uses-feature
         android:name="android.hardware.bluetooth"
         android:required="true" />
     <uses-feature
         android:name="android.hardware.bluetooth_le"
         android:required="false" />
+    <uses-feature
+        android:name="android.hardware.usb.host"
+        android:required="false" />
+    <uses-feature
+        android:name="android.software.companion_device_setup"
+        android:required="false" />
 
     <application
+        android:name=".RealnessApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -50,7 +57,44 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/usb_device_filter" />
         </activity>
+
+        <!-- Material You 4x2 Full Widget (Battery + Last Case + ANC Pills) -->
+        <receiver
+            android:name=".widget.RealnessWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_full_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="uwu.realness.gitveu.widget.ACTION_ANC_NR" />
+                <action android:name="uwu.realness.gitveu.widget.ACTION_ANC_OFF" />
+                <action android:name="uwu.realness.gitveu.widget.ACTION_ANC_TR" />
+                <action android:name="uwu.realness.gitveu.widget.ACTION_REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_realness_info" />
+        </receiver>
+
+        <!-- Material You 4x1 Compact Widget (Battery + Quick ANC Cycle) -->
+        <receiver
+            android:name=".widget.RealnessCompactWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_compact_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="uwu.realness.gitveu.widget.ACTION_CYCLE_ANC" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_realness_compact_info" />
+        </receiver>
     </application>
 
 </manifest>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Logitech G733 Lightspeed USB Dongles (0x046D = 1133) -->
+    <usb-device vendor-id="1133" product-id="2741" /> <!-- 0x0AB5 -->
+    <usb-device vendor-id="1133" product-id="2814" /> <!-- 0x0AFE -->
+    <usb-device vendor-id="1133" product-id="2847" /> <!-- 0x0B1F -->
+    <!-- Logitech G435 Lightspeed USB Dongle -->
+    <usb-device vendor-id="1133" product-id="2763" /> <!-- 0x0ACB -->
+</resources>

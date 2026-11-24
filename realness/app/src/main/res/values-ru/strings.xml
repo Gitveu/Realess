@@ -25,6 +25,13 @@
     <string name="battery_left">Левый</string>
     <string name="battery_case">Кейс</string>
     <string name="battery_right">Правый</string>
+    <string name="battery_headset">Гарнитура</string>
+    <string name="battery_hours_left">~%1$.1f ч осталось</string>
+    <string name="battery_voltage_mv">%1$d мВ</string>
+    <string name="time_just_now">только что</string>
+    <string name="time_min_ago">%1$d мин назад</string>
+    <string name="time_hours_ago">%1$d ч назад</string>
+    <string name="time_days_ago">%1$d дн. назад</string>
 
     <!-- Status & Device Card -->
     <string name="default_device_name">Нет подключённых устройств</string>
@@ -47,13 +54,16 @@
 
     <!-- Unsupported Device Warning -->
     <string name="unsupported_warning_title">Устройство не поддерживается</string>
-    <string name="unsupported_warning_message">«%s» не определилось автоматически. Поддерживаются: realme, OnePlus, OPPO, HUAWEI, HONOR, Nothing / CMF, Samsung Galaxy Buds, Sony, Bose, Soundcore, Xiaomi / Redmi, Sennheiser, Jabra, Google Pixel Buds, JBL. Вы также можете выбрать модель вручную в боковой панели.</string>
+    <string name="unsupported_warning_message">«%s» не определилось автоматически. Поддерживаются: realme, OnePlus, OPPO, HUAWEI, HONOR, Nothing / CMF, Samsung Galaxy Buds, Sony, Bose, Soundcore, Xiaomi / Redmi, Sennheiser, Jabra, Google Pixel Buds, JBL, Logitech G. Вы также можете выбрать модель вручную в боковой панели.</string>
 
     <!-- Permissions Banner -->
     <string name="perm_warning_title">Требуется доступ к Bluetooth</string>
     <string name="perm_warning_message">Приложению необходимы разрешения «Устройства поблизости» (BLUETOOTH_CONNECT), чтобы автоматически управлять наушниками.</string>
     <string name="btn_grant_permissions">Разрешить доступ</string>
     <string name="btn_settings">Настройки</string>
+    <string name="usb_perm_title">Обнаружен USB-донгл Logitech</string>
+    <string name="usb_perm_message">Предоставьте доступ к USB для чтения заряда и управления %s.</string>
+    <string name="btn_grant_usb">Разрешить USB</string>
 
     <!-- Noise Cancellation (ANC) -->
     <string name="section_anc">Шумоподавление</string>
@@ -124,8 +134,9 @@
     <string name="rename_action">Переименовать</string>
     <string name="rename_reset_hint">Оставьте пустым, чтобы вернуть исходное имя</string>
     <string name="rename_toast_firmware">Имя отправлено в прошивку наушников</string>
-    <string name="rename_toast_os">Имя устройства Bluetooth обновлено</string>
+    <string name="rename_toast_os">Имя Bluetooth обновлено в Android</string>
     <string name="rename_toast_local">Имя сохранено в realness</string>
+    <string name="rename_toast_cdm_prompt">Подтвердите доступ к устройству для переименования в Android</string>
     <string name="rename_toast_reset">Исходное имя устройства восстановлено</string>
 
     <!-- Button Settings (Gestures) -->
@@ -156,6 +167,10 @@
     <string name="spatial_audio_desc">Создаёт кинематографичный трёхмерный звук вокруг вас.</string>
     <string name="spatial_audio_off">Выкл.</string>
     <string name="spatial_audio_on">Включить</string>
+    <string name="spatial_mode_fixed">Фикс.</string>
+    <string name="spatial_mode_head_tracking">Слежение</string>
+    <string name="spatial_mode_concert">Концерт</string>
+    <string name="spatial_mode_cinema">Кино</string>
     <string name="demo_audio_play">Прослушать демо-звук (realme)</string>
     <string name="demo_audio_playing">Воспроизведение демо-звука…</string>
     <string name="demo_audio_stop">Стоп</string>
@@ -176,8 +191,33 @@
     <string name="high_quality_audio_desc_huawei">Приоритет качества звука над стабильностью соединения.</string>
     <string name="dynamic_audio_title">Динамическое аудио</string>
     <string name="dynamic_audio_desc">Динамически усиливает басы и глубину звучания.</string>
-    <string name="ultra_bass_title">Ultra Bass</string>
+    <string name="ultra_bass_title">Оптимизация баса</string>
     <string name="ultra_bass_desc">Усиливает низкие частоты на наушниках Nothing / CMF.</string>
+    <string name="ultra_bass_status_on">Вкл · Уровень %1$d</string>
+    <string name="ultra_bass_status_off">Выкл.</string>
+    <string name="ultra_bass_level_label">Уровень</string>
+
+    <!-- Logitech G733 / G435 Controls -->
+    <string name="section_logitech">Управление Logitech G</string>
+    <string name="logitech_sidetone_title">Самопрослушивание (Sidetone)</string>
+    <string name="logitech_sidetone_desc">Слышать собственный голос с микрофона в наушниках.</string>
+    <string name="logitech_lights_title">RGB-подсветка</string>
+    <string name="logitech_lights_desc">Включить или отключить светодиодные полосы и логотип.</string>
+    <string name="logitech_inactive_title">Автоотключение</string>
+    <string name="logitech_inactive_desc">Выключать гарнитуру при бездействии.</string>
+    <string name="logitech_inactive_never">Никогда</string>
+    <string name="logitech_inactive_min">%1$d мин</string>
+
+    <!-- Home Screen Widgets -->
+    <string name="widget_full_label">realness · Заряд и ANC</string>
+    <string name="widget_full_desc">Заряд наушников, последний заряд кейса и переключение шумодава.</string>
+    <string name="widget_compact_label">realness · Компактный</string>
+    <string name="widget_compact_desc">Компактный индикатор заряда и быстрая кнопка ANC.</string>
+    <string name="widget_anc_short">Шумодав</string>
+    <string name="widget_trans_short">Прозрач.</string>
+    <string name="widget_no_device">Откройте приложение</string>
+    <string name="status_disconnected">Отключено</string>
+    <string name="cd_refresh_state">Обновить состояние</string>
 
     <!-- Dual-Device Connection -->
     <string name="dual_connection_title">Подключение к двум устройствам</string>

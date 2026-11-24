@@ -61,6 +61,16 @@ object BoseProtocol {
         return buildPacket(BLOCK_SETTINGS, FUNC_CNC, OP_SET_GET, byteArrayOf(raw, enabled))
     }
 
+    fun buildCncLevelSet(level: HuaweiProtocol.AncLevel): ByteArray {
+        // Bose CNC 0..10 (0 = max ANC, 3 = medium, 6 = mild)
+        val raw: Byte = when (level) {
+            HuaweiProtocol.AncLevel.ULTRA, HuaweiProtocol.AncLevel.DYNAMIC -> 0x00
+            HuaweiProtocol.AncLevel.GENERAL -> 0x03
+            HuaweiProtocol.AncLevel.COMFORT -> 0x06
+        }
+        return buildPacket(BLOCK_SETTINGS, FUNC_CNC, OP_SET_GET, byteArrayOf(raw, 0x01))
+    }
+
     fun buildAnrSet(mode: T300Protocol.AncMode): ByteArray {
         val v: Byte = when (mode) {
             T300Protocol.AncMode.NOISE_REDUCTION -> 0x01 // High
@@ -191,6 +201,27 @@ object SoundcoreProtocol {
         }
         return buildPacket(CMD_SOUND_SET, body)
     }
+
+    fun buildAncLevelSet(level: HuaweiProtocol.AncLevel, lastSoundBody: ByteArray?): ByteArray {
+        // Soundcore ANC sub-modes: 0x00 = Transport (Max), 0x01 = Outdoor (Mid), 0x02 = Indoor (Comfort)
+        val sub: Byte = when (level) {
+            HuaweiProtocol.AncLevel.ULTRA, HuaweiProtocol.AncLevel.DYNAMIC -> 0x00
+            HuaweiProtocol.AncLevel.GENERAL -> 0x01
+            HuaweiProtocol.AncLevel.COMFORT -> 0x02
+        }
+        val body = if (lastSoundBody != null && lastSoundBody.size >= 4) {
+            lastSoundBody.copyOf().also {
+                it[0] = 0x00
+                it[1] = sub
+            }
+        } else {
+            byteArrayOf(0x00, sub, 0x01, 0x00)
+        }
+        return buildPacket(CMD_SOUND_SET, body)
+    }
+
+    fun buildSurroundSet(on: Boolean): ByteArray =
+        buildPacket(CMD_SURROUND_SET, byteArrayOf(if (on) 0x01 else 0x00))
 
     fun buildGameModeSet(on: Boolean, isLiberty: Boolean = false): ByteArray =
         buildPacket(if (isLiberty) CMD_GAMING_LIBERTY else CMD_GAMING_SET, byteArrayOf(if (on) 0x01 else 0x00))

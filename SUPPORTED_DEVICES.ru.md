@@ -2,7 +2,7 @@
 
 [English](SUPPORTED_DEVICES.md) | **Русский**
 
-Приложение поддерживает **13 семейств протоколов и 15 брендов** «из коробки» — все совместимые с Android протоколы из `realme Link`, [QuickBuds](https://github.com/spizganed/QuickBuds) (143 модели), [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds), [noctalia/honor-earbuds](https://github.com/noctalia-dev/community-plugins/tree/main/honor-earbuds), [swift-nothing-ear](https://github.com/bestK1ngArthur/swift-nothing-ear) (все 23 модели), [omarchy-nothing-ear](https://github.com/r-witz/omarchy-nothing-ear) и [kde-headphones](https://github.com/RodiAda/kde-headphones). Если ваша модель не определилась автоматически, вы всегда можете выбрать совместимую модель/протокол вручную в боковой панели **«Модель»** (`☰`).
+Приложение поддерживает **14 семейств протоколов и 16 брендов** «из коробки» — все совместимые с Android протоколы из `realme Link`, [QuickBuds](https://github.com/spizganed/QuickBuds) (143 модели), [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds), [noctalia/honor-earbuds](https://github.com/noctalia-dev/community-plugins/tree/main/honor-earbuds), [swift-nothing-ear](https://github.com/bestK1ngArthur/swift-nothing-ear) (все 23 модели), [omarchy-nothing-ear](https://github.com/r-witz/omarchy-nothing-ear), [kde-headphones](https://github.com/RodiAda/kde-headphones), [HeadsetControl](https://github.com/Sapd/HeadsetControl) / [HeadsetControl-G733-Tray](https://github.com/Spider19996/HeadsetControl-G733-Tray) и [g435-hub](https://github.com/minchiki/g435-hub). Если ваша модель не определилась автоматически, вы всегда можете выбрать совместимую модель/протокол вручную в боковой панели **«Модель»** (`☰`).
 
 ---
 
@@ -168,6 +168,17 @@ BLE GATT Service UUID: `65786365-6c70-6f69-6e74-2e636f6d0000` — кадр `0xAA
 | Модели | Функции | Статус |
 |---|---|---|
 | **JBL Tour Pro 2 / 3 / Tour One M2 / Live Pro 2 / Live Beam 3 / Live Flex / Tune Buds / Tune Beam / Wave / Reflect / Club** | Заряд L/Кейс/R (`0x25`), ANC / Выкл. / Ambient Aware (`0x91`), пресеты EQ (`0x40`: Студия / Голоса / Клуб / Басы), Автовоспроизведение/пауза (`0x35`), Пространственное аудио (`0x9D`) | Добавлено `[kde-headphones]` |
+
+---
+
+## 16. Игровые гарнитуры Logitech G (`USB-OTG HID` и Bluetooth)
+USB VID `0x046D` (`G733`: PID `0x0AB5`, `0x0AFE`, `0x0B1F`; `G435`: PID `0x0ACB` vendor FFC0 Report 6 + Bluetooth HFP/BLE BAS `0x180F`).  
+*Источники: [HeadsetControl](https://github.com/Sapd/HeadsetControl), [HeadsetControl-G733-Tray](https://github.com/Spider19996/HeadsetControl-G733-Tray), [g435-hub](https://github.com/minchiki/g435-hub).*
+
+| Модель | Функции | Статус |
+|---|---|---|
+| **Logitech G733 LIGHTSPEED** | USB-OTG HID++ 2.0: напряжение + калиброванный % заряда + прогноз часов, Sidetone (`0–100%`), RGB-подсветка (полосы + логотип), автоотключение (`0–90 мин`) | Добавлено `[HeadsetControl]` |
+| **Logitech G435 LIGHTSPEED / Bluetooth** | USB-OTG 2.4 ГГц донгл (`046D:0ACB` FFC0-мост, 22-точечная кривая Li-Po, сглаживание, определение зарядки, прогноз часов) + Bluetooth HFP и BLE Battery Service (`0x180F/0x2A19`) | Добавлено `[g435-hub]` |
 
 ---
 

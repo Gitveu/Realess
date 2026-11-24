@@ -168,6 +168,14 @@ final class BudsLink {
                 if (bm != null && bm.getAdapter() != null) {
                     try { bm.getAdapter().cancelDiscovery(); } catch (Exception ignored) {}
                 }
+                if (Protocol.isLogitech(activeModel)) {
+                    connState = CONN_CONNECTED;
+                    log("Logitech BT battery monitor active");
+                    notifyState();
+                    pollStandardBtBat(device);
+                    main.postDelayed(pollTask, 15000L);
+                    return;
+                }
                 if (Protocol.isJbl(activeModel)) {
                     log("JBL uses BLE GATT, connecting...");
                     connectGatt(device, gen);
@@ -635,10 +643,36 @@ final class BudsLink {
         });
     }
 
+    private BluetoothDevice activeBtDevice;
+
+    private void pollStandardBtBat(BluetoothDevice dev) {
+        if (dev == null) return;
+        activeBtDevice = dev;
+        try {
+            java.lang.reflect.Method m = BluetoothDevice.class.getMethod("getBatteryLevel");
+            Object res = m.invoke(dev);
+            if (res instanceof Integer) {
+                int lvl = (Integer) res;
+                if (lvl >= 0 && lvl <= 100) {
+                    synchronized (state) {
+                        state.leftBat = lvl;
+                        state.rightBat = lvl;
+                        state.caseBat = -1;
+                    }
+                    notifyState();
+                }
+            }
+        } catch (Throwable ignored) {}
+    }
+
     private void pollCycle() {
         io.execute(new Runnable() {
             @Override public void run() {
                 if (connState != CONN_CONNECTED || Protocol.isGalaxy(activeModel) || Protocol.isPixelBuds(activeModel)) return;
+                if (Protocol.isLogitech(activeModel)) {
+                    pollStandardBtBat(activeBtDevice);
+                    return;
+                }
                 if (Protocol.isHuawei(activeModel) || Protocol.isHonorChoice(activeModel)) {
                     if (Protocol.supportsAnc(activeModel)) { sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_ANC_R, 1, 2)); sleep(55); }
                     if (Protocol.isHuawei(activeModel)) {
@@ -804,10 +838,43 @@ final class BudsLink {
                     sendRaw(ExtraProtos.xiaomiAncLevelSet(lvl));
                     return;
                 }
+                if (Protocol.isRealme(activeModel)) {
+                    byte b = lvl == 1 ? (byte) 0x04 : (lvl == 0 ? (byte) 0x07 : (lvl == 3 ? (byte) 0x0A : (byte) 0x08));
+                    sendTl(Protocol.CMD_ANC_SET, new byte[]{0x01, 0x01, b});
+                    return;
+                }
+                if (Protocol.isBose(activeModel)) {
+                    byte raw = lvl == 1 ? (byte) 0x06 : (lvl == 0 ? (byte) 0x03 : (byte) 0x00);
+                    sendRaw(ExtraProtos.boseBuild(0x01, 0x05, 0x02, new byte[]{raw, 0x01}));
+                    return;
+                }
+                if (Protocol.isSoundcore(activeModel)) {
+                    byte sub = lvl == 1 ? (byte) 0x02 : (lvl == 0 ? (byte) 0x01 : (byte) 0x00);
+                    sendRaw(ExtraProtos.scBuild(0x06, 0x81, new byte[]{0x00, sub, 0x01, 0x00}));
+                    return;
+                }
                 log("TX Huawei ANC Level [" + (lvl & 0xFF) + "]");
                 sendRaw(HuaweiProto.writeAncLevel(lvl));
                 sleep(180);
                 sendRaw(HuaweiProto.readReq(HuaweiProto.CMD_ANC_R, 1, 2));
+            }
+        });
+    }
+
+    void setBassLevel(final int lvl) {
+        if (!Protocol.isNothing(activeModel)) return;
+        final int clamped = Math.max(1, Math.min(5, lvl));
+        nothingBassLvl = clamped;
+        synchronized (state) {
+            state.dynamicAudio = true;
+            state.bassLevel = clamped;
+        }
+        notifyState();
+        io.execute(new Runnable() {
+            @Override public void run() {
+                sendRaw(NothingProto.writeBassBoost(true, clamped));
+                sleep(200);
+                sendRaw(NothingProto.build(NothingProto.CMD_BASS_REQ, null));
             }
         });
     }
@@ -897,7 +964,7 @@ final class BudsLink {
                 }
                 if (Protocol.isNothing(activeModel)) {
                     if (featId == Protocol.FEAT_GAME_MODE) {
-                        sendRaw(NothingProto.build(NothingProto.CMD_LAT_SET, new byte[]{on ? (byte) 1 : (byte) 2}));
+                        sendRaw(NothingProto.build(NothingProto.CMD_LAT_SET, new byte[]{on ? (byte) 1 : (byte) 2, 0x00}));
                         sleep(200);
                         sendRaw(NothingProto.build(NothingProto.CMD_LAT_REQ, null));
                     } else if (featId == Protocol.FEAT_AUTO_PLAY_PAUSE) {
@@ -905,7 +972,7 @@ final class BudsLink {
                         sleep(200);
                         sendRaw(NothingProto.build(NothingProto.CMD_INEAR_REQ, null));
                     } else if (featId == Protocol.FEAT_DYNAMIC) {
-                        sendRaw(NothingProto.build(NothingProto.CMD_BASS_SET, new byte[]{v, (byte) nothingBassLvl}));
+                        sendRaw(NothingProto.writeBassBoost(on, nothingBassLvl));
                         sleep(200);
                         sendRaw(NothingProto.build(NothingProto.CMD_BASS_REQ, null));
                     }
@@ -1514,7 +1581,9 @@ final class BudsLink {
                 break;
             }
             case NothingProto.CMD_ANC_RSP:
-            case NothingProto.CMD_ANC_EV: {
+            case NothingProto.CMD_ANC_EV:
+            case NothingProto.CMD_ANC_EV_C: {
+                boolean matched = false;
                 for (int off = 0; off + 1 < p.length; off += 3) {
                     if ((p[off] & 0xFF) == 1) {
                         int v = p[off + 1] & 0xFF;
@@ -1526,25 +1595,38 @@ final class BudsLink {
                                 state.ancLevel = v == 3 ? 1 : (v == 2 ? 0 : (v == 4 ? 3 : 2));
                             }
                         }
+                        matched = true;
                         notifyState();
                         break;
                     }
+                }
+                if (!matched && p.length >= 2) {
+                    int v = p[1] & 0xFF;
+                    synchronized (state) {
+                        if (v == 5) { state.ancMode = Protocol.ANC_OFF; }
+                        else if (v == 7) { state.ancMode = Protocol.ANC_TRANSPARENCY; }
+                        else if (v >= 1 && v <= 4) {
+                            state.ancMode = Protocol.ANC_ON;
+                            state.ancLevel = v == 3 ? 1 : (v == 2 ? 0 : (v == 4 ? 3 : 2));
+                        }
+                    }
+                    notifyState();
                 }
                 break;
             }
             case NothingProto.CMD_EQ_C_RSP:
             case NothingProto.CMD_EQ_L_RSP: {
                 if (p.length < 1) break;
-                int id = p[0] & 0xFF;
+                int id = (p.length > 1 ? p[1] : p[0]) & 0xFF;
                 boolean listening = pkt.cmd == NothingProto.CMD_EQ_L_RSP;
                 synchronized (state) {
                     state.eqId = -1; state.customEqName = null;
                     if (listening) {
-                        if (id == 3) state.eqId = 0;
+                        if (id == 0 || id == 3 || id == 7) state.eqId = 0;
                         else if (id == 4) state.eqId = 2;
                         else if (id == 2) state.eqId = 3;
                         else if (id == 1) state.eqId = 1;
-                        else state.customEqName = id == 7 ? "Dirac Opteo" : (id == 5 ? "Classical" : "Custom");
+                        else state.customEqName = id == 5 ? "Classical" : "Custom";
                     } else {
                         if (id == 0) state.eqId = 0;
                         else if (id == 1) state.eqId = 2;
@@ -1573,10 +1655,14 @@ final class BudsLink {
             case NothingProto.CMD_BASS_RSP: {
                 if (p.length >= 1) {
                     if (p.length >= 2) {
-                        int lvl = p[1] & 0xFF;
+                        int raw = p[1] & 0xFF;
+                        int lvl = (raw >= 2 && raw % 2 == 0) ? (raw / 2) : raw;
                         if (lvl >= 1 && lvl <= 5) nothingBassLvl = lvl;
                     }
-                    synchronized (state) { state.dynamicAudio = (p[0] & 0xFF) == 1; }
+                    synchronized (state) {
+                        state.dynamicAudio = (p[0] & 0xFF) != 0;
+                        state.bassLevel = nothingBassLvl;
+                    }
                     notifyState();
                 }
                 break;

@@ -25,6 +25,13 @@
     <string name="battery_left">Left</string>
     <string name="battery_case">Case</string>
     <string name="battery_right">Right</string>
+    <string name="battery_headset">Headset</string>
+    <string name="battery_hours_left">~%1$.1fh left</string>
+    <string name="battery_voltage_mv">%1$d mV</string>
+    <string name="time_just_now">just now</string>
+    <string name="time_min_ago">%1$dm ago</string>
+    <string name="time_hours_ago">%1$dh ago</string>
+    <string name="time_days_ago">%1$dd ago</string>
 
     <!-- Status & Device Card -->
     <string name="default_device_name">No device connected</string>
@@ -47,13 +54,16 @@
 
     <!-- Unsupported Device Warning -->
     <string name="unsupported_warning_title">Unsupported device</string>
-    <string name="unsupported_warning_message">\"%s\" was not recognized automatically. Supported brands: realme, OnePlus, OPPO, HUAWEI, HONOR, Nothing / CMF, Samsung Galaxy Buds, Sony, Bose, Soundcore, Xiaomi / Redmi, Sennheiser, Jabra, Google Pixel Buds, JBL. You can also try selecting a model manually in the side menu.</string>
+    <string name="unsupported_warning_message">\"%s\" was not recognized automatically. Supported brands: realme, OnePlus, OPPO, HUAWEI, HONOR, Nothing / CMF, Samsung Galaxy Buds, Sony, Bose, Soundcore, Xiaomi / Redmi, Sennheiser, Jabra, Google Pixel Buds, JBL, Logitech G. You can also try selecting a model manually in the side menu.</string>
 
     <!-- Permissions Banner -->
     <string name="perm_warning_title">Bluetooth access required</string>
     <string name="perm_warning_message">The app requires \"Nearby devices\" permissions (BLUETOOTH_CONNECT) to communicate with the earbuds.</string>
     <string name="btn_grant_permissions">Allow access</string>
     <string name="btn_settings">Settings</string>
+    <string name="usb_perm_title">Logitech USB dongle detected</string>
+    <string name="usb_perm_message">Grant USB access to read battery voltage and control %s.</string>
+    <string name="btn_grant_usb">Grant USB access</string>
 
     <!-- Noise Cancellation (ANC) -->
     <string name="section_anc">Noise cancellation</string>
@@ -124,8 +134,9 @@
     <string name="rename_action">Rename</string>
     <string name="rename_reset_hint">Leave empty to restore the default name</string>
     <string name="rename_toast_firmware">Name sent to earbud firmware</string>
-    <string name="rename_toast_os">Bluetooth device alias updated</string>
+    <string name="rename_toast_os">Bluetooth device name updated in Android</string>
     <string name="rename_toast_local">Display name saved in realness</string>
+    <string name="rename_toast_cdm_prompt">Approve device access to rename it in Android Bluetooth settings</string>
     <string name="rename_toast_reset">Default device name restored</string>
 
     <!-- Button Settings (Gestures) -->
@@ -156,6 +167,10 @@
     <string name="spatial_audio_desc">Creates a cinematic 3D audio experience around you.</string>
     <string name="spatial_audio_off">Off</string>
     <string name="spatial_audio_on">On</string>
+    <string name="spatial_mode_fixed">Fixed</string>
+    <string name="spatial_mode_head_tracking">Head-track</string>
+    <string name="spatial_mode_concert">Concert</string>
+    <string name="spatial_mode_cinema">Cinema</string>
     <string name="demo_audio_play">Play demo audio (realme)</string>
     <string name="demo_audio_playing">Playing demo audio…</string>
     <string name="demo_audio_stop">Stop</string>
@@ -178,6 +193,31 @@
     <string name="dynamic_audio_desc">Dynamically enhances bass and sound depth.</string>
     <string name="ultra_bass_title">Ultra Bass</string>
     <string name="ultra_bass_desc">Enhances low-frequency bass response on Nothing / CMF earbuds.</string>
+    <string name="ultra_bass_status_on">On · Level %1$d</string>
+    <string name="ultra_bass_status_off">Off</string>
+    <string name="ultra_bass_level_label">Level</string>
+
+    <!-- Logitech G733 / G435 Controls -->
+    <string name="section_logitech">Logitech G controls</string>
+    <string name="logitech_sidetone_title">Sidetone</string>
+    <string name="logitech_sidetone_desc">Hear your own microphone voice in the headset.</string>
+    <string name="logitech_lights_title">RGB lighting</string>
+    <string name="logitech_lights_desc">Toggle front LED light strips and logo effect.</string>
+    <string name="logitech_inactive_title">Auto power-off</string>
+    <string name="logitech_inactive_desc">Turn off the headset automatically when idle.</string>
+    <string name="logitech_inactive_never">Never</string>
+    <string name="logitech_inactive_min">%1$dm</string>
+
+    <!-- Home Screen Widgets -->
+    <string name="widget_full_label">realness · Battery &amp; ANC</string>
+    <string name="widget_full_desc">Shows earbud battery, last known case charge, and quick ANC toggles.</string>
+    <string name="widget_compact_label">realness · Compact</string>
+    <string name="widget_compact_desc">Compact battery pill with quick ANC mode switcher.</string>
+    <string name="widget_anc_short">ANC</string>
+    <string name="widget_trans_short">Transp.</string>
+    <string name="widget_no_device">Open app to connect</string>
+    <string name="status_disconnected">Disconnected</string>
+    <string name="cd_refresh_state">Refresh state</string>
 
     <!-- Dual-Device Connection -->
     <string name="dual_connection_title">Dual-device connection</string>

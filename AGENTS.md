@@ -2,8 +2,8 @@
 
 **English** | [Русский](AGENTS.ru.md)
 
-Last updated: 2026-11-23  
-Current release: `v1.8 (build 9)` — **13 protocol families across 15 brands** (`realness` in native Material 3 Expressive + `realness-tiny` in classic compact UI). Full model matrix: [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md).
+Last updated: 2026-11-24  
+Current release: `v1.9 (build 10)` — **14 protocol families across 16 brands** (`realness` in native Material 3 Expressive + Material You widgets + `realness-tiny` in classic compact UI). Full model matrix: [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md).
 
 ---
 
@@ -80,8 +80,12 @@ Current release: `v1.8 (build 9)` — **13 protocol families across 15 brands** 
 
 ### 3.2. Rename Earbuds
 1. **Firmware rename** (when connected & supported): Bose BMAP `Block=1, Func=2, Op=SET_GET`, UTF-8 name up to 31 bytes.
-2. **Android OS alias:** invokes `BluetoothDevice.setAlias(String)` via reflection (safely catches `SecurityException` on Android 12+ when CDM association is absent).
-3. **Persistent app alias:** saved per MAC in `SharedPreferences` (`custom_alias_<MAC>` / `alias_<MAC>`); empty input restores the default Bluetooth name.
+2. **Android OS alias:** calls `BluetoothDevice.setAlias(String)` directly on API 31+ (reflection on API 26–30). When Android 12+ requires Companion Device Manager association, launches `CompanionDeviceManager.associate()` (1-tap system approval) and completes `device.setAlias()` immediately after approval so Android Bluetooth settings reflect the new name. Empty input calls `setAlias(null)` to restore the default name.
+3. **Persistent app & widget alias:** saved per MAC in `SharedPreferences` (`custom_alias_<MAC>` / `alias_<MAC>`).
+
+### 3.3. Material You Widgets & Last Known Case Battery
+- `RealnessApp` holds process-wide `T300BleManager` and `LogitechUsbManager` singletons; `WidgetStateStore` persists battery snapshot, ANC state, and per-MAC **last known case battery + timestamp** whenever `caseBattery.level in 0..100` is received.
+- `RealnessWidgetProvider` (4×2 Material You card) and `RealnessCompactWidgetProvider` (4×1 pill) display L / Case (with relative timestamp when closed) / R and trigger live or background-reconnect ANC switches via `goAsync()`.
 
 ---
 
@@ -175,7 +179,7 @@ Based on [kde-headphones](https://github.com/RodiAda/kde-headphones) and [MiBuds
 
 ---
 
-## 8. Protocol Families 7–13 (`kde-headphones`)
+## 8. Protocol Families 7–14 (`kde-headphones`, `HeadsetControl`, `g435-hub`)
 
 - **Sony MDR (V1/V2):** UUIDs `956C7B26-D49A-4BA8-B03F-B17D393CB6E2` (V2) / `96CC203E-5068-46AD-B32D-E316F5E069BA` (V1); framing `0x3E..0x3C` with `0x3D` escape, sum8 checksum, ACK `0x01`; Battery `0x22`/`0x23`/`0x25`, NCASM `0x66..0x69`, EQ presets & 6-band Custom EQ `0x56..0x59` (`0xA0`, `gain + 10`).
 - **Bose BMAP:** Standard SPP `00001101`; `[block, func, op, len, payload]`; Battery `0x02/0x02`, ANC `0x01/0x05` (CNC) & `0x01/0x06` (ANR), 3-band EQ `0x01/0x07`, Multipoint `0x01/0x0A`, Auto-Pause `0x01/0x18`, Auto-Answer `0x01/0x1B`, **Firmware Rename** `0x01/0x02` (`OP_SET_GET`, UTF-8 <= 31B).
@@ -184,4 +188,7 @@ Based on [kde-headphones](https://github.com/RodiAda/kde-headphones) and [MiBuds
 - **Jabra:** Standard SPP `00001101`; `04 09 seq (type|len) feat16 payload`; Battery `0x1202`, Ambience `0x13BE`, Noise Mode `0x1387`.
 - **Google Pixel Buds:** UUID `25E97FF7-24CE-4C4C-8951-F764A708F7B5`; HDLC (`0x7E`, `0x7D` escape, CRC32) + Pigweed RPC (`maestro_pw.Maestro`); Runtime battery stream + settings `13` (ANC), `2` (OHD), `11` (Multipoint), `16` (5-band float User EQ).
 - **JBL BLE GATT:** Service `65786365-6c70-6f69-6e74-2e636f6d0000`; `0xAA cmd len payload`; Battery `0x25`, Noise `0x91`, Status `0x21`/`0x22`, EQ `0x40`, Auto-Play `0x35`, Spatial `0x9D`.
+- **Logitech G733 / G435 (`LogitechProtocol` + `LogitechUsbManager`):**
+  - **G733 (`046D:0AB5 / 0AFE / 0B1F`, USB-OTG HID++ 2.0):** 20-byte long reports `[0x11, 0xFF, ...]`; Battery `0x08 0x0A` (BE mV `resp[4..5]`, charging `resp[6]==0x03`, 8-point G633/G733 curve), Sidetone `0x07 0x1A <0..100>`, RGB Lights `0x04 0x3C` (strips zone `0x01` + logo zone `0x00`), Auto power-off `0x07 0x21 <0..90>`.
+  - **G435 (`046D:0ACB`, USB-OTG Vendor FFC0 Report 6 + Bluetooth):** Feature reports `REPORT_ID=6` (`ENTER_BOOTLOADER 01 03` -> `GET_CONNECT 0xE3` -> `GET_MODE 0xE0` / `SET_MODE 0xE1 01` -> 3× `OTA GET_BATTERY 00 31` median -> `finally EXIT_BOOTLOADER 08 03`), exact 22-point Li-Po curve + `G435BatteryEstimator` (smoothing, charging inference, trend/18h spec hours-left). Over Bluetooth: HFP `BluetoothDevice.getBatteryLevel()` + BLE Battery Service (`0x180F` / `0x2A19`).
 - **Apple AirPods / Beats note:** Uses raw BR/EDR L2CAP `PSM 0x1001` in `kde-headphones`, which unrooted Android SDK does not permit.

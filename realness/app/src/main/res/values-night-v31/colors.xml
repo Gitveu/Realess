@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material You Dynamic Dark (Android 12+) -->
+    <color name="widget_surface">@android:color/system_neutral1_900</color>
+    <color name="widget_surface_card">@android:color/system_neutral1_800</color>
+    <color name="widget_surface_pill">@android:color/system_neutral2_800</color>
+    <color name="widget_primary">@android:color/system_accent1_200</color>
+    <color name="widget_primary_container">@android:color/system_accent1_700</color>
+    <color name="widget_on_primary_container">@android:color/system_accent1_100</color>
+    <color name="widget_on_surface">@android:color/system_neutral1_100</color>
+    <color name="widget_on_surface_variant">@android:color/system_neutral2_300</color>
+    <color name="widget_status_online">@android:color/system_accent1_200</color>
+    <color name="widget_status_offline">@android:color/system_neutral2_500</color>
+</resources>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="widget_surface">#FF1B1B1F</color>
+    <color name="widget_surface_card">#FF26262C</color>
+    <color name="widget_surface_pill">#FF2F2F37</color>
+    <color name="widget_primary">#FFFFC400</color>
+    <color name="widget_primary_container">#FF594400</color>
+    <color name="widget_on_primary_container">#FFFFE082</color>
+    <color name="widget_on_surface">#FFE6E1E5</color>
+    <color name="widget_on_surface_variant">#FFA8A4B0</color>
+    <color name="widget_status_online">#FF4CAF50</color>
+    <color name="widget_status_offline">#FF7A7682</color>
+</resources>

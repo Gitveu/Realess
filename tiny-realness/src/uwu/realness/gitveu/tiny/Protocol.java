@@ -115,6 +115,8 @@ final class Protocol {
     static final int MODEL_JABRA = 85;            // Jabra Elite / Evolve / Talk (Jabra SPP)
     static final int MODEL_PIXEL_BUDS = 86;       // Google Pixel Buds Pro / Pro 2 / A-Series / 2a (Maestro)
     static final int MODEL_JBL = 87;              // JBL Tour / Live / Tune / Wave / Reflect / Club (BLE GATT)
+    static final int MODEL_LOGITECH_G733 = 88;    // Logitech G733 LIGHTSPEED (USB-OTG HID++ 2.0)
+    static final int MODEL_LOGITECH_G435 = 89;    // Logitech G435 LIGHTSPEED / Bluetooth
 
     static final int[] PICKER_MODELS = {
         MODEL_UNKNOWN,
@@ -128,7 +130,8 @@ final class Protocol {
         MODEL_NOTHING_EAR, MODEL_NOTHING_OPEN, MODEL_CMF_CLASSIC, MODEL_CMF_LISTENING, MODEL_CMF_NEO,
         MODEL_GALAXY_MODERN, MODEL_GALAXY_LIVE, MODEL_GALAXY_PLUS, MODEL_GALAXY_BUDS,
         MODEL_SONY_MDR, MODEL_BOSE_BMAP, MODEL_SOUNDCORE, MODEL_XIAOMI,
-        MODEL_SENNHEISER, MODEL_JABRA, MODEL_PIXEL_BUDS, MODEL_JBL
+        MODEL_SENNHEISER, MODEL_JABRA, MODEL_PIXEL_BUDS, MODEL_JBL,
+        MODEL_LOGITECH_G733, MODEL_LOGITECH_G435
     };
 
     static String modelTitle(int m) {
@@ -183,6 +186,8 @@ final class Protocol {
             case MODEL_JABRA: return "Jabra Elite / Evolve";
             case MODEL_PIXEL_BUDS: return "Google Pixel Buds Pro / A-Series / 2a";
             case MODEL_JBL: return "JBL Tour / Live / Tune / Wave / Reflect";
+            case MODEL_LOGITECH_G733: return "Logitech G733 LIGHTSPEED";
+            case MODEL_LOGITECH_G435: return "Logitech G435 LIGHTSPEED / BT";
             default: return "Automatic";
         }
     }
@@ -203,6 +208,10 @@ final class Protocol {
     static int detectModel(String name) {
         if (name == null) return MODEL_UNKNOWN;
         String n = name.toLowerCase().replaceAll("\\s+", " ").trim();
+
+        // 0. Logitech G733 / G435
+        if (n.contains("g435")) return MODEL_LOGITECH_G435;
+        if (n.contains("g733")) return MODEL_LOGITECH_G733;
 
         // 1. Samsung Galaxy Buds
         if (n.contains("galaxy buds") || n.contains("buds live") || n.contains("buds fe")
@@ -361,6 +370,7 @@ final class Protocol {
     static boolean isJabra(int m) { return m == MODEL_JABRA; }
     static boolean isPixelBuds(int m) { return m == MODEL_PIXEL_BUDS; }
     static boolean isJbl(int m) { return m == MODEL_JBL; }
+    static boolean isLogitech(int m) { return m == MODEL_LOGITECH_G733 || m == MODEL_LOGITECH_G435; }
 
     static boolean prefersHwPrivateUuid(int m) {
         return m == MODEL_HW_4I || m == MODEL_HW_5I || m == MODEL_HW_SE || m == MODEL_HW_LACE;
@@ -377,10 +387,12 @@ final class Protocol {
     static boolean supportsAncLevel(int m) {
         return (isHuawei(m) && supportsAnc(m) && m != MODEL_HW_4I)
             || (isNothing(m) && supportsAnc(m))
-            || isXiaomi(m);
+            || isXiaomi(m) || isBose(m) || isSoundcore(m)
+            || m == MODEL_AIR_7_PRO || m == MODEL_AIR_8_PRO || m == MODEL_REALME_ADV
+            || m == MODEL_ONEPLUS_PRO || m == MODEL_OPPO_PRO;
     }
     static boolean supportsAncDynamic(int m) {
-        if (isNothing(m) || isXiaomi(m)) return supportsAnc(m);
+        if (isNothing(m) || isXiaomi(m) || m == MODEL_AIR_7_PRO || m == MODEL_AIR_8_PRO || m == MODEL_REALME_ADV || m == MODEL_ONEPLUS_PRO || m == MODEL_OPPO_PRO) return supportsAnc(m);
         return m == MODEL_HW_5I || m == MODEL_HW_6I || m == MODEL_HW_PRO || m == MODEL_HW_PRO3
             || m == MODEL_HW_PRO5 || m == MODEL_HW_SE4 || m == MODEL_HW_STUDIO
             || m == MODEL_HW_LACE2 || m == MODEL_HW_GENERIC;
@@ -483,6 +495,7 @@ final class Protocol {
         Boolean spatialAudio;
         Boolean hqAudio;
         Boolean dynamicAudio;
+        int bassLevel = 3;
         Boolean dualConn;
         Boolean autoPlayPause;
         Boolean autoAnswer;
@@ -503,6 +516,7 @@ final class Protocol {
             s.spatialAudio = spatialAudio;
             s.hqAudio = hqAudio;
             s.dynamicAudio = dynamicAudio;
+            s.bassLevel = bassLevel;
             s.dualConn = dualConn;
             s.autoPlayPause = autoPlayPause;
             s.autoAnswer = autoAnswer;

@@ -56,6 +56,10 @@ public class MainActivity extends Activity implements BudsLink.Listener {
     private static final String K_LAST_NAME = "last_name";
     private static final String K_LAST_MODEL = "last_model";
     private static final String K_ALIAS_PREFIX = "alias_";
+    private static final String K_LAST_CASE_LVL = "last_case_lvl_";
+    private static final String K_LAST_CASE_TS = "last_case_ts_";
+    private static final int REQ_CDM_RENAME = 409;
+    private String pendingCdmRename = null;
 
     private SharedPreferences prefs;
     private FindTone findTone;
@@ -122,7 +126,8 @@ public class MainActivity extends Activity implements BudsLink.Listener {
     private View secSpatial, cardSpatial;
     private final TextView[] btnSpatial = new TextView[2];
 
-    private View cardHq, cardDynamic, secOther, cardGame, cardDual, cardAutoPlay, cardAutoAns, cardUseTime;
+    private View cardHq, cardDynamic, rowBassLvl, secOther, cardGame, cardDual, cardAutoPlay, cardAutoAns, cardUseTime;
+    private final TextView[] btnBassLvl = new TextView[5];
     private TextView tvHqDesc;
     private Switch swHq, swDynamic, swGame, swDual, swAutoPlay, swAutoAns;
     private LinearLayout multiListBox;
@@ -747,12 +752,33 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         cardHq = (View) hq[0]; swHq = (Switch) hq[1]; tvHqDesc = (TextView) hq[2];
         addSpaced(content, cardHq, 12);
 
-        // 10. Dynamic Audio
+        // 10. Dynamic Audio / Enhanced Bass (levels 1..5 on Nothing/CMF)
         Object[] da = makeSwitchCard(
-            t("Dynamic audio", "Динамическое аудио"),
+            t("Dynamic audio / Ultra Bass", "Динамическое аудио / Бас"),
             t("Dynamically enhances bass and sound depth.", "Динамически усиливает басы и глубину звучания."),
             Protocol.FEAT_DYNAMIC);
-        cardDynamic = (View) da[0]; swDynamic = (Switch) da[1];
+        LinearLayout dynCard = (LinearLayout) da[0];
+        cardDynamic = dynCard; swDynamic = (Switch) da[1];
+        LinearLayout bassRow = hbox();
+        bassRow.setBackground(roundRect(C_SURFACE2, 10));
+        bassRow.setPadding(dp(3), dp(3), dp(3), dp(3));
+        for (int i = 0; i < 5; i++) {
+            final int lvl = i + 1;
+            TextView b = segBtn(String.valueOf(lvl), 12);
+            b.setPadding(dp(2), dp(7), dp(2), dp(7));
+            b.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    if (connState == BudsLink.CONN_CONNECTED) link.setBassLevel(lvl);
+                }
+            });
+            btnBassLvl[i] = b;
+            bassRow.addView(b, lpWeight(1));
+            if (i < 4) bassRow.addView(spaceW(3));
+        }
+        LinearLayout.LayoutParams blp = lpMatchWrap();
+        blp.topMargin = dp(8);
+        dynCard.addView(bassRow, blp);
+        rowBassLvl = bassRow;
         addSpaced(content, cardDynamic, 16);
 
         // 11. Other Section
@@ -942,9 +968,28 @@ public class MainActivity extends Activity implements BudsLink.Listener {
 
         btnReconnect.setVisibility((detectedDevice != null && !connected && sysStatus == ST_CONNECTED_OS) ? View.VISIBLE : View.GONE);
 
-        // Batteries
+        // Batteries + persist/display last known Case battery
+        String batMac = detectedDevice != null ? detectedDevice.getAddress() : lastDeviceMac;
+        if (batMac != null && budsState.caseBat >= 0 && budsState.caseBat <= 100) {
+            prefs.edit()
+                .putInt(K_LAST_CASE_LVL + batMac, budsState.caseBat)
+                .putLong(K_LAST_CASE_TS + batMac, System.currentTimeMillis())
+                .apply();
+        }
         updateBat(tvBatL, barBatL, budsState.leftBat, budsState.leftChg);
-        updateBat(tvBatC, barBatC, budsState.caseBat, budsState.caseChg);
+        if (budsState.caseBat >= 0) {
+            updateBat(tvBatC, barBatC, budsState.caseBat, budsState.caseChg);
+        } else if (batMac != null && prefs.getInt(K_LAST_CASE_LVL + batMac, -1) >= 0) {
+            int lastLvl = prefs.getInt(K_LAST_CASE_LVL + batMac, -1);
+            long lastTs = prefs.getLong(K_LAST_CASE_TS + batMac, 0L);
+            updateBat(tvBatC, barBatC, lastLvl, false);
+            if (lastTs > 0L) {
+                tvBatC.setText(lastLvl + "% (" + fmtAgo(lastTs) + ")");
+                tvBatC.setTextColor(C_MUTED);
+            }
+        } else {
+            updateBat(tvBatC, barBatC, -1, false);
+        }
         updateBat(tvBatR, barBatR, budsState.rightBat, budsState.rightChg);
 
         boolean known = detectedModel != Protocol.MODEL_UNKNOWN;
@@ -1049,6 +1094,16 @@ public class MainActivity extends Activity implements BudsLink.Listener {
 
         cardDynamic.setVisibility(Protocol.supportsDynamic(detectedModel) ? View.VISIBLE : View.GONE);
         setSwitchUi(swDynamic, budsState.dynamicAudio, connected);
+        boolean showBassLvl = isNo && Boolean.TRUE.equals(budsState.dynamicAudio);
+        rowBassLvl.setVisibility(showBassLvl ? View.VISIBLE : View.GONE);
+        if (showBassLvl) {
+            for (int i = 0; i < 5; i++) {
+                boolean sel = budsState.bassLevel == (i + 1);
+                btnBassLvl[i].setBackground(roundRect(sel ? 0x38FFCC00 : Color.TRANSPARENT, 8));
+                btnBassLvl[i].setTextColor(sel ? C_ACCENT : (connected ? 0xFFCCCCCC : C_MUTED));
+                btnBassLvl[i].setTypeface(null, sel ? Typeface.BOLD : Typeface.NORMAL);
+            }
+        }
 
         boolean showGame = !known || Protocol.supportsGameMode(detectedModel);
         boolean showDual = Protocol.supportsDual(detectedModel);
@@ -1220,23 +1275,22 @@ public class MainActivity extends Activity implements BudsLink.Listener {
                     if (nm.isEmpty()) {
                         prefs.edit().remove(K_ALIAS_PREFIX + mac).apply();
                         customAlias = null;
+                        if (detectedDevice != null) tryOsSetAlias(detectedDevice, null);
                         Toast.makeText(MainActivity.this, t("Default name restored", "Исходное имя восстановлено"), Toast.LENGTH_SHORT).show();
                     } else {
                         boolean fw = link.renameFirmware(nm);
-                        boolean osOk = false;
-                        if (detectedDevice != null) {
-                            try {
-                                java.lang.reflect.Method m = BluetoothDevice.class.getMethod("setAlias", String.class);
-                                Object r = m.invoke(detectedDevice, nm);
-                                osOk = Boolean.TRUE.equals(r) || Integer.valueOf(0).equals(r);
-                            } catch (Throwable ignored) {}
-                        }
+                        boolean osOk = detectedDevice != null && tryOsSetAlias(detectedDevice, nm);
                         prefs.edit().putString(K_ALIAS_PREFIX + mac, nm).apply();
                         customAlias = nm;
-                        String msg = fw ? t("Name sent to earbud firmware", "Имя отправлено в прошивку")
-                            : (osOk ? t("Bluetooth alias updated", "Имя Bluetooth обновлено")
-                                : t("Display name saved in realness", "Имя сохранено в realness"));
-                        Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show();
+                        if (fw) {
+                            Toast.makeText(MainActivity.this, t("Name sent to earbud firmware", "Имя отправлено в прошивку"), Toast.LENGTH_SHORT).show();
+                        } else if (osOk) {
+                            Toast.makeText(MainActivity.this, t("Bluetooth name updated in Android", "Имя Bluetooth обновлено в Android"), Toast.LENGTH_SHORT).show();
+                        } else if (detectedDevice != null && Build.VERSION.SDK_INT >= 31) {
+                            requestCdmAssociateForRename(detectedDevice, nm);
+                        } else {
+                            Toast.makeText(MainActivity.this, t("Display name saved in realness", "Имя сохранено в realness"), Toast.LENGTH_SHORT).show();
+                        }
                     }
                     render();
                 }
@@ -1411,6 +1465,73 @@ public class MainActivity extends Activity implements BudsLink.Listener {
         TextView val = tv("—", 14, Color.WHITE, false);
         row.addView(val, lpWeight(1));
         return val;
+    }
+
+    private boolean tryOsSetAlias(BluetoothDevice dev, String alias) {
+        try {
+            if (Build.VERSION.SDK_INT >= 31) {
+                return dev.setAlias(alias) == 0;
+            }
+            java.lang.reflect.Method m = BluetoothDevice.class.getMethod("setAlias", String.class);
+            Object r = m.invoke(dev, alias);
+            return Boolean.TRUE.equals(r) || Integer.valueOf(0).equals(r);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private void requestCdmAssociateForRename(final BluetoothDevice dev, final String nm) {
+        if (Build.VERSION.SDK_INT < 31) return;
+        try {
+            android.companion.CompanionDeviceManager cdm = (android.companion.CompanionDeviceManager) getSystemService(COMPANION_DEVICE_SERVICE);
+            if (cdm == null) return;
+            pendingCdmRename = nm;
+            android.companion.BluetoothDeviceFilter filter = new android.companion.BluetoothDeviceFilter.Builder()
+                .setAddress(dev.getAddress())
+                .build();
+            android.companion.AssociationRequest req = new android.companion.AssociationRequest.Builder()
+                .addDeviceFilter(filter)
+                .setSingleDevice(true)
+                .build();
+            cdm.associate(req, new android.companion.CompanionDeviceManager.Callback() {
+                @Override public void onDeviceFound(IntentSender chooserLauncher) {
+                    try {
+                        startIntentSenderForResult(chooserLauncher, REQ_CDM_RENAME, null, 0, 0, 0);
+                    } catch (Throwable ignored) {}
+                }
+                @Override public void onFailure(CharSequence error) {
+                    pendingCdmRename = null;
+                    runOnUiThread(new Runnable() {
+                        @Override public void run() {
+                            Toast.makeText(MainActivity.this, t("Display name saved in realness", "Имя сохранено в realness"), Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
+            }, null);
+        } catch (Throwable ignored) {
+            Toast.makeText(this, t("Display name saved in realness", "Имя сохранено в realness"), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int reqCode, int resCode, Intent data) {
+        super.onActivityResult(reqCode, resCode, data);
+        if (reqCode == REQ_CDM_RENAME && resCode == RESULT_OK && pendingCdmRename != null && detectedDevice != null) {
+            String nm = pendingCdmRename;
+            pendingCdmRename = null;
+            boolean ok = tryOsSetAlias(detectedDevice, nm);
+            Toast.makeText(this, ok
+                ? t("Bluetooth name updated in Android", "Имя Bluetooth обновлено в Android")
+                : t("Display name saved in realness", "Имя сохранено в realness"), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private String fmtAgo(long tsMs) {
+        long sec = Math.max(0L, (System.currentTimeMillis() - tsMs) / 1000L);
+        if (sec < 60L) return t("now", "сейчас");
+        if (sec < 3600L) return (sec / 60L) + t("m", "м");
+        if (sec < 86400L) return (sec / 3600L) + t("h", "ч");
+        return (sec / 86400L) + t("d", "д");
     }
 
     private String fmtMinutes(int min) {

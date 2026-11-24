@@ -2,8 +2,8 @@
 
 [English](AGENTS.md) | **Русский**
 
-Дата обновления: 2026-11-23  
-Актуальный релиз: `v1.8 (build 9)` — **13 семейств протоколов и 15 брендов** (`realness` в нативном Material 3 Expressive + `realness-tiny` в классическом компактном дизайне). Полный список моделей: [SUPPORTED_DEVICES.ru.md](SUPPORTED_DEVICES.ru.md).
+Дата обновления: 2026-11-24  
+Актуальный релиз: `v1.9 (build 10)` — **14 семейств протоколов и 16 брендов** (`realness` в нативном Material 3 Expressive + виджеты Material You + `realness-tiny` в классическом компактном дизайне). Полный список моделей: [SUPPORTED_DEVICES.ru.md](SUPPORTED_DEVICES.ru.md).
 
 ---
 
@@ -80,8 +80,12 @@
 
 ### 3.2. Переименование наушников
 1. **Прошивка** (если поддерживается и подключено): Bose BMAP `Block=1, Func=2, Op=SET_GET`, UTF-8 до 31 байта.
-2. **Системный алиас Android:** вызов `BluetoothDevice.setAlias(String)` через reflection (с безопасным перехватом `SecurityException` на Android 12+ без CDM-ассоциации).
-3. **Локальный алиас:** сохранение по MAC в `SharedPreferences` (`custom_alias_<MAC>` / `alias_<MAC>`); пустая строка восстанавливает исходное имя.
+2. **Системный алиас Android:** прямой вызов `BluetoothDevice.setAlias(String)` на API 31+ (reflection на API 26–30). Когда Android 12+ требует CDM-ассоциацию, запускается `CompanionDeviceManager.associate()`, после подтверждения сразу выполняется `device.setAlias()` — имя реально обновляется в настройках Bluetooth Android. Пустая строка вызывает `setAlias(null)`.
+3. **Локальный алиас и виджеты:** сохранение по MAC в `SharedPreferences` (`custom_alias_<MAC>` / `alias_<MAC>`).
+
+### 3.3. Виджеты Material You и последний заряд кейса
+- `RealnessApp` держит общие `T300BleManager` и `LogitechUsbManager`; `WidgetStateStore` сохраняет снимок заряда/ANC и per-MAC **последний заряд кейса + время** при каждом валидном `caseBattery.level in 0..100`.
+- `RealnessWidgetProvider` (4×2 Material You) и `RealnessCompactWidgetProvider` (4×1) показывают L / Кейс (с временем «когда» при закрытом кейсе) / R и переключают ANC напрямую или через быстрое фоновое подключение (`goAsync()`).
 
 ---
 
@@ -175,7 +179,7 @@
 
 ---
 
-## 8. Семейства 7–13 (`kde-headphones`)
+## 8. Семейства 7–14 (`kde-headphones`, `HeadsetControl`, `g435-hub`)
 
 - **Sony MDR (V1/V2):** UUID `956C7B26-D49A-4BA8-B03F-B17D393CB6E2` (V2) / `96CC203E-5068-46AD-B32D-E316F5E069BA` (V1); кадрирование `0x3E..0x3C` с экранированием `0x3D`, sum8, ACK `0x01`; Батарея `0x22`/`0x23`/`0x25`, NCASM `0x66..0x69`, пресеты и 6-полосный Custom EQ `0x56..0x59` (`0xA0`, `gain + 10`).
 - **Bose BMAP:** Стандартный SPP `00001101`; `[block, func, op, len, payload]`; Батарея `0x02/0x02`, ANC `0x01/0x05` (CNC) и `0x01/0x06` (ANR), 3-полосный EQ `0x01/0x07`, Multipoint `0x01/0x0A`, Автопауза `0x01/0x18`, Автоответ `0x01/0x1B`, **Переименование в прошивке** `0x01/0x02` (`OP_SET_GET`, UTF-8 <= 31B).
@@ -184,4 +188,7 @@
 - **Jabra:** Стандартный SPP `00001101`; `04 09 seq (type|len) feat16 payload`; Батарея `0x1202`, Ambience `0x13BE`, Noise Mode `0x1387`.
 - **Google Pixel Buds:** UUID `25E97FF7-24CE-4C4C-8951-F764A708F7B5`; HDLC (`0x7E`, `0x7D`, CRC32) + Pigweed RPC (`maestro_pw.Maestro`); поток батареи + настройки `13` (ANC), `2` (OHD), `11` (Multipoint), `16` (5-полосный float User EQ).
 - **JBL BLE GATT:** Сервис `65786365-6c70-6f69-6e74-2e636f6d0000`; `0xAA cmd len payload`; Батарея `0x25`, Шум `0x91`, Статус `0x21`/`0x22`, EQ `0x40`, Автопауза `0x35`, Spatial `0x9D`.
+- **Logitech G733 / G435 (`LogitechProtocol` + `LogitechUsbManager`):**
+  - **G733 (`046D:0AB5 / 0AFE / 0B1F`, USB-OTG HID++ 2.0):** 20-байтные кадры `[0x11, 0xFF, ...]`; батарея `0x08 0x0A` (BE мВ `resp[4..5]`, зарядка `resp[6]==0x03`, 8-точечная кривая G633/G733), Sidetone `0x07 0x1A <0..100>`, RGB-подсветка `0x04 0x3C` (полосы `0x01` + логотип `0x00`), автоотключение `0x07 0x21 <0..90>`.
+  - **G435 (`046D:0ACB`, USB-OTG Vendor FFC0 Report 6 + Bluetooth):** Feature-отчёты `REPORT_ID=6` (`ENTER_BOOTLOADER 01 03` -> `GET_CONNECT 0xE3` -> `GET_MODE 0xE0` / `SET_MODE 0xE1 01` -> 3× `OTA GET_BATTERY 00 31` медиана -> `finally EXIT_BOOTLOADER 08 03`), 22-точечная кривая Li-Po + `G435BatteryEstimator` (сглаживание, определение зарядки, прогноз оставшихся часов). По Bluetooth: HFP `BluetoothDevice.getBatteryLevel()` + BLE Battery Service (`0x180F` / `0x2A19`).
 - **Apple AirPods / Beats:** в `kde-headphones` используется сырой BR/EDR L2CAP `PSM 0x1001`, который недоступен в Android SDK без root.

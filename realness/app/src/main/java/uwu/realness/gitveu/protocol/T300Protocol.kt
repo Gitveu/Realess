@@ -88,7 +88,8 @@ object T300Protocol {
         SENNHEISER_GAIA_SPP,
         JABRA_SPP,
         PIXEL_BUDS_SPP,
-        JBL_GATT
+        JBL_GATT,
+        LOGITECH_HID
     }
 
     enum class Brand(val title: String) {
@@ -107,7 +108,8 @@ object T300Protocol {
         SENNHEISER("Sennheiser"),
         JABRA("Jabra"),
         GOOGLE("Google Pixel Buds"),
-        JBL("JBL")
+        JBL("JBL"),
+        LOGITECH("Logitech G")
     }
 
     enum class BudsModel(
@@ -296,7 +298,11 @@ object T300Protocol {
 
         // JBL GATT (kde-headphones)
         JBL_TOUR_LIVE(ProtocolFamily.JBL_GATT, Brand.JBL, "JBL Tour Pro 2/3 / Live Pro 2 / Buds 3"),
-        JBL_TUNE_WAVE(ProtocolFamily.JBL_GATT, Brand.JBL, "JBL Tune / Wave / Reflect / Club");
+        JBL_TUNE_WAVE(ProtocolFamily.JBL_GATT, Brand.JBL, "JBL Tune / Wave / Reflect / Club"),
+
+        // Logitech G Gaming Headsets (USB-OTG Lightspeed HID + G435 Bluetooth)
+        LOGITECH_G733(ProtocolFamily.LOGITECH_HID, Brand.LOGITECH, "Logitech G733 LIGHTSPEED"),
+        LOGITECH_G435(ProtocolFamily.LOGITECH_HID, Brand.LOGITECH, "Logitech G435 LIGHTSPEED / BT");
 
         val isSupported: Boolean get() = this != UNKNOWN
         val isRealme: Boolean get() = protocolFamily == ProtocolFamily.REALME_TL
@@ -313,6 +319,15 @@ object T300Protocol {
         val isJabra: Boolean get() = protocolFamily == ProtocolFamily.JABRA_SPP
         val isPixelBuds: Boolean get() = protocolFamily == ProtocolFamily.PIXEL_BUDS_SPP
         val isJbl: Boolean get() = protocolFamily == ProtocolFamily.JBL_GATT
+        val isLogitech: Boolean get() = protocolFamily == ProtocolFamily.LOGITECH_HID
+        val isSingleBatteryHeadset: Boolean
+            get() = isLogitech || this in setOf(
+                NOTHING_HEADPHONE_1, NOTHING_HEADPHONE_1_PRO, NOTHING_HEADPHONE_A,
+                CMF_HEADPHONE_PRO, CMF_NECKBAND_PRO, CMF_SPEAKER,
+                HUAWEI_FREEBUDS_STUDIO, HUAWEI_FREELACE_PRO, HUAWEI_FREELACE_PRO_2,
+                SONY_WH_1000XM5, SONY_ULT_CH, BOSE_QC_ULTRA_HEADPHONES, BOSE_QC_45_35, BOSE_NC_700,
+                SOUNDCORE_SPACE_Q45, SOUNDCORE_LIFE_Q30, SENNHEISER_MOMENTUM_4, SENNHEISER_ACCENTUM
+            )
 
         val prefersHuaweiPrivateUuid: Boolean
             get() = this in setOf(
@@ -327,7 +342,7 @@ object T300Protocol {
 
         val supportsAnc: Boolean
             get() = when {
-                !isSupported -> false
+                !isSupported || isLogitech -> false
                 isRealme -> this !in setOf(
                     BUDS_T110, BUDS_CLIP, BUDS_Q2, ONEPLUS_BUDS_CLIP, ONEPLUS_BUDS_Z,
                     OPPO_ENCO_BUDS, OPPO_ENCO_CLIP
@@ -349,24 +364,37 @@ object T300Protocol {
                 isHuawei -> supportsAnc && this != HUAWEI_FREEBUDS_4I
                 isNothing -> supportsAnc
                 isXiaomi -> supportsAnc && this != XIAOMI_REDMI_BUDS_6_ACTIVE
+                isBose -> supportsAnc && this != BOSE_QC_45_35
+                isSoundcore -> supportsAnc
+                isRealme -> this in setOf(
+                    BUDS_T310, BUDS_T500, BUDS_T500_PRO, BUDS_AIR_3, BUDS_AIR_5, BUDS_AIR_5_PRO,
+                    BUDS_AIR_6, BUDS_AIR_6_PRO, BUDS_AIR_7, BUDS_AIR_7_PRO, BUDS_AIR_8, BUDS_AIR_8_PRO,
+                    ONEPLUS_BUDS_3, ONEPLUS_BUDS_4, ONEPLUS_BUDS_PRO, ONEPLUS_BUDS_PRO_2,
+                    ONEPLUS_BUDS_PRO_3, ONEPLUS_BUDS_PRO_4, ONEPLUS_NORD_BUDS_3_PRO, ONEPLUS_NORD_BUDS_4,
+                    OPPO_ENCO_X, OPPO_ENCO_X2, OPPO_ENCO_X3, OPPO_ENCO_X4,
+                    OPPO_ENCO_AIR_3, OPPO_ENCO_AIR_4, OPPO_ENCO_AIR_5
+                )
+                this == GALAXY_BUDS_3_PRO || this == GALAXY_BUDS_4 -> true
                 else -> false
             }
 
         val supportsAncDynamic: Boolean
             get() = when {
-                isNothing -> supportsAnc && this != NOTHING_EAR_1 && this != CMF_BUDS && this != CMF_BUDS_NEO
+                isNothing -> supportsAnc && this != NOTHING_EAR_1 && this != CMF_BUDS
                 isXiaomi -> this in setOf(XIAOMI_REDMI_BUDS_3_PRO, XIAOMI_REDMI_BUDS_5_PRO, XIAOMI_REDMI_BUDS_6_PRO, XIAOMI_BUDS_GENERIC)
                 isHuawei -> this in setOf(
                     HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I, HUAWEI_FREEBUDS_PRO,
                     HUAWEI_FREEBUDS_PRO_3, HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREEBUDS_SE_4,
                     HUAWEI_FREEBUDS_STUDIO, HUAWEI_FREELACE_PRO_2, HUAWEI_GENERIC
                 )
+                isRealme -> supportsAncLevel
+                this == GALAXY_BUDS_3_PRO || this == GALAXY_BUDS_4 -> true
                 else -> false
             }
 
         val supportsEq: Boolean
             get() = when {
-                !isSupported -> false
+                !isSupported || isLogitech -> false
                 isRealme || isHonorChoice || isNothing || isGalaxy || isSony || isXiaomi || isJbl -> true
                 isHuawei -> this in setOf(
                     HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I, HUAWEI_FREEBUDS_PRO_2,
@@ -381,20 +409,20 @@ object T300Protocol {
             get() = this in setOf(HUAWEI_FREEBUDS_PRO_3, HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREECLIP)
 
         val supportsDoubleTap: Boolean
-            get() = isRealme || this in setOf(
+            get() = isRealme || (isNothing && this != CMF_SPEAKER) || this in setOf(
                 HUAWEI_FREEBUDS_3, HUAWEI_FREEBUDS_4I, HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I,
                 HUAWEI_FREEBUDS_PRO_3, HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREECLIP, HUAWEI_FREECLIP_2,
                 HUAWEI_FREEBUDS_SE, HUAWEI_FREEBUDS_SE_2, HUAWEI_FREEBUDS_SE_4, HUAWEI_GENERIC
             )
 
         val supportsTripleTap: Boolean
-            get() = isRealme || this in setOf(
+            get() = isRealme || (isNothing && this != CMF_SPEAKER) || this in setOf(
                 HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I, HUAWEI_FREECLIP_2,
                 HUAWEI_FREEBUDS_SE_2, HUAWEI_FREEBUDS_SE_4, HUAWEI_GENERIC
             )
 
         val supportsLongPress: Boolean
-            get() = isRealme || this in setOf(
+            get() = isRealme || (isNothing && this != CMF_SPEAKER) || this in setOf(
                 HUAWEI_FREEBUDS_4I, HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I,
                 HUAWEI_FREEBUDS_PRO, HUAWEI_FREEBUDS_PRO_2, HUAWEI_FREEBUDS_PRO_3,
                 HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREECLIP, HUAWEI_FREECLIP_2,
@@ -404,11 +432,31 @@ object T300Protocol {
         val supportsTouchSettings: Boolean
             get() = supportsDoubleTap || supportsTripleTap || supportsLongPress
 
+        val supportsNothingSpatial: Boolean
+            get() = this in setOf(
+                NOTHING_EAR_3, NOTHING_EAR_3A, NOTHING_HEADPHONE_1, NOTHING_HEADPHONE_1_PRO,
+                NOTHING_HEADPHONE_A, CMF_BUDS_NEO, CMF_BUDS_2, CMF_BUDS_2_PLUS,
+                CMF_BUDS_PRO_2, CMF_NECKBAND_PRO, CMF_HEADPHONE_PRO, CMF_CLIP_PRO, CMF_SPEAKER
+            )
+
+        /**
+         * Supported Nothing/CMF Spatial Audio modes (codes: 0=Off, 1=Fixed, 2=Head-tracking, 3=Concert, 4=Cinema).
+         */
+        val nothingSpatialModes: List<Int>
+            get() = when (this) {
+                NOTHING_HEADPHONE_1, NOTHING_HEADPHONE_1_PRO -> listOf(0, 1, 2)
+                NOTHING_HEADPHONE_A, CMF_HEADPHONE_PRO -> listOf(0, 4, 3)
+                NOTHING_EAR_3, NOTHING_EAR_3A, CMF_BUDS_NEO, CMF_BUDS_2, CMF_BUDS_2_PLUS,
+                CMF_BUDS_PRO_2, CMF_NECKBAND_PRO, CMF_CLIP_PRO, CMF_SPEAKER -> listOf(0, 1)
+                else -> emptyList()
+            }
+
         val supportsSpatialAudio: Boolean
-            get() = isRealme || isSennheiser || isJbl
+            get() = isRealme || isSennheiser || isJbl || supportsNothingSpatial ||
+                this in setOf(SOUNDCORE_LIBERTY_4_NC, SOUNDCORE_SPACE_Q45, SOUNDCORE_SPACE_A40, SOUNDCORE_GENERIC)
 
         val supportsGameMode: Boolean
-            get() = isRealme || isNothing || isSoundcore || isXiaomi ||
+            get() = isRealme || (isNothing && this != CMF_SPEAKER) || isSoundcore || isXiaomi ||
                 (isGalaxy && this != GALAXY_BUDS) || this in setOf(
                 HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I, HUAWEI_FREEBUDS_PRO_3,
                 HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREECLIP, HUAWEI_FREECLIP_2,
@@ -417,14 +465,26 @@ object T300Protocol {
             )
 
         val supportsCustomEq: Boolean
-            get() = isRealme || isNothing || isXiaomi || isSony || isBose || isSoundcore ||
+            get() = isRealme || (isNothing && this != CMF_SPEAKER) || isXiaomi || isSony || isBose || isSoundcore ||
                 isSennheiser || isPixelBuds || (isHuawei && supportsEq && this != HUAWEI_FREEBUDS_SE_2)
 
         val supportsHardwareFindBuds: Boolean
-            get() = isRealme || isNothing || isGalaxy
+            get() = isRealme || (isNothing && this != CMF_SPEAKER) || isGalaxy
 
         val supportsFirmwareRename: Boolean
             get() = isBose
+
+        val supportsBassLevel: Boolean
+            get() = isNothing && supportsDynamicAudio
+
+        val supportsSidetone: Boolean
+            get() = this == LOGITECH_G733
+
+        val supportsRgbLights: Boolean
+            get() = this == LOGITECH_G733
+
+        val supportsInactiveTime: Boolean
+            get() = this == LOGITECH_G733
 
         fun customEqSpec(): CustomEqSpec? = when {
             isRealme -> CustomEqSpec(
@@ -516,7 +576,10 @@ object T300Protocol {
             ) || isBose || isSoundcore || isPixelBuds
 
         val supportsAutoPlayPause: Boolean
-            get() = isNothing || isBose || isSoundcore || isSennheiser || isPixelBuds || isJbl || this in setOf(
+            get() = (isNothing && this !in setOf(
+                NOTHING_EAR_OPEN, NOTHING_HEADPHONE_A, CMF_BUDS_NEO, CMF_BUDS_2A,
+                CMF_NECKBAND_PRO, CMF_HEADPHONE_PRO, CMF_CLIP_PRO, CMF_SPEAKER
+            )) || isBose || isSoundcore || isSennheiser || isPixelBuds || isJbl || this in setOf(
                 BUDS_AIR_5_PRO, BUDS_AIR_6, BUDS_AIR_6_PRO, BUDS_AIR_7, BUDS_AIR_7_PRO, BUDS_AIR_8, BUDS_AIR_8_PRO,
                 ONEPLUS_BUDS_3, ONEPLUS_BUDS_4, ONEPLUS_BUDS_PRO, ONEPLUS_BUDS_PRO_2, ONEPLUS_BUDS_PRO_3, ONEPLUS_BUDS_PRO_4,
                 OPPO_ENCO_X, OPPO_ENCO_X2, OPPO_ENCO_X3, OPPO_ENCO_X4,
@@ -552,6 +615,10 @@ object T300Protocol {
             fun fromDeviceName(name: String?): BudsModel {
                 if (name.isNullOrBlank()) return UNKNOWN
                 val n = name.lowercase().replace(Regex("\\s+"), " ").trim()
+
+                // 0. Logitech G733 / G435 (Bluetooth & USB product names)
+                if (n.contains("g435") || n.contains("logitech g435")) return LOGITECH_G435
+                if (n.contains("g733") || n.contains("logitech g733")) return LOGITECH_G733
 
                 // 1. Sony MDR
                 if (n.contains("wh-1000") || n.contains("wf-1000") || n.contains("linkbuds") ||
@@ -816,7 +883,27 @@ object T300Protocol {
         TRANSPARENCY(0x02, R.string.anc_transparency);
 
         companion object {
-            fun fromByte(b: Byte): AncMode? = entries.firstOrNull { it.modeByte == b }
+            fun fromByte(b: Byte): AncMode? = when (b.toInt() and 0xFF) {
+                0x01 -> OFF
+                0x02 -> TRANSPARENCY
+                0x04, 0x07, 0x08, 0x0A -> NOISE_REDUCTION
+                else -> null
+            }
+
+            fun levelFromByte(b: Byte): HuaweiProtocol.AncLevel? = when (b.toInt() and 0xFF) {
+                0x04 -> HuaweiProtocol.AncLevel.COMFORT
+                0x07 -> HuaweiProtocol.AncLevel.GENERAL
+                0x08 -> HuaweiProtocol.AncLevel.ULTRA
+                0x0A -> HuaweiProtocol.AncLevel.DYNAMIC
+                else -> null
+            }
+
+            fun byteForLevel(level: HuaweiProtocol.AncLevel): Byte = when (level) {
+                HuaweiProtocol.AncLevel.COMFORT -> 0x04
+                HuaweiProtocol.AncLevel.GENERAL -> 0x07
+                HuaweiProtocol.AncLevel.ULTRA -> 0x08
+                HuaweiProtocol.AncLevel.DYNAMIC -> 0x0A
+            }
         }
     }
 
@@ -975,8 +1062,10 @@ object T300Protocol {
         val ancLevel: HuaweiProtocol.AncLevel? = null,
         val gameMode: Boolean? = null,
         val spatialAudio: Boolean? = null,
+        val spatialAudioMode: Int = 0, // 0=Off, 1=Fixed, 2=Head-tracking, 3=Concert, 4=Cinema
         val highQualityAudio: Boolean? = null,
         val dynamicAudio: Boolean? = null,
+        val bassLevel: Int = 3,        // 1..5 for Nothing/CMF Enhanced Bass
         val dualConnection: Boolean? = null,
         val autoPlayPause: Boolean? = null,
         val autoAnswer: Boolean? = null,
@@ -990,7 +1079,13 @@ object T300Protocol {
         val customEqGains: List<Int> = emptyList(),
         val customEqFreqs: List<Int> = emptyList(),
         val hardwareFindActive: Boolean = false,
-        val touchSettings: Map<Pair<TouchSide, TouchGesture>, TouchAction> = emptyMap()
+        val touchSettings: Map<Pair<TouchSide, TouchGesture>, TouchAction> = emptyMap(),
+        // Logitech G733 / G435 telemetry & controls
+        val batteryVoltageMv: Int? = null,
+        val batteryHoursLeft: Float? = null,
+        val sidetoneLevel: Int? = null,
+        val lightsEnabled: Boolean? = null,
+        val inactiveMinutes: Int? = null
     )
 
     data class Frame(
@@ -1098,6 +1193,15 @@ object T300Protocol {
      */
     fun buildAncCommandFrame(mode: AncMode, address: Byte = DEVICE_ADDRESS_DEFAULT): ByteArray {
         val payload = byteArrayOf(0x01, 0x01, mode.modeByte)
+        return Frame(
+            command = CMD_ANC_SET,
+            address = address,
+            payload = payload
+        ).toByteArray()
+    }
+
+    fun buildAncLevelCommandFrame(level: HuaweiProtocol.AncLevel, address: Byte = DEVICE_ADDRESS_DEFAULT): ByteArray {
+        val payload = byteArrayOf(0x01, 0x01, AncMode.byteForLevel(level))
         return Frame(
             command = CMD_ANC_SET,
             address = address,
@@ -1325,6 +1429,11 @@ object T300Protocol {
         return AncMode.fromByte(p[3])
     }
 
+    fun parseAncStateLevel(p: ByteArray): HuaweiProtocol.AncLevel? {
+        if (p.size < 4 || p[0].toInt() != 0 || p[1].toInt() != 1) return null
+        return AncMode.levelFromByte(p[3])
+    }
+
     /**
      * Парсинг асинхронного события смены ANC (тип 0x03).
      * Если size >= 4: [03, action, type, noiseStatus], режим в p[3] при action==1.
@@ -1335,6 +1444,15 @@ object T300Protocol {
         return when {
             p.size >= 4 -> if (p[1].toInt() == 1) AncMode.fromByte(p[3]) else null
             p.size == 3 -> AncMode.fromByte(p[2])
+            else -> null
+        }
+    }
+
+    fun parseAncEventLevel(p: ByteArray): HuaweiProtocol.AncLevel? {
+        if (p.isEmpty() || p[0].toInt() != 0x03) return null
+        return when {
+            p.size >= 4 -> if (p[1].toInt() == 1) AncMode.levelFromByte(p[3]) else null
+            p.size == 3 -> AncMode.levelFromByte(p[2])
             else -> null
         }
     }

@@ -8,11 +8,12 @@ final class NothingProto {
     static final int CMD_HANDSHAKE_REQ = 0xC006, CMD_HANDSHAKE_RSP = 0x4006;
     static final int CMD_BAT_REQ = 0xC007, CMD_BAT_RSP = 0x4007, CMD_BAT_EV = 0xE001;
     static final int CMD_INEAR_REQ = 0xC00E, CMD_INEAR_RSP = 0x400E, CMD_INEAR_SET = 0xF004;
-    static final int CMD_ANC_REQ = 0xC01E, CMD_ANC_RSP = 0x401E, CMD_ANC_EV = 0xE003, CMD_ANC_SET = 0xF00F;
+    static final int CMD_ANC_REQ = 0xC01E, CMD_ANC_RSP = 0x401E, CMD_ANC_EV = 0xE003, CMD_ANC_EV_C = 0x6003, CMD_ANC_SET = 0xF00F;
     static final int CMD_EQ_C_REQ = 0xC01F, CMD_EQ_C_RSP = 0x401F, CMD_EQ_C_SET = 0xF010;
     static final int CMD_EQ_L_REQ = 0xC050, CMD_EQ_L_RSP = 0x4050, CMD_EQ_L_SET = 0xF01D;
     static final int CMD_LAT_REQ = 0xC041, CMD_LAT_RSP = 0x4041, CMD_LAT_SET = 0xF040;
     static final int CMD_BASS_REQ = 0xC04E, CMD_BASS_RSP = 0x404E, CMD_BASS_SET = 0xF051;
+    static final int CMD_SPATIAL_REQ = 0xC04F, CMD_SPATIAL_RSP = 0x404F, CMD_SPATIAL_SET = 0xF052;
 
     private static int opId = 1;
 
@@ -73,11 +74,16 @@ final class NothingProto {
     static byte[] writeEq(byte realmeEqId, boolean listening) {
         byte id;
         if (listening) {
-            id = realmeEqId == 0 ? (byte) 3 : (realmeEqId == 2 ? (byte) 4 : (realmeEqId == 3 ? (byte) 2 : (byte) 1));
+            id = realmeEqId == 0 ? (byte) 0 : (realmeEqId == 2 ? (byte) 4 : (realmeEqId == 3 ? (byte) 2 : (byte) 1));
         } else {
             id = realmeEqId == 0 ? (byte) 0 : (realmeEqId == 2 ? (byte) 1 : (realmeEqId == 3 ? (byte) 2 : (byte) 3));
         }
         return build(listening ? CMD_EQ_L_SET : CMD_EQ_C_SET, new byte[]{id, 0x00});
+    }
+
+    static byte[] writeBassBoost(boolean on, int level) {
+        int clamped = Math.max(1, Math.min(5, level));
+        return build(CMD_BASS_SET, new byte[]{(byte) (on ? 1 : 0), (byte) (clamped * 2)});
     }
 
     static byte[] parseStream(byte[] buf, List<Pkt> out) {

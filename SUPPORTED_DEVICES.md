@@ -2,7 +2,7 @@
 
 **English** | [Русский](SUPPORTED_DEVICES.ru.md)
 
-The list of supported devices is actively growing — **13 protocol families across 15 brands** are supported out of the box, covering all Android-compatible protocols from `realme Link`, [QuickBuds](https://github.com/spizganed/QuickBuds) (143 models), [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds), [noctalia/honor-earbuds](https://github.com/noctalia-dev/community-plugins/tree/main/honor-earbuds), [swift-nothing-ear](https://github.com/bestK1ngArthur/swift-nothing-ear) (all 23 models), [omarchy-nothing-ear](https://github.com/r-witz/omarchy-nothing-ear), and [kde-headphones](https://github.com/RodiAda/kde-headphones). If your model isn't recognized automatically, you can select any compatible model/protocol manually in the **Model** side drawer (`☰`).
+The list of supported devices is actively growing — **14 protocol families across 16 brands** are supported out of the box, covering all Android-compatible protocols from `realme Link`, [QuickBuds](https://github.com/spizganed/QuickBuds) (143 models), [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds), [noctalia/honor-earbuds](https://github.com/noctalia-dev/community-plugins/tree/main/honor-earbuds), [swift-nothing-ear](https://github.com/bestK1ngArthur/swift-nothing-ear) (all 23 models), [omarchy-nothing-ear](https://github.com/r-witz/omarchy-nothing-ear), [kde-headphones](https://github.com/RodiAda/kde-headphones), [HeadsetControl](https://github.com/Sapd/HeadsetControl) / [HeadsetControl-G733-Tray](https://github.com/Spider19996/HeadsetControl-G733-Tray), and [g435-hub](https://github.com/minchiki/g435-hub). If your model isn't recognized automatically, you can select any compatible model/protocol manually in the **Model** side drawer (`☰`).
 
 ---
 
@@ -168,6 +168,17 @@ BLE GATT Service UUID: `65786365-6c70-6f69-6e74-2e636f6d0000` — frame `0xAA cm
 | Models | Features | Status |
 |---|---|---|
 | **JBL Tour Pro 2 / 3 / Tour One M2 / Live Pro 2 / Live Beam 3 / Live Flex / Tune Buds / Tune Beam / Wave / Reflect / Club** | Battery L/Case/R (`0x25`), ANC / Off / Ambient Aware (`0x91`), EQ presets (`0x40`: Studio / Vocal / Club / Bass), Auto Play/Pause (`0x35`), Spatial Audio (`0x9D`) | Added `[kde-headphones]` |
+
+---
+
+## 16. Logitech G Gaming Headsets (`USB-OTG HID` & Bluetooth)
+USB VID `0x046D` (`G733`: PIDs `0x0AB5`, `0x0AFE`, `0x0B1F`; `G435`: PID `0x0ACB` vendor FFC0 Report 6 + Bluetooth HFP/BLE BAS `0x180F`).  
+*Sources: [HeadsetControl](https://github.com/Sapd/HeadsetControl), [HeadsetControl-G733-Tray](https://github.com/Spider19996/HeadsetControl-G733-Tray), [g435-hub](https://github.com/minchiki/g435-hub).*
+
+| Model | Features | Status |
+|---|---|---|
+| **Logitech G733 LIGHTSPEED** | USB-OTG HID++ 2.0: Battery voltage + calibrated % + hours left, Sidetone (`0–100%`), RGB Lights (strips + logo), Auto power-off (`0–90m`) | Added `[HeadsetControl]` |
+| **Logitech G435 LIGHTSPEED / Bluetooth** | USB-OTG 2.4 GHz dongle (`046D:0ACB` FFC0 bridge, 22-point Li-Po curve, smoothing, charging detection, hours left) + Bluetooth HFP & BLE Battery Service (`0x180F/0x2A19`) | Added `[g435-hub]` |
 
 ---
 
