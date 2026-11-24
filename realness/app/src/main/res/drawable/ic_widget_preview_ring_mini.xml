@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:pathData="M24,4A20,20 0 1,1 24,44A20,20 0 1,1 24,4"
+        android:strokeColor="@color/widget_ring_track"
+        android:strokeWidth="4.2" />
+    <path
+        android:pathData="M24,4A20,20 0 1,1 12.24,7.82"
+        android:strokeColor="@color/widget_primary"
+        android:strokeLineCap="round"
+        android:strokeWidth="4.2" />
+    <path
+        android:fillColor="@color/widget_primary_container"
+        android:pathData="M24,9.5A14.5,14.5 0 1,1 24,38.5A14.5,14.5 0 1,1 24,9.5" />
+    <group
+        android:scaleX="0.82"
+        android:scaleY="0.82"
+        android:translateX="14.16"
+        android:translateY="14.16">
+        <path
+            android:pathData="M4,15v-3a8,8 0,0 1,16 0v3M5,14.5h1a1.5,1.5 0,0 1,1.5 1.5v3a1.5,1.5 0,0 1,-1.5 1.5H5a1.5,1.5 0,0 1,-1.5 -1.5v-3A1.5,1.5 0,0 1,5 14.5zM18,14.5h1a1.5,1.5 0,0 1,1.5 1.5v3a1.5,1.5 0,0 1,-1.5 1.5h-1a1.5,1.5 0,0 1,-1.5 -1.5v-3a1.5,1.5 0,0 1,1.5 -1.5z"
+            android:strokeColor="@color/widget_on_primary_container"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:strokeWidth="2.2" />
+    </group>
+</vector>

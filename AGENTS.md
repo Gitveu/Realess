@@ -3,7 +3,7 @@
 **English** | [Русский](AGENTS.ru.md)
 
 Last updated: 2026-11-25  
-Current release: `v1.9.2 (build 12)` — **14 protocol families across 16 brands** (`realness` in native Material 3 Expressive + Material You widgets + `realness-tiny` in classic compact UI). Full model matrix: [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md).
+Current release: `v1.9.3 (build 13)` — **14 protocol families across 16 brands** (`realness` in native Material 3 Expressive + Material You widgets + `realness-tiny` in classic compact UI). Full model matrix: [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md).
 
 ---
 

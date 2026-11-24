@@ -51,7 +51,6 @@ class RealnessWidgetProvider : AppWidgetProvider() {
             val snap = WidgetStateStore.loadSnapshot(context)
             val rv = RemoteViews(context.packageName, R.layout.widget_realness)
 
-            // Tap root opens MainActivity
             val openIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
@@ -60,77 +59,130 @@ class RealnessWidgetProvider : AppWidgetProvider() {
             )
             rv.setOnClickPendingIntent(R.id.widget_root, openPi)
 
-            // Header
-            val title = snap.deviceName?.takeIf { it.isNotBlank() } ?: context.getString(R.string.app_name)
-            val status = if (snap.connected) {
-                context.getString(R.string.status_connected)
-            } else if (snap.deviceMac != null) {
-                context.getString(R.string.status_disconnected)
-            } else {
-                context.getString(R.string.widget_no_device)
-            }
-            rv.setTextViewText(R.id.widget_device_name, title)
-            rv.setTextViewText(R.id.widget_status_text, status)
-            rv.setOnClickPendingIntent(R.id.widget_refresh_btn, actionPendingIntent(context, ACTION_REFRESH, 104))
-
-            // Battery cards
             if (snap.isSingleBattery) {
-                rv.setTextViewText(R.id.widget_left_label, context.getString(R.string.battery_headset))
+                rv.setViewVisibility(R.id.widget_tws_row, View.GONE)
+                rv.setViewVisibility(R.id.widget_single_card, View.VISIBLE)
                 val lvl = snap.leftLevel
-                val txt = if (lvl in 0..100) "${lvl}%${if (snap.leftCharging) " +" else ""}" else "—"
-                rv.setTextViewText(R.id.widget_left_value, txt)
-                rv.setProgressBar(R.id.widget_left_bar, 100, lvl.coerceIn(0, 100), false)
-                rv.setViewVisibility(R.id.widget_bat_case_card, View.GONE)
-                rv.setViewVisibility(R.id.widget_bat_right_card, View.GONE)
+                val title = snap.deviceName?.takeIf { it.isNotBlank() } ?: context.getString(R.string.app_name)
+                rv.setTextViewText(R.id.widget_single_name, title)
+                rv.setTextViewText(R.id.widget_single_value, if (lvl in 0..100) "${lvl}%" else "—")
+                rv.setImageViewBitmap(
+                    R.id.widget_single_ring,
+                    WidgetRingRenderer.renderBatteryRing(
+                        context = context,
+                        level = lvl,
+                        charging = snap.leftCharging,
+                        dimmed = !snap.connected,
+                        glyphRes = R.drawable.ic_widget_headset,
+                        sizeDp = 54f
+                    )
+                )
             } else {
-                rv.setViewVisibility(R.id.widget_bat_case_card, View.VISIBLE)
-                rv.setViewVisibility(R.id.widget_bat_right_card, View.VISIBLE)
-                rv.setTextViewText(R.id.widget_left_label, context.getString(R.string.battery_left))
-                rv.setTextViewText(R.id.widget_right_label, context.getString(R.string.battery_right))
-                rv.setTextViewText(R.id.widget_case_label, context.getString(R.string.battery_case))
+                rv.setViewVisibility(R.id.widget_tws_row, View.VISIBLE)
+                rv.setViewVisibility(R.id.widget_single_card, View.GONE)
 
-                val lTxt = if (snap.leftLevel in 0..100) "${snap.leftLevel}%${if (snap.leftCharging) " +" else ""}" else "—"
-                val rTxt = if (snap.rightLevel in 0..100) "${snap.rightLevel}%${if (snap.rightCharging) " +" else ""}" else "—"
-                rv.setTextViewText(R.id.widget_left_value, lTxt)
-                rv.setProgressBar(R.id.widget_left_bar, 100, snap.leftLevel.coerceIn(0, 100), false)
-                rv.setTextViewText(R.id.widget_right_value, rTxt)
-                rv.setProgressBar(R.id.widget_right_bar, 100, snap.rightLevel.coerceIn(0, 100), false)
+                rv.setImageViewBitmap(
+                    R.id.widget_left_ring,
+                    WidgetRingRenderer.renderBatteryRing(
+                        context = context,
+                        level = snap.leftLevel,
+                        charging = snap.leftCharging,
+                        dimmed = !snap.connected,
+                        glyphRes = R.drawable.ic_widget_bud_left,
+                        sizeDp = 46f
+                    )
+                )
+                rv.setTextViewText(
+                    R.id.widget_left_value,
+                    if (snap.leftLevel in 0..100) "${snap.leftLevel}%" else "—"
+                )
 
-                // Case: live battery OR last known battery + relative timestamp (e.g. "5h ago")
-                if (snap.caseLevel in 0..100) {
-                    rv.setTextViewText(R.id.widget_case_value, "${snap.caseLevel}%${if (snap.caseCharging) " +" else ""}")
+                rv.setImageViewBitmap(
+                    R.id.widget_right_ring,
+                    WidgetRingRenderer.renderBatteryRing(
+                        context = context,
+                        level = snap.rightLevel,
+                        charging = snap.rightCharging,
+                        dimmed = !snap.connected,
+                        glyphRes = R.drawable.ic_widget_bud_right,
+                        sizeDp = 46f
+                    )
+                )
+                rv.setTextViewText(
+                    R.id.widget_right_value,
+                    if (snap.rightLevel in 0..100) "${snap.rightLevel}%" else "—"
+                )
+
+                val liveCase = snap.caseLevel in 0..100
+                val displayCaseLvl = when {
+                    liveCase -> snap.caseLevel
+                    snap.lastCaseLevel != null -> snap.lastCaseLevel
+                    else -> -1
+                }
+                rv.setImageViewBitmap(
+                    R.id.widget_case_ring,
+                    WidgetRingRenderer.renderBatteryRing(
+                        context = context,
+                        level = displayCaseLvl,
+                        charging = liveCase && snap.caseCharging,
+                        dimmed = !liveCase,
+                        glyphRes = R.drawable.ic_widget_case,
+                        sizeDp = 46f
+                    )
+                )
+                if (liveCase) {
+                    rv.setTextViewText(R.id.widget_case_value, "${snap.caseLevel}%")
                     rv.setViewVisibility(R.id.widget_case_sub, View.GONE)
-                    rv.setProgressBar(R.id.widget_case_bar, 100, snap.caseLevel, false)
                 } else if (snap.lastCaseLevel != null && snap.lastCaseTimeMs != null) {
                     rv.setTextViewText(R.id.widget_case_value, "${snap.lastCaseLevel}%")
-                    rv.setTextViewText(R.id.widget_case_sub, WidgetStateStore.formatRelativeTime(context, snap.lastCaseTimeMs))
+                    rv.setTextViewText(
+                        R.id.widget_case_sub,
+                        WidgetStateStore.formatRelativeTime(context, snap.lastCaseTimeMs)
+                    )
                     rv.setViewVisibility(R.id.widget_case_sub, View.VISIBLE)
-                    rv.setProgressBar(R.id.widget_case_bar, 100, snap.lastCaseLevel, false)
                 } else {
                     rv.setTextViewText(R.id.widget_case_value, "—")
                     rv.setViewVisibility(R.id.widget_case_sub, View.GONE)
-                    rv.setProgressBar(R.id.widget_case_bar, 100, 0, false)
                 }
             }
 
-            // ANC Quick Toggle row
             if (snap.supportsAnc) {
                 rv.setViewVisibility(R.id.widget_anc_row, View.VISIBLE)
                 val selColor = ContextCompat.getColor(context, R.color.widget_on_primary_container)
-                val normColor = ContextCompat.getColor(context, R.color.widget_on_surface)
+                val normColor = ContextCompat.getColor(context, R.color.widget_on_surface_variant)
 
-                fun stylePill(viewId: Int, selected: Boolean) {
+                fun styleTile(btnId: Int, iconId: Int, labelId: Int, iconRes: Int, selected: Boolean) {
+                    val fg = if (selected) selColor else normColor
                     rv.setInt(
-                        viewId,
+                        btnId,
                         "setBackgroundResource",
                         if (selected) R.drawable.widget_pill_selected else R.drawable.widget_pill_normal
                     )
-                    rv.setTextColor(viewId, if (selected) selColor else normColor)
+                    rv.setImageViewBitmap(iconId, WidgetRingRenderer.renderTintedIcon(context, iconRes, fg, 18f))
+                    rv.setTextColor(labelId, fg)
                 }
 
-                stylePill(R.id.widget_anc_btn_nr, snap.ancMode == T300Protocol.AncMode.NOISE_REDUCTION)
-                stylePill(R.id.widget_anc_btn_off, snap.ancMode == T300Protocol.AncMode.OFF)
-                stylePill(R.id.widget_anc_btn_tr, snap.ancMode == T300Protocol.AncMode.TRANSPARENCY)
+                styleTile(
+                    R.id.widget_anc_btn_nr,
+                    R.id.widget_anc_icon_nr,
+                    R.id.widget_anc_label_nr,
+                    R.drawable.ic_widget_anc,
+                    snap.ancMode == T300Protocol.AncMode.NOISE_REDUCTION
+                )
+                styleTile(
+                    R.id.widget_anc_btn_off,
+                    R.id.widget_anc_icon_off,
+                    R.id.widget_anc_label_off,
+                    R.drawable.ic_widget_anc_off,
+                    snap.ancMode == T300Protocol.AncMode.OFF
+                )
+                styleTile(
+                    R.id.widget_anc_btn_tr,
+                    R.id.widget_anc_icon_tr,
+                    R.id.widget_anc_label_tr,
+                    R.drawable.ic_widget_anc_trans,
+                    snap.ancMode == T300Protocol.AncMode.TRANSPARENCY
+                )
 
                 rv.setOnClickPendingIntent(R.id.widget_anc_btn_nr, actionPendingIntent(context, ACTION_ANC_NR, 101))
                 rv.setOnClickPendingIntent(R.id.widget_anc_btn_off, actionPendingIntent(context, ACTION_ANC_OFF, 102))

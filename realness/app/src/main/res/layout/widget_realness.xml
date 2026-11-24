@@ -5,71 +5,18 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg"
     android:orientation="vertical"
-    android:padding="14dp">
+    android:padding="8dp">
 
-    <!-- Header Row -->
+    <!-- Top Row: 3 QuickBuds Circular Battery Ring Panels (Left / Case / Right) -->
     <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <ImageView
-            android:id="@+id/widget_icon"
-            android:layout_width="20dp"
-            android:layout_height="20dp"
-            android:contentDescription="@string/app_name"
-            android:src="@drawable/ic_widget_headset" />
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/widget_device_name"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:text="@string/app_name"
-                android:textColor="@color/widget_on_surface"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/widget_status_text"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:text="@string/status_disconnected"
-                android:textColor="@color/widget_on_surface_variant"
-                android:textSize="11sp" />
-        </LinearLayout>
-
-        <ImageButton
-            android:id="@+id/widget_refresh_btn"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:background="@drawable/widget_pill_normal"
-            android:contentDescription="@string/cd_refresh_state"
-            android:padding="6dp"
-            android:src="@drawable/ic_widget_refresh" />
-    </LinearLayout>
-
-    <!-- Battery Strip (3 tonal cards: Left / Case with last seen / Right) -->
-    <LinearLayout
+        android:id="@+id/widget_tws_row"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="10dp"
         android:layout_weight="1"
         android:baselineAligned="false"
         android:orientation="horizontal">
 
-        <!-- Left / Headset Card -->
+        <!-- Left Bud Ring Panel -->
         <LinearLayout
             android:id="@+id/widget_bat_left_card"
             android:layout_width="0dp"
@@ -78,39 +25,29 @@
             android:background="@drawable/widget_card_inner"
             android:gravity="center"
             android:orientation="vertical"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="6dp">
+            android:padding="6dp">
 
-            <TextView
-                android:id="@+id/widget_left_label"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/battery_left"
-                android:textColor="@color/widget_on_surface_variant"
-                android:textSize="11sp" />
+            <ImageView
+                android:id="@+id/widget_left_ring"
+                android:layout_width="46dp"
+                android:layout_height="46dp"
+                android:contentDescription="@string/battery_left"
+                android:scaleType="fitCenter" />
 
             <TextView
                 android:id="@+id/widget_left_value"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
+                android:layout_marginTop="4dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
                 android:text="—"
                 android:textColor="@color/widget_on_surface"
-                android:textSize="16sp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
-
-            <ProgressBar
-                android:id="@+id/widget_left_bar"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="4dp"
-                android:layout_marginTop="5dp"
-                android:max="100"
-                android:progress="0"
-                android:progressDrawable="@drawable/widget_progress_bar" />
         </LinearLayout>
 
-        <!-- Case Card (live or last-known + relative timestamp) -->
+        <!-- Case Ring Panel (live OR last known + short relative time) -->
         <LinearLayout
             android:id="@+id/widget_bat_case_card"
             android:layout_width="0dp"
@@ -120,51 +57,43 @@
             android:background="@drawable/widget_card_inner"
             android:gravity="center"
             android:orientation="vertical"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="6dp">
+            android:padding="6dp">
 
-            <TextView
-                android:id="@+id/widget_case_label"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/battery_case"
-                android:textColor="@color/widget_on_surface_variant"
-                android:textSize="11sp" />
+            <ImageView
+                android:id="@+id/widget_case_ring"
+                android:layout_width="46dp"
+                android:layout_height="46dp"
+                android:contentDescription="@string/battery_case"
+                android:scaleType="fitCenter" />
 
             <TextView
                 android:id="@+id/widget_case_value"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
+                android:layout_marginTop="4dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
                 android:text="—"
                 android:textColor="@color/widget_on_surface"
-                android:textSize="16sp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/widget_case_sub"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:ellipsize="end"
                 android:gravity="center"
+                android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text=""
                 android:textColor="@color/widget_on_surface_variant"
-                android:textSize="9sp"
+                android:textSize="9.5sp"
                 android:visibility="gone" />
-
-            <ProgressBar
-                android:id="@+id/widget_case_bar"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="4dp"
-                android:layout_marginTop="5dp"
-                android:max="100"
-                android:progress="0"
-                android:progressDrawable="@drawable/widget_progress_bar" />
         </LinearLayout>
 
-        <!-- Right Card -->
+        <!-- Right Bud Ring Panel -->
         <LinearLayout
             android:id="@+id/widget_bat_right_card"
             android:layout_width="0dp"
@@ -173,91 +102,182 @@
             android:background="@drawable/widget_card_inner"
             android:gravity="center"
             android:orientation="vertical"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="6dp">
+            android:padding="6dp">
 
-            <TextView
-                android:id="@+id/widget_right_label"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/battery_right"
-                android:textColor="@color/widget_on_surface_variant"
-                android:textSize="11sp" />
+            <ImageView
+                android:id="@+id/widget_right_ring"
+                android:layout_width="46dp"
+                android:layout_height="46dp"
+                android:contentDescription="@string/battery_right"
+                android:scaleType="fitCenter" />
 
             <TextView
                 android:id="@+id/widget_right_value"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
+                android:layout_marginTop="4dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
                 android:text="—"
                 android:textColor="@color/widget_on_surface"
-                android:textSize="16sp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
-
-            <ProgressBar
-                android:id="@+id/widget_right_bar"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="4dp"
-                android:layout_marginTop="5dp"
-                android:max="100"
-                android:progress="0"
-                android:progressDrawable="@drawable/widget_progress_bar" />
         </LinearLayout>
     </LinearLayout>
 
-    <!-- ANC Quick Toggle Row (Material You Pills) -->
+    <!-- Single-Battery Headset Card (Logitech G733 / G435 etc.) -->
+    <LinearLayout
+        android:id="@+id/widget_single_card"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@drawable/widget_card_inner"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="10dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/widget_single_ring"
+            android:layout_width="54dp"
+            android:layout_height="54dp"
+            android:contentDescription="@string/battery_headset"
+            android:scaleType="fitCenter" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="14dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/widget_single_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/app_name"
+                android:textColor="@color/widget_on_surface"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/widget_single_value"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:includeFontPadding="false"
+                android:text="—"
+                android:textColor="@color/widget_on_surface_variant"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Bottom Row: QuickBuds Icon + Label ANC Mode Tiles -->
     <LinearLayout
         android:id="@+id/widget_anc_row"
         android:layout_width="match_parent"
-        android:layout_height="36dp"
-        android:layout_marginTop="10dp"
+        android:layout_height="46dp"
+        android:layout_marginTop="6dp"
+        android:baselineAligned="false"
         android:orientation="horizontal">
 
-        <TextView
+        <LinearLayout
             android:id="@+id/widget_anc_btn_nr"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:background="@drawable/widget_pill_normal"
-            android:ellipsize="end"
             android:gravity="center"
-            android:maxLines="1"
-            android:paddingHorizontal="6dp"
-            android:text="@string/widget_anc_short"
-            android:textColor="@color/widget_on_surface"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:orientation="horizontal"
+            android:paddingHorizontal="6dp">
 
-        <TextView
+            <ImageView
+                android:id="@+id/widget_anc_icon_nr"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:contentDescription="@string/widget_anc_short"
+                android:scaleType="fitCenter" />
+
+            <TextView
+                android:id="@+id/widget_anc_label_nr"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="5dp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/widget_anc_short"
+                android:textColor="@color/widget_on_surface"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/widget_anc_btn_off"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_marginHorizontal="6dp"
             android:layout_weight="1"
             android:background="@drawable/widget_pill_normal"
-            android:ellipsize="end"
             android:gravity="center"
-            android:maxLines="1"
-            android:paddingHorizontal="6dp"
-            android:text="@string/anc_off"
-            android:textColor="@color/widget_on_surface"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:orientation="horizontal"
+            android:paddingHorizontal="6dp">
 
-        <TextView
+            <ImageView
+                android:id="@+id/widget_anc_icon_off"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:contentDescription="@string/anc_off"
+                android:scaleType="fitCenter" />
+
+            <TextView
+                android:id="@+id/widget_anc_label_off"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="5dp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/anc_off"
+                android:textColor="@color/widget_on_surface"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/widget_anc_btn_tr"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:background="@drawable/widget_pill_normal"
-            android:ellipsize="end"
             android:gravity="center"
-            android:maxLines="1"
-            android:paddingHorizontal="6dp"
-            android:text="@string/widget_trans_short"
-            android:textColor="@color/widget_on_surface"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:orientation="horizontal"
+            android:paddingHorizontal="6dp">
+
+            <ImageView
+                android:id="@+id/widget_anc_icon_tr"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:contentDescription="@string/widget_trans_short"
+                android:scaleType="fitCenter" />
+
+            <TextView
+                android:id="@+id/widget_anc_label_tr"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="5dp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/widget_trans_short"
+                android:textColor="@color/widget_on_surface"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
     </LinearLayout>
 </LinearLayout>

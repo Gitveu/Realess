@@ -8,6 +8,7 @@
     <color name="widget_on_primary_container">#FFFFE082</color>
     <color name="widget_on_surface">#FFE6E1E5</color>
     <color name="widget_on_surface_variant">#FFA8A4B0</color>
+    <color name="widget_ring_track">#38E6E1E5</color>
     <color name="widget_status_online">#FF4CAF50</color>
     <color name="widget_status_offline">#FF7A7682</color>
 </resources>

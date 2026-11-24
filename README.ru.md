@@ -4,7 +4,7 @@
 
 Автономное Android-приложение с открытым исходным кодом (`uwu.realness.gitveu`) для прямого управления наушниками и гарнитурами **16 брендов (14 семейств протоколов)** по Bluetooth и USB-OTG — без фирменных комбайнов, аккаунтов и облака.
 
-- **Актуальный релиз:** `v1.9.2 (build 12)` — `realness 1.9.2.apk` и `realness-tiny 1.9.2.apk`
+- **Актуальный релиз:** `v1.9.3 (build 13)` — `realness 1.9.3.apk` и `realness-tiny 1.9.3.apk`
 - **Список моделей:** [SUPPORTED_DEVICES.ru.md](SUPPORTED_DEVICES.ru.md) ([English](SUPPORTED_DEVICES.md))
 - **Техническая и протокольная документация:** [AGENTS.ru.md](AGENTS.ru.md) ([English](AGENTS.md))
 

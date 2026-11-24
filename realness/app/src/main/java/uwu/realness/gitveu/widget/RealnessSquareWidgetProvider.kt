@@ -57,38 +57,93 @@ class RealnessSquareWidgetProvider : AppWidgetProvider() {
             )
             rv.setOnClickPendingIntent(R.id.widget_square_root, openPi)
 
-            val title = snap.deviceName?.takeIf { it.isNotBlank() } ?: context.getString(R.string.app_name)
-            rv.setTextViewText(R.id.widget_square_name, title)
-            rv.setOnClickPendingIntent(
-                R.id.widget_square_refresh_btn,
-                actionPendingIntent(context, ACTION_SQUARE_REFRESH, 302)
-            )
-
             if (snap.isSingleBattery) {
                 rv.setViewVisibility(R.id.widget_square_tws_group, View.GONE)
                 rv.setViewVisibility(R.id.widget_square_single_group, View.VISIBLE)
-                val lvl = snap.leftLevel
-                val txt = if (lvl in 0..100) "${lvl}%${if (snap.leftCharging) "+" else ""}" else "—"
-                rv.setTextViewText(R.id.widget_square_single_value, txt)
-                rv.setProgressBar(R.id.widget_square_single_bar, 100, lvl.coerceIn(0, 100), false)
+                rv.setViewVisibility(R.id.widget_square_bottom_row, if (snap.supportsAnc) View.VISIBLE else View.GONE)
+                rv.setViewVisibility(R.id.widget_square_case_pill, View.GONE)
+
+                val title = snap.deviceName?.takeIf { it.isNotBlank() } ?: context.getString(R.string.app_name)
+                rv.setTextViewText(R.id.widget_square_single_name, title)
+                rv.setTextViewText(
+                    R.id.widget_square_single_value,
+                    if (snap.leftLevel in 0..100) "${snap.leftLevel}%" else "—"
+                )
+                rv.setImageViewBitmap(
+                    R.id.widget_square_single_ring,
+                    WidgetRingRenderer.renderBatteryRing(
+                        context = context,
+                        level = snap.leftLevel,
+                        charging = snap.leftCharging,
+                        dimmed = !snap.connected,
+                        glyphRes = R.drawable.ic_widget_headset,
+                        sizeDp = 48f
+                    )
+                )
             } else {
                 rv.setViewVisibility(R.id.widget_square_tws_group, View.VISIBLE)
                 rv.setViewVisibility(R.id.widget_square_single_group, View.GONE)
-                val lTxt = if (snap.leftLevel in 0..100) "${snap.leftLevel}%${if (snap.leftCharging) "+" else ""}" else "—"
-                val rTxt = if (snap.rightLevel in 0..100) "${snap.rightLevel}%${if (snap.rightCharging) "+" else ""}" else "—"
-                rv.setTextViewText(R.id.widget_square_left, lTxt)
-                rv.setTextViewText(R.id.widget_square_right, rTxt)
+                rv.setViewVisibility(R.id.widget_square_bottom_row, View.VISIBLE)
+                rv.setViewVisibility(R.id.widget_square_case_pill, View.VISIBLE)
 
-                if (snap.caseLevel in 0..100) {
-                    rv.setTextViewText(
-                        R.id.widget_square_case,
-                        "${snap.caseLevel}%${if (snap.caseCharging) "+" else ""}"
+                rv.setImageViewBitmap(
+                    R.id.widget_square_left_ring,
+                    WidgetRingRenderer.renderBatteryRing(
+                        context = context,
+                        level = snap.leftLevel,
+                        charging = snap.leftCharging,
+                        dimmed = !snap.connected,
+                        glyphRes = R.drawable.ic_widget_bud_left,
+                        sizeDp = 38f
                     )
+                )
+                rv.setTextViewText(
+                    R.id.widget_square_left,
+                    if (snap.leftLevel in 0..100) "${snap.leftLevel}%" else "—"
+                )
+
+                rv.setImageViewBitmap(
+                    R.id.widget_square_right_ring,
+                    WidgetRingRenderer.renderBatteryRing(
+                        context = context,
+                        level = snap.rightLevel,
+                        charging = snap.rightCharging,
+                        dimmed = !snap.connected,
+                        glyphRes = R.drawable.ic_widget_bud_right,
+                        sizeDp = 38f
+                    )
+                )
+                rv.setTextViewText(
+                    R.id.widget_square_right,
+                    if (snap.rightLevel in 0..100) "${snap.rightLevel}%" else "—"
+                )
+
+                val liveCase = snap.caseLevel in 0..100
+                val displayCaseLvl = when {
+                    liveCase -> snap.caseLevel
+                    snap.lastCaseLevel != null -> snap.lastCaseLevel
+                    else -> -1
+                }
+                rv.setImageViewBitmap(
+                    R.id.widget_square_case_ring,
+                    WidgetRingRenderer.renderBatteryRing(
+                        context = context,
+                        level = displayCaseLvl,
+                        charging = liveCase && snap.caseCharging,
+                        dimmed = !liveCase,
+                        glyphRes = R.drawable.ic_widget_case,
+                        sizeDp = 24f
+                    )
+                )
+                if (liveCase) {
+                    rv.setTextViewText(R.id.widget_square_case, "${snap.caseLevel}%")
                     rv.setViewVisibility(R.id.widget_square_case_time, View.GONE)
                 } else if (snap.lastCaseLevel != null && snap.lastCaseTimeMs != null) {
                     rv.setTextViewText(R.id.widget_square_case, "${snap.lastCaseLevel}%")
-                    val shortAgo = WidgetStateStore.formatShortRelativeTime(context, snap.lastCaseTimeMs)
-                    rv.setTextViewText(R.id.widget_square_case_time, "· $shortAgo")
+                    rv.setTextViewText(
+                        R.id.widget_square_case_time,
+                        WidgetStateStore.formatShortRelativeTime(context, snap.lastCaseTimeMs)
+                    )
                     rv.setViewVisibility(R.id.widget_square_case_time, View.VISIBLE)
                 } else {
                     rv.setTextViewText(R.id.widget_square_case, "—")
@@ -100,24 +155,18 @@ class RealnessSquareWidgetProvider : AppWidgetProvider() {
                 rv.setViewVisibility(R.id.widget_square_anc_btn, View.VISIBLE)
                 val isActive = snap.ancMode == T300Protocol.AncMode.NOISE_REDUCTION ||
                     snap.ancMode == T300Protocol.AncMode.TRANSPARENCY
-                val ancLabel = when (snap.ancMode) {
-                    T300Protocol.AncMode.NOISE_REDUCTION -> context.getString(R.string.widget_anc_short)
-                    T300Protocol.AncMode.TRANSPARENCY -> context.getString(R.string.widget_trans_short)
-                    T300Protocol.AncMode.OFF -> context.getString(R.string.anc_off)
-                    null -> context.getString(R.string.widget_anc_short)
-                }
-                rv.setTextViewText(R.id.widget_square_anc_btn, ancLabel)
+                val fg = ContextCompat.getColor(
+                    context,
+                    if (isActive) R.color.widget_on_primary_container else R.color.widget_on_surface_variant
+                )
                 rv.setInt(
                     R.id.widget_square_anc_btn,
                     "setBackgroundResource",
                     if (isActive) R.drawable.widget_pill_selected else R.drawable.widget_pill_normal
                 )
-                rv.setTextColor(
-                    R.id.widget_square_anc_btn,
-                    ContextCompat.getColor(
-                        context,
-                        if (isActive) R.color.widget_on_primary_container else R.color.widget_on_surface
-                    )
+                rv.setImageViewBitmap(
+                    R.id.widget_square_anc_icon,
+                    WidgetRingRenderer.renderTintedIcon(context, WidgetRingRenderer.ancIconRes(snap.ancMode), fg, 20f)
                 )
                 rv.setOnClickPendingIntent(
                     R.id.widget_square_anc_btn,

@@ -5,46 +5,23 @@
     android:background="@drawable/widget_bg"
     android:gravity="center"
     android:orientation="vertical"
-    android:paddingHorizontal="6dp"
-    android:paddingVertical="6dp">
+    android:padding="5dp">
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:gravity="center"
-        android:orientation="horizontal">
-
-        <ImageView
-            android:layout_width="13dp"
-            android:layout_height="13dp"
-            android:contentDescription="@string/app_name"
-            android:src="@drawable/ic_widget_headset" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="3dp"
-            android:includeFontPadding="false"
-            android:maxLines="1"
-            android:text="95%"
-            android:textColor="@color/widget_on_surface"
-            android:textSize="11sp"
-            android:textStyle="bold" />
-    </LinearLayout>
+    <ImageView
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:contentDescription="@string/widget_anc_short"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_widget_preview_ring_mini" />
 
     <TextView
-        android:layout_width="match_parent"
-        android:layout_height="24dp"
-        android:layout_marginTop="4dp"
-        android:background="@drawable/widget_pill_selected"
-        android:ellipsize="end"
-        android:gravity="center"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
         android:includeFontPadding="false"
         android:maxLines="1"
-        android:paddingHorizontal="4dp"
-        android:text="@string/widget_anc_mini"
-        android:textColor="@color/widget_on_primary_container"
+        android:text="95%"
+        android:textColor="@color/widget_on_surface"
         android:textSize="10sp"
         android:textStyle="bold" />
 </LinearLayout>

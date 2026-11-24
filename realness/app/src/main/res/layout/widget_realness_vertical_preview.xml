@@ -5,125 +5,124 @@
     android:background="@drawable/widget_bg"
     android:gravity="center_horizontal"
     android:orientation="vertical"
-    android:paddingHorizontal="6dp"
-    android:paddingVertical="7dp">
-
-    <ImageView
-        android:layout_width="15dp"
-        android:layout_height="15dp"
-        android:contentDescription="@string/app_name"
-        android:src="@drawable/ic_widget_headset" />
+    android:padding="5dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="2dp"
         android:layout_weight="1"
+        android:background="@drawable/widget_card_inner"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingHorizontal="3dp"
+        android:paddingVertical="4dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="21dp"
+                android:layout_height="21dp"
+                android:contentDescription="@string/battery_left"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_widget_preview_ring_l" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="95%"
+                android:textColor="@color/widget_on_surface"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="21dp"
+                android:layout_height="21dp"
+                android:contentDescription="@string/battery_right"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_widget_preview_ring_r" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="95%"
+                android:textColor="@color/widget_on_surface"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="21dp"
+                android:layout_height="21dp"
+                android:contentDescription="@string/battery_case"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_widget_preview_ring_case" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text="65%"
+                    android:textColor="@color/widget_on_surface"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text="@string/widget_preview_case_short"
+                    android:textColor="@color/widget_on_surface_variant"
+                    android:textSize="8sp" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="34dp"
+        android:layout_marginTop="5dp"
+        android:background="@drawable/widget_pill_selected"
         android:gravity="center"
         android:orientation="vertical">
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:orientation="horizontal">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:includeFontPadding="false"
-                android:text="L "
-                android:textColor="@color/widget_on_surface_variant"
-                android:textSize="9sp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:includeFontPadding="false"
-                android:maxLines="1"
-                android:text="95%"
-                android:textColor="@color/widget_on_surface"
-                android:textSize="11sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:gravity="center"
-            android:orientation="horizontal">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:includeFontPadding="false"
-                android:text="R "
-                android:textColor="@color/widget_on_surface_variant"
-                android:textSize="9sp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:includeFontPadding="false"
-                android:maxLines="1"
-                android:text="95%"
-                android:textColor="@color/widget_on_surface"
-                android:textSize="11sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:gravity="center"
-            android:orientation="horizontal">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:includeFontPadding="false"
-                android:text="C "
-                android:textColor="@color/widget_on_surface_variant"
-                android:textSize="9sp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:includeFontPadding="false"
-                android:maxLines="1"
-                android:text="60%"
-                android:textColor="@color/widget_on_surface"
-                android:textSize="11sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="1dp"
-            android:ellipsize="end"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:maxLines="1"
-            android:text="@string/widget_preview_case_short"
-            android:textColor="@color/widget_on_surface_variant"
-            android:textSize="9sp" />
+        <ImageView
+            android:layout_width="19dp"
+            android:layout_height="19dp"
+            android:contentDescription="@string/widget_anc_short"
+            android:src="@drawable/ic_widget_anc"
+            android:tint="@color/widget_on_primary_container" />
     </LinearLayout>
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="26dp"
-        android:layout_marginTop="3dp"
-        android:background="@drawable/widget_pill_selected"
-        android:ellipsize="end"
-        android:gravity="center"
-        android:includeFontPadding="false"
-        android:maxLines="1"
-        android:paddingHorizontal="4dp"
-        android:text="@string/widget_anc_mini"
-        android:textColor="@color/widget_on_primary_container"
-        android:textSize="10sp"
-        android:textStyle="bold" />
 </LinearLayout>

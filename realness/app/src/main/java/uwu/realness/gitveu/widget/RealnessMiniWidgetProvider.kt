@@ -6,15 +6,12 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.view.View
 import android.widget.RemoteViews
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import uwu.realness.gitveu.R
 import uwu.realness.gitveu.RealnessApp
-import uwu.realness.gitveu.protocol.T300Protocol
 import uwu.realness.gitveu.ui.MainActivity
 
 class RealnessMiniWidgetProvider : AppWidgetProvider() {
@@ -44,10 +41,10 @@ class RealnessMiniWidgetProvider : AppWidgetProvider() {
             )
             rv.setOnClickPendingIntent(R.id.widget_mini_root, openPi)
 
-            val (batText, batProgress) = when {
+            val (batText, ringLevel, isCachedOnly) = when {
                 snap.isSingleBattery -> {
                     val lvl = snap.leftLevel
-                    if (lvl in 0..100) ("${lvl}%" to lvl) else ("—" to 0)
+                    if (lvl in 0..100) Triple("${lvl}%", lvl, !snap.connected) else Triple("—", -1, true)
                 }
                 snap.leftLevel in 0..100 && snap.rightLevel in 0..100 -> {
                     val minLvl = minOf(snap.leftLevel, snap.rightLevel)
@@ -56,51 +53,38 @@ class RealnessMiniWidgetProvider : AppWidgetProvider() {
                     } else {
                         "${snap.leftLevel}/${snap.rightLevel}"
                     }
-                    txt to minLvl
+                    Triple(txt, minLvl, !snap.connected)
                 }
-                snap.leftLevel in 0..100 -> "${snap.leftLevel}%" to snap.leftLevel
-                snap.rightLevel in 0..100 -> "${snap.rightLevel}%" to snap.rightLevel
-                snap.caseLevel in 0..100 -> "C${snap.caseLevel}%" to snap.caseLevel
-                snap.lastCaseLevel != null -> "C${snap.lastCaseLevel}%" to snap.lastCaseLevel
-                else -> "—" to 0
+                snap.leftLevel in 0..100 -> Triple("${snap.leftLevel}%", snap.leftLevel, !snap.connected)
+                snap.rightLevel in 0..100 -> Triple("${snap.rightLevel}%", snap.rightLevel, !snap.connected)
+                snap.caseLevel in 0..100 -> Triple("${snap.caseLevel}%", snap.caseLevel, false)
+                snap.lastCaseLevel != null -> Triple("${snap.lastCaseLevel}%", snap.lastCaseLevel, true)
+                else -> Triple("—", -1, true)
             }
+
             rv.setTextViewText(R.id.widget_mini_battery, batText)
+            rv.setImageViewBitmap(
+                R.id.widget_mini_ring,
+                WidgetRingRenderer.renderMiniAncRing(
+                    context = context,
+                    level = ringLevel,
+                    ancMode = snap.ancMode,
+                    supportsAnc = snap.supportsAnc,
+                    dimmed = isCachedOnly,
+                    sizeDp = 40f
+                )
+            )
 
             if (snap.supportsAnc) {
-                rv.setViewVisibility(R.id.widget_mini_anc_btn, View.VISIBLE)
-                rv.setViewVisibility(R.id.widget_mini_bar, View.GONE)
-                val isActive = snap.ancMode == T300Protocol.AncMode.NOISE_REDUCTION ||
-                    snap.ancMode == T300Protocol.AncMode.TRANSPARENCY
-                val ancLabel = when (snap.ancMode) {
-                    T300Protocol.AncMode.NOISE_REDUCTION -> context.getString(R.string.widget_anc_mini)
-                    T300Protocol.AncMode.TRANSPARENCY -> context.getString(R.string.widget_trans_mini)
-                    T300Protocol.AncMode.OFF -> context.getString(R.string.widget_off_mini)
-                    null -> context.getString(R.string.widget_anc_mini)
-                }
-                rv.setTextViewText(R.id.widget_mini_anc_btn, ancLabel)
-                rv.setInt(
-                    R.id.widget_mini_anc_btn,
-                    "setBackgroundResource",
-                    if (isActive) R.drawable.widget_pill_selected else R.drawable.widget_pill_normal
-                )
-                rv.setTextColor(
-                    R.id.widget_mini_anc_btn,
-                    ContextCompat.getColor(
-                        context,
-                        if (isActive) R.color.widget_on_primary_container else R.color.widget_on_surface
-                    )
-                )
                 val cycleIntent = Intent(context, RealnessMiniWidgetProvider::class.java).apply {
                     action = ACTION_MINI_CYCLE_ANC
                 }
                 val cyclePi = PendingIntent.getBroadcast(
                     context, 501, cycleIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
-                rv.setOnClickPendingIntent(R.id.widget_mini_anc_btn, cyclePi)
+                rv.setOnClickPendingIntent(R.id.widget_mini_ring, cyclePi)
             } else {
-                rv.setViewVisibility(R.id.widget_mini_anc_btn, View.GONE)
-                rv.setViewVisibility(R.id.widget_mini_bar, View.VISIBLE)
-                rv.setProgressBar(R.id.widget_mini_bar, 100, batProgress.coerceIn(0, 100), false)
+                rv.setOnClickPendingIntent(R.id.widget_mini_ring, openPi)
             }
 
             return rv
