@@ -32,6 +32,10 @@
     <string name="time_min_ago">%1$d мин назад</string>
     <string name="time_hours_ago">%1$d ч назад</string>
     <string name="time_days_ago">%1$d дн. назад</string>
+    <string name="time_short_now">сейч.</string>
+    <string name="time_short_min">%1$dм</string>
+    <string name="time_short_hours">%1$dч</string>
+    <string name="time_short_days">%1$dд</string>
 
     <!-- Status & Device Card -->
     <string name="default_device_name">Нет подключённых устройств</string>
@@ -209,12 +213,19 @@
     <string name="logitech_inactive_min">%1$d мин</string>
 
     <!-- Home Screen Widgets -->
-    <string name="widget_full_label">realness · Заряд и ANC</string>
+    <string name="widget_full_label">realness · Заряд и ANC (4×2)</string>
     <string name="widget_full_desc">Заряд наушников, последний заряд кейса и переключение шумодава.</string>
-    <string name="widget_compact_label">realness · Компактный</string>
+    <string name="widget_compact_label">realness · Компактный (4×1)</string>
     <string name="widget_compact_desc">Компактный индикатор заряда и быстрая кнопка ANC.</string>
+    <string name="widget_square_label">realness · Квадратный (2×2)</string>
+    <string name="widget_square_desc">Компактная плитка 2×2 с зарядом L/R/кейса и переключением ANC.</string>
+    <string name="widget_vertical_label">realness · Вертикальный (1×2)</string>
+    <string name="widget_vertical_desc">Узкий вертикальный виджет 1×2 с зарядом наушников и кнопкой ANC.</string>
     <string name="widget_anc_short">Шумодав</string>
     <string name="widget_trans_short">Прозрач.</string>
+    <string name="widget_anc_mini">ANC</string>
+    <string name="widget_trans_mini">Проз.</string>
+    <string name="widget_off_mini">Выкл</string>
     <string name="widget_no_device">Откройте приложение</string>
     <string name="status_disconnected">Отключено</string>
     <string name="cd_refresh_state">Обновить состояние</string>

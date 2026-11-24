@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_vertical_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:gravity="center_horizontal"
+    android:orientation="vertical"
+    android:paddingHorizontal="6dp"
+    android:paddingVertical="10dp">
+
+    <ImageView
+        android:layout_width="18dp"
+        android:layout_height="18dp"
+        android:contentDescription="@string/app_name"
+        android:src="@drawable/ic_widget_headset" />
+
+    <!-- Stacked Battery Indicators -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="4dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <!-- TWS Vertical Stack (L / R / C + short time) -->
+        <LinearLayout
+            android:id="@+id/widget_vertical_tws_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="L "
+                    android:textColor="@color/widget_on_surface_variant"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/widget_vertical_left"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:maxLines="1"
+                    android:text="—"
+                    android:textColor="@color/widget_on_surface"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="R "
+                    android:textColor="@color/widget_on_surface_variant"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/widget_vertical_right"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:maxLines="1"
+                    android:text="—"
+                    android:textColor="@color/widget_on_surface"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="C "
+                    android:textColor="@color/widget_on_surface_variant"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/widget_vertical_case"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:maxLines="1"
+                    android:text="—"
+                    android:textColor="@color/widget_on_surface"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_vertical_case_time"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:maxLines="1"
+                android:text=""
+                android:textColor="@color/widget_on_surface_variant"
+                android:textSize="9sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- Single-Battery Headset Stack -->
+        <LinearLayout
+            android:id="@+id/widget_vertical_single_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/widget_vertical_single_value"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxLines="1"
+                android:text="—"
+                android:textColor="@color/widget_on_surface"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <ProgressBar
+                android:id="@+id/widget_vertical_single_bar"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="4dp"
+                android:layout_marginTop="5dp"
+                android:max="100"
+                android:progress="0"
+                android:progressDrawable="@drawable/widget_progress_bar" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Mini ANC Cycle Pill -->
+    <TextView
+        android:id="@+id/widget_vertical_anc_btn"
+        android:layout_width="match_parent"
+        android:layout_height="30dp"
+        android:layout_marginTop="4dp"
+        android:background="@drawable/widget_pill_selected"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:maxLines="1"
+        android:paddingHorizontal="4dp"
+        android:text="@string/widget_anc_mini"
+        android:textColor="@color/widget_on_primary_container"
+        android:textSize="10sp"
+        android:textStyle="bold" />
+</LinearLayout>

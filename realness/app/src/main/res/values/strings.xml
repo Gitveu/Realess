@@ -32,6 +32,10 @@
     <string name="time_min_ago">%1$dm ago</string>
     <string name="time_hours_ago">%1$dh ago</string>
     <string name="time_days_ago">%1$dd ago</string>
+    <string name="time_short_now">now</string>
+    <string name="time_short_min">%1$dm</string>
+    <string name="time_short_hours">%1$dh</string>
+    <string name="time_short_days">%1$dd</string>
 
     <!-- Status & Device Card -->
     <string name="default_device_name">No device connected</string>
@@ -209,12 +213,19 @@
     <string name="logitech_inactive_min">%1$dm</string>
 
     <!-- Home Screen Widgets -->
-    <string name="widget_full_label">realness · Battery &amp; ANC</string>
+    <string name="widget_full_label">realness · Battery &amp; ANC (4×2)</string>
     <string name="widget_full_desc">Shows earbud battery, last known case charge, and quick ANC toggles.</string>
-    <string name="widget_compact_label">realness · Compact</string>
+    <string name="widget_compact_label">realness · Compact (4×1)</string>
     <string name="widget_compact_desc">Compact battery pill with quick ANC mode switcher.</string>
+    <string name="widget_square_label">realness · Square (2×2)</string>
+    <string name="widget_square_desc">Compact 2×2 Material You tile with L/R/Case battery and quick ANC switch.</string>
+    <string name="widget_vertical_label">realness · Vertical (1×2)</string>
+    <string name="widget_vertical_desc">Slim vertical 1×2 widget with stacked battery levels and ANC switch.</string>
     <string name="widget_anc_short">ANC</string>
     <string name="widget_trans_short">Transp.</string>
+    <string name="widget_anc_mini">ANC</string>
+    <string name="widget_trans_mini">Tr.</string>
+    <string name="widget_off_mini">Off</string>
     <string name="widget_no_device">Open app to connect</string>
     <string name="status_disconnected">Disconnected</string>
     <string name="cd_refresh_state">Refresh state</string>

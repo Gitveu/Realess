@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_square_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <!-- Compact Header Row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:contentDescription="@string/app_name"
+            android:src="@drawable/ic_widget_headset" />
+
+        <TextView
+            android:id="@+id/widget_square_name"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="6dp"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="@string/app_name"
+            android:textColor="@color/widget_on_surface"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/widget_square_refresh_btn"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:background="@drawable/widget_pill_normal"
+            android:contentDescription="@string/cd_refresh_state"
+            android:padding="5dp"
+            android:src="@drawable/ic_widget_refresh" />
+    </LinearLayout>
+
+    <!-- Battery Card (TWS L/R + Case OR Single Headset) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_weight="1"
+        android:background="@drawable/widget_card_inner"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="6dp">
+
+        <!-- TWS Battery Layout -->
+        <LinearLayout
+            android:id="@+id/widget_square_tws_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:baselineAligned="false"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="L"
+                        android:textColor="@color/widget_on_surface_variant"
+                        android:textSize="10sp" />
+
+                    <TextView
+                        android:id="@+id/widget_square_left"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:maxLines="1"
+                        android:text="—"
+                        android:textColor="@color/widget_on_surface"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="R"
+                        android:textColor="@color/widget_on_surface_variant"
+                        android:textSize="10sp" />
+
+                    <TextView
+                        android:id="@+id/widget_square_right"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:maxLines="1"
+                        android:text="—"
+                        android:textColor="@color/widget_on_surface"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="C"
+                    android:textColor="@color/widget_on_surface_variant"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/widget_square_case"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:maxLines="1"
+                    android:text="—"
+                    android:textColor="@color/widget_on_surface"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/widget_square_case_time"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text=""
+                    android:textColor="@color/widget_on_surface_variant"
+                    android:textSize="10sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Single-Battery Headset Layout (e.g. Logitech G733 / G435) -->
+        <LinearLayout
+            android:id="@+id/widget_square_single_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/widget_square_single_value"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxLines="1"
+                android:text="—"
+                android:textColor="@color/widget_on_surface"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <ProgressBar
+                android:id="@+id/widget_square_single_bar"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="4dp"
+                android:layout_marginTop="6dp"
+                android:max="100"
+                android:progress="0"
+                android:progressDrawable="@drawable/widget_progress_bar" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Quick ANC Cycle Pill -->
+    <TextView
+        android:id="@+id/widget_square_anc_btn"
+        android:layout_width="match_parent"
+        android:layout_height="32dp"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/widget_pill_selected"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:maxLines="1"
+        android:paddingHorizontal="10dp"
+        android:text="@string/widget_anc_short"
+        android:textColor="@color/widget_on_primary_container"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+</LinearLayout>

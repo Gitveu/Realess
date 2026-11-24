@@ -3,7 +3,7 @@
 **English** | [Русский](AGENTS.ru.md)
 
 Last updated: 2026-11-24  
-Current release: `v1.9 (build 10)` — **14 protocol families across 16 brands** (`realness` in native Material 3 Expressive + Material You widgets + `realness-tiny` in classic compact UI). Full model matrix: [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md).
+Current release: `v1.9.1 (build 11)` — **14 protocol families across 16 brands** (`realness` in native Material 3 Expressive + Material You widgets + `realness-tiny` in classic compact UI). Full model matrix: [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md).
 
 ---
 
@@ -85,7 +85,7 @@ Current release: `v1.9 (build 10)` — **14 protocol families across 16 brands**
 
 ### 3.3. Material You Widgets & Last Known Case Battery
 - `RealnessApp` holds process-wide `T300BleManager` and `LogitechUsbManager` singletons; `WidgetStateStore` persists battery snapshot, ANC state, and per-MAC **last known case battery + timestamp** whenever `caseBattery.level in 0..100` is received.
-- `RealnessWidgetProvider` (4×2 Material You card) and `RealnessCompactWidgetProvider` (4×1 pill) display L / Case (with relative timestamp when closed) / R and trigger live or background-reconnect ANC switches via `goAsync()`.
+- `RealnessWidgetProvider` (4×2 Material You card), `RealnessCompactWidgetProvider` (4×1 pill, resizable to 2×1), `RealnessSquareWidgetProvider` (2×2 square tile), and `RealnessVerticalWidgetProvider` (1×2 vertical pill) display L / Case (with relative timestamp when closed) / R and trigger live or background-reconnect ANC switches via `goAsync()`.
 
 ---
 

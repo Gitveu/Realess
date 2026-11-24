@@ -130,4 +130,14 @@ object WidgetStateStore {
             else -> context.getString(R.string.time_days_ago, (diffSec / 86_400L).toInt())
         }
     }
+
+    fun formatShortRelativeTime(context: Context, timestampMs: Long, nowMs: Long = System.currentTimeMillis()): String {
+        val diffSec = ((nowMs - timestampMs) / 1000L).coerceAtLeast(0L)
+        return when {
+            diffSec < 60L -> context.getString(R.string.time_short_now)
+            diffSec < 3600L -> context.getString(R.string.time_short_min, (diffSec / 60L).toInt())
+            diffSec < 86_400L -> context.getString(R.string.time_short_hours, (diffSec / 3600L).toInt())
+            else -> context.getString(R.string.time_short_days, (diffSec / 86_400L).toInt())
+        }
+    }
 }

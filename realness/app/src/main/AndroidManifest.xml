@@ -95,6 +95,35 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_realness_compact_info" />
         </receiver>
+
+        <!-- Material You 2x2 Square Widget (L/R/Case + Last Case + Quick ANC Cycle) -->
+        <receiver
+            android:name=".widget.RealnessSquareWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_square_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="uwu.realness.gitveu.widget.ACTION_SQUARE_CYCLE_ANC" />
+                <action android:name="uwu.realness.gitveu.widget.ACTION_SQUARE_REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_realness_square_info" />
+        </receiver>
+
+        <!-- Material You 1x2 Vertical Widget (Stacked L/R/Case + Mini ANC Cycle) -->
+        <receiver
+            android:name=".widget.RealnessVerticalWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_vertical_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="uwu.realness.gitveu.widget.ACTION_VERTICAL_CYCLE_ANC" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_realness_vertical_info" />
+        </receiver>
     </application>
 
 </manifest>
