@@ -89,7 +89,8 @@ object T300Protocol {
         JABRA_SPP,
         PIXEL_BUDS_SPP,
         JBL_GATT,
-        LOGITECH_HID
+        LOGITECH_HID,
+        BT_STANDARD
     }
 
     enum class Brand(val title: String) {
@@ -109,7 +110,8 @@ object T300Protocol {
         JABRA("Jabra"),
         GOOGLE("Google Pixel Buds"),
         JBL("JBL"),
-        LOGITECH("Logitech G")
+        LOGITECH("Logitech G"),
+        GENERIC("Bluetooth")
     }
 
     enum class BudsModel(
@@ -302,7 +304,10 @@ object T300Protocol {
 
         // Logitech G Gaming Headsets (USB-OTG Lightspeed HID + G435 Bluetooth)
         LOGITECH_G733(ProtocolFamily.LOGITECH_HID, Brand.LOGITECH, "Logitech G733 LIGHTSPEED"),
-        LOGITECH_G435(ProtocolFamily.LOGITECH_HID, Brand.LOGITECH, "Logitech G435 LIGHTSPEED / BT");
+        LOGITECH_G435(ProtocolFamily.LOGITECH_HID, Brand.LOGITECH, "Logitech G435 LIGHTSPEED / BT"),
+
+        // Standard Bluetooth Audio Fallback (HFP Battery + BLE Battery Service 0x180F)
+        GENERIC_BT(ProtocolFamily.BT_STANDARD, Brand.GENERIC, "Standard Bluetooth (Battery)");
 
         val isSupported: Boolean get() = this != UNKNOWN
         val isRealme: Boolean get() = protocolFamily == ProtocolFamily.REALME_TL
@@ -320,8 +325,9 @@ object T300Protocol {
         val isPixelBuds: Boolean get() = protocolFamily == ProtocolFamily.PIXEL_BUDS_SPP
         val isJbl: Boolean get() = protocolFamily == ProtocolFamily.JBL_GATT
         val isLogitech: Boolean get() = protocolFamily == ProtocolFamily.LOGITECH_HID
+        val isGenericBluetooth: Boolean get() = protocolFamily == ProtocolFamily.BT_STANDARD
         val isSingleBatteryHeadset: Boolean
-            get() = isLogitech || this in setOf(
+            get() = isLogitech || isGenericBluetooth || this in setOf(
                 NOTHING_HEADPHONE_1, NOTHING_HEADPHONE_1_PRO, NOTHING_HEADPHONE_A,
                 CMF_HEADPHONE_PRO, CMF_NECKBAND_PRO, CMF_SPEAKER,
                 HUAWEI_FREEBUDS_STUDIO, HUAWEI_FREELACE_PRO, HUAWEI_FREELACE_PRO_2,
@@ -1011,23 +1017,37 @@ object T300Protocol {
             TouchGesture.DOUBLE_TAP -> listOf(
                 TouchAction.PLAY_PAUSE,
                 TouchAction.NEXT_TRACK,
+                TouchAction.PREV_TRACK,
+                TouchAction.VOLUME_UP,
+                TouchAction.VOLUME_DOWN,
                 TouchAction.VOICE_ASSISTANT,
+                TouchAction.ANC_TOGGLE,
+                TouchAction.DEVICE_SWITCH,
+                TouchAction.GAME_MODE,
                 TouchAction.NONE
             )
             TouchGesture.TRIPLE_TAP -> listOf(
                 TouchAction.PREV_TRACK,
                 TouchAction.NEXT_TRACK,
+                TouchAction.PLAY_PAUSE,
                 TouchAction.VOLUME_UP,
                 TouchAction.VOLUME_DOWN,
                 TouchAction.DEVICE_SWITCH,
                 TouchAction.VOICE_ASSISTANT,
+                TouchAction.ANC_TOGGLE,
                 TouchAction.GAME_MODE,
                 TouchAction.NONE
             )
             TouchGesture.LONG_PRESS -> listOf(
                 TouchAction.ANC_TOGGLE,
+                TouchAction.VOLUME_UP,
+                TouchAction.VOLUME_DOWN,
                 TouchAction.VOICE_ASSISTANT,
                 TouchAction.GAME_MODE,
+                TouchAction.PLAY_PAUSE,
+                TouchAction.NEXT_TRACK,
+                TouchAction.PREV_TRACK,
+                TouchAction.DEVICE_SWITCH,
                 TouchAction.NONE
             )
         }
@@ -1085,7 +1105,9 @@ object T300Protocol {
         val batteryHoursLeft: Float? = null,
         val sidetoneLevel: Int? = null,
         val lightsEnabled: Boolean? = null,
-        val inactiveMinutes: Int? = null
+        val inactiveMinutes: Int? = null,
+        // True when vendor protocol (e.g. JBL GATT / SPP) was unavailable and we fell back to standard BT HFP/BAS battery
+        val isStandardBluetoothFallback: Boolean = false
     )
 
     data class Frame(

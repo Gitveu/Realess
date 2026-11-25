@@ -388,24 +388,13 @@ object HuaweiProtocol {
         gesture: T300Protocol.TouchGesture
     ): List<T300Protocol.TouchAction> {
         return when (gesture) {
-            T300Protocol.TouchGesture.LONG_PRESS -> {
-                if (model == T300Protocol.BudsModel.HUAWEI_FREECLIP_2 ||
-                    model == T300Protocol.BudsModel.HUAWEI_FREEBUDS_SE_4
-                ) {
-                    listOf(
-                        T300Protocol.TouchAction.ANC_TOGGLE,
-                        T300Protocol.TouchAction.VOICE_ASSISTANT,
-                        T300Protocol.TouchAction.VOLUME_UP,
-                        T300Protocol.TouchAction.VOLUME_DOWN,
-                        T300Protocol.TouchAction.NONE
-                    )
-                } else {
-                    listOf(
-                        T300Protocol.TouchAction.ANC_TOGGLE,
-                        T300Protocol.TouchAction.NONE
-                    )
-                }
-            }
+            T300Protocol.TouchGesture.LONG_PRESS -> listOf(
+                T300Protocol.TouchAction.ANC_TOGGLE,
+                T300Protocol.TouchAction.VOICE_ASSISTANT,
+                T300Protocol.TouchAction.VOLUME_UP,
+                T300Protocol.TouchAction.VOLUME_DOWN,
+                T300Protocol.TouchAction.NONE
+            )
             T300Protocol.TouchGesture.DOUBLE_TAP,
             T300Protocol.TouchGesture.TRIPLE_TAP -> {
                 if (model == T300Protocol.BudsModel.HUAWEI_FREEBUDS_3) {

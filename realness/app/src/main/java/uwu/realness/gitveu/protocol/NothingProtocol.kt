@@ -393,6 +393,9 @@ object NothingProtocol {
             T300Protocol.TouchAction.VOICE_ASSISTANT,
             T300Protocol.TouchAction.VOLUME_UP,
             T300Protocol.TouchAction.VOLUME_DOWN,
+            T300Protocol.TouchAction.PLAY_PAUSE,
+            T300Protocol.TouchAction.NEXT_TRACK,
+            T300Protocol.TouchAction.PREV_TRACK,
             T300Protocol.TouchAction.NONE
         )
     }

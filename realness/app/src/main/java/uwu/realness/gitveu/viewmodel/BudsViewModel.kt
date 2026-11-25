@@ -34,6 +34,7 @@ import uwu.realness.gitveu.protocol.T300Protocol.TouchAction
 import uwu.realness.gitveu.protocol.T300Protocol.TouchGesture
 import uwu.realness.gitveu.protocol.T300Protocol.TouchSide
 import uwu.realness.gitveu.usb.LogitechUsbManager
+import uwu.realness.gitveu.widget.WidgetBluetoothReceiver
 import uwu.realness.gitveu.widget.WidgetStateStore
 
 enum class RenameScope {
@@ -213,6 +214,18 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
                 BluetoothAdapter.ACTION_STATE_CHANGED -> {
                     checkAndAutoConnect()
                 }
+                WidgetBluetoothReceiver.ACTION_BATTERY_LEVEL_CHANGED -> {
+                    val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                    }
+                    val level = intent.getIntExtra(WidgetBluetoothReceiver.EXTRA_BATTERY_LEVEL, -1)
+                    if (device != null && level in 0..100) {
+                        bleManager.updateHfpBatteryFromBroadcast(device.address, level)
+                    }
+                }
             }
         }
     }
@@ -268,6 +281,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
             addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
             addAction(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED)
             addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
+            addAction(WidgetBluetoothReceiver.ACTION_BATTERY_LEVEL_CHANGED)
         }
         val usbFilter = IntentFilter().apply {
             addAction(LogitechUsbManager.ACTION_USB_PERMISSION)
@@ -359,6 +373,14 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
     private fun scheduleAutoReconnect() {
         if (!_hasPermissions.value) return
         autoReconnectJob?.cancel()
+        if (reconnectAttempt >= 2) {
+            val activeDev = _detectedBudsDevice.value
+            val connectedA2dp = try { a2dpProfile?.connectedDevices ?: emptyList() } catch (_: Exception) { emptyList() }
+            if (activeDev != null && connectedA2dp.any { it.address == activeDev.address }) {
+                bleManager.connectStandardBluetoothFallback(activeDev, _detectedModel.value)
+                return
+            }
+        }
         val delayMs = when (reconnectAttempt) {
             0 -> 900L
             1 -> 1800L
@@ -494,25 +516,38 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
                 return
             }
 
-            // No active supported A2DP device -> close stale link
+            // 2. Unrecognized A2DP Bluetooth audio device -> connect via Standard Bluetooth Battery (HFP + BLE BAS)
+            val connectedGeneric = connectedA2dp.firstOrNull()
+            if (connectedGeneric != null) {
+                val effectiveModel = BudsModel.GENERIC_BT
+                saveLastDevice(connectedGeneric, effectiveModel)
+
+                _detectedBudsDevice.value = connectedGeneric
+                _autoDetectedModel.value = effectiveModel
+                _detectedModel.value = effectiveModel
+                _unsupportedDeviceName.value = null
+
+                val alreadyActive = bleManager.isConnectedOrConnectingTo(connectedGeneric.address, effectiveModel)
+                _deviceStatus.value = if (alreadyActive && bleManager.connectionState.value == BleConnectionState.CONNECTED) {
+                    SystemDeviceStatus.APP_LINK_ACTIVE
+                } else {
+                    SystemDeviceStatus.DEVICE_CONNECTED_OS
+                }
+
+                if (!alreadyActive) {
+                    connectToDevice(connectedGeneric, effectiveModel)
+                }
+                syncWidgets()
+                return
+            }
+
+            // No active A2DP device -> close stale link
             autoReconnectJob?.cancel()
             reconnectAttempt = 0
             if (bleManager.connectionState.value != BleConnectionState.DISCONNECTED) {
                 bleManager.disconnect()
             }
             lastConnectedAddress = null
-
-            // 2. Unsupported A2DP device connected
-            val connectedUnsupported = connectedA2dp.firstOrNull()
-            if (connectedUnsupported != null) {
-                _detectedBudsDevice.value = null
-                _autoDetectedModel.value = BudsModel.UNKNOWN
-                _detectedModel.value = BudsModel.UNKNOWN
-                _unsupportedDeviceName.value = connectedUnsupported.name ?: connectedUnsupported.address
-                _deviceStatus.value = SystemDeviceStatus.UNSUPPORTED_DEVICE
-                syncWidgets()
-                return
-            }
 
             // 3. No active A2DP device -> show last connected device (with last known case battery!)
             val savedMac = prefs.getString(KEY_LAST_MAC, null)

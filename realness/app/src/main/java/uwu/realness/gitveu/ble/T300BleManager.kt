@@ -99,6 +99,8 @@ class T300BleManager(private val context: Context) {
     private var pixelActiveChannel = 18
     private var pixelProbeIndex = 0
     private var jblAcc = ByteArray(0)
+    private var jblGattRetryAttempt = 0
+    private var isBatteryOnlyGattProbe = false
 
     private val _connectionState = MutableStateFlow(BleConnectionState.DISCONNECTED)
     val connectionState: StateFlow<BleConnectionState> = _connectionState.asStateFlow()
@@ -202,21 +204,22 @@ class T300BleManager(private val context: Context) {
         connectJob = scope.launch {
             if (gen != sessionGen.get()) return@launch
 
-            // Logitech G435 / G733 over Bluetooth: read HFP battery level + BLE Battery Service (0x180F/0x2A19)
-            if (activeModel.isLogitech) {
-                log("Connecting Logitech BT battery monitor (HFP + BLE BAS 0x180F)...")
-                activeTransport = ActiveTransport.BT_BATTERY_ONLY
-                _connectionState.value = BleConnectionState.CONNECTED
-                pollStandardBluetoothBattery(device)
-                connectGatt(device, gen)
-                startPolling(gen)
+            // Logitech G435 / G733 or Standard Bluetooth (HFP + BLE Battery Service 0x180F/0x2A19)
+            if (activeModel.isLogitech || activeModel.isGenericBluetooth) {
+                enterStandardBluetoothBatteryMode(
+                    device = device,
+                    gen = gen,
+                    isFallback = activeModel.isGenericBluetooth,
+                    tryBleBas = true
+                )
                 return@launch
             }
 
-            // JBL uses BLE GATT directly
+            // JBL uses BLE GATT directly (with automatic fallback to TRANSPORT_AUTO -> HFP battery on status=133)
             if (activeModel.isJbl) {
-                log("Connecting JBL via BLE GATT...")
-                connectGatt(device, gen)
+                jblGattRetryAttempt = 0
+                log("Connecting JBL via BLE GATT (TRANSPORT_LE)...")
+                connectGatt(device, gen, transport = BluetoothDevice.TRANSPORT_LE, isBatteryOnlyProbe = false)
                 return@launch
             }
 
@@ -237,6 +240,71 @@ class T300BleManager(private val context: Context) {
             // Attempt 2: BLE GATT Fallback (realme / OnePlus / OPPO)
             log("SPP sockets unavailable. Falling back to BLE GATT...")
             connectGatt(device, gen)
+        }
+    }
+
+    /**
+     * Connects (or switches) directly into Standard Bluetooth Battery Mode (HFP getBatteryLevel + optional BLE BAS 0x180F).
+     * Used for generic Bluetooth audio devices and as an automatic fallback when vendor GATT/SPP is unavailable (e.g. JBL WAVE200TWS).
+     */
+    fun connectStandardBluetoothFallback(device: BluetoothDevice, model: T300Protocol.BudsModel) {
+        val gen = sessionGen.incrementAndGet()
+        closeResourcesOnly()
+        activeModel = model
+        activeDeviceAddress = device.address
+        activeBtDevice = device
+        connectJob = scope.launch {
+            enterStandardBluetoothBatteryMode(device, gen, isFallback = true, tryBleBas = false)
+        }
+    }
+
+    private fun enterStandardBluetoothBatteryMode(
+        device: BluetoothDevice,
+        gen: Int,
+        isFallback: Boolean,
+        tryBleBas: Boolean
+    ) {
+        if (gen != sessionGen.get()) return
+        // Close any failed vendor GATT cleanly before switching to HFP battery monitoring
+        bluetoothGatt?.let { g ->
+            try {
+                g.disconnect()
+                g.close()
+            } catch (_: Exception) {}
+        }
+        bluetoothGatt = null
+        writeCharacteristic = null
+        notifyCharacteristic = null
+        batteryLevelCharacteristic = null
+
+        activeTransport = ActiveTransport.BT_BATTERY_ONLY
+        activeBtDevice = device
+        _t300State.value = T300Protocol.T300State(isStandardBluetoothFallback = isFallback)
+        _connectionState.value = BleConnectionState.CONNECTED
+        log("Standard Bluetooth battery mode active (HFP${if (tryBleBas) " + BLE BAS 0x180F" else ""})")
+        pollStandardBluetoothBattery(device)
+        if (tryBleBas) {
+            connectGatt(device, gen, transport = BluetoothDevice.TRANSPORT_AUTO, isBatteryOnlyProbe = true)
+        }
+        startPolling(gen)
+    }
+
+    fun updateHfpBatteryFromBroadcast(address: String, level: Int) {
+        if (level !in 0..100) return
+        if (activeTransport != ActiveTransport.BT_BATTERY_ONLY) return
+        if (!address.equals(activeDeviceAddress, ignoreCase = true)) return
+        val hours = if (activeModel == T300Protocol.BudsModel.LOGITECH_G435) (level / 100f) * 18.0f else null
+        log("RX BT HFP Battery broadcast: $level%")
+        updateBatteryState(
+            listOf(
+                T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, level, false),
+                T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, level, false),
+                T300Protocol.BatteryInfo(ComponentRole.CASE, -1, false)
+            ),
+            isSnapshot = true
+        )
+        if (hours != null) {
+            _t300State.value = _t300State.value.copy(batteryHoursLeft = hours)
         }
     }
 
@@ -434,13 +502,21 @@ class T300BleManager(private val context: Context) {
     /**
      * Подключение через BLE GATT
      */
-    private fun connectGatt(device: BluetoothDevice, gen: Int) {
+    private fun connectGatt(
+        device: BluetoothDevice,
+        gen: Int,
+        transport: Int = BluetoothDevice.TRANSPORT_AUTO,
+        isBatteryOnlyProbe: Boolean = false
+    ) {
         if (gen != sessionGen.get()) return
-        _connectionState.value = BleConnectionState.CONNECTING
-        activeTransport = ActiveTransport.BLE_GATT
+        isBatteryOnlyGattProbe = isBatteryOnlyProbe
+        if (!isBatteryOnlyProbe) {
+            _connectionState.value = BleConnectionState.CONNECTING
+            activeTransport = ActiveTransport.BLE_GATT
+        }
 
         bluetoothGatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_AUTO)
+            device.connectGatt(context, false, gattCallback, transport)
         } else {
             device.connectGatt(context, false, gattCallback)
         }
@@ -491,6 +567,8 @@ class T300BleManager(private val context: Context) {
         pixelActiveChannel = 18
         pixelProbeIndex = 0
         jblAcc = ByteArray(0)
+        jblGattRetryAttempt = 0
+        isBatteryOnlyGattProbe = false
     }
 
     private fun disconnectInternal(emitUnexpected: Boolean) {
@@ -675,6 +753,15 @@ class T300BleManager(private val context: Context) {
      * Request battery levels
      */
     fun refreshBattery() {
+        if (activeTransport == ActiveTransport.BT_BATTERY_ONLY) {
+            activeBtDevice?.let { pollStandardBluetoothBattery(it) }
+            val gatt = bluetoothGatt
+            val bChar = batteryLevelCharacteristic
+            if (gatt != null && bChar != null) {
+                try { gatt.readCharacteristic(bChar) } catch (_: Exception) {}
+            }
+            return
+        }
         when (activeModel.protocolFamily) {
             T300Protocol.ProtocolFamily.HUAWEI_SPP,
             T300Protocol.ProtocolFamily.HONOR_CHOICE_SPP -> {
@@ -1889,14 +1976,14 @@ class T300BleManager(private val context: Context) {
         pollJob = scope.launch {
             while (isActive && gen == sessionGen.get() && _connectionState.value == BleConnectionState.CONNECTED) {
                 val interval = when {
-                    activeModel.isLogitech -> 15_000L
+                    activeTransport == ActiveTransport.BT_BATTERY_ONLY || activeModel.isLogitech || activeModel.isGenericBluetooth -> 15_000L
                     activeModel.isBose || activeModel.isSennheiser || activeModel.isJabra || activeModel.isSony || activeModel.isXiaomi -> 10_000L
                     activeModel.isSoundcore || activeModel.isJbl -> 5_000L
                     else -> POLL_INTERVAL_MS
                 }
                 delay(interval)
                 if (gen != sessionGen.get() || _connectionState.value != BleConnectionState.CONNECTED) break
-                if (activeModel.isLogitech) {
+                if (activeTransport == ActiveTransport.BT_BATTERY_ONLY || activeModel.isLogitech || activeModel.isGenericBluetooth) {
                     refreshBattery()
                     continue
                 }
@@ -1973,19 +2060,40 @@ class T300BleManager(private val context: Context) {
 
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+            if (gatt != bluetoothGatt) {
+                try { gatt.close() } catch (_: Exception) {}
+                return
+            }
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     log("GATT connected (status=$status). Discovering services...")
-                    if (!activeModel.isLogitech) {
+                    if (!isBatteryOnlyGattProbe) {
                         _connectionState.value = BleConnectionState.DISCOVERING_SERVICES
                     }
                     gatt.discoverServices()
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     log("GATT disconnected (status=$status)")
-                    if (activeModel.isLogitech) {
-                        // Keep HFP battery monitoring active even if BLE GATT disconnects
+                    if (isBatteryOnlyGattProbe || activeTransport == ActiveTransport.BT_BATTERY_ONLY) {
+                        // Keep HFP battery monitoring active even if BLE GATT probe fails/disconnects
+                        try { gatt.close() } catch (_: Exception) {}
+                        if (bluetoothGatt == gatt) bluetoothGatt = null
                         batteryLevelCharacteristic = null
+                    } else if (activeModel.isJbl) {
+                        val dev = activeBtDevice
+                        val gen = sessionGen.get()
+                        try { gatt.close() } catch (_: Exception) {}
+                        if (bluetoothGatt == gatt) bluetoothGatt = null
+                        if (dev != null && jblGattRetryAttempt == 0) {
+                            jblGattRetryAttempt = 1
+                            log("JBL BLE GATT failed (status=$status), retrying with TRANSPORT_AUTO...")
+                            connectGatt(dev, gen, transport = BluetoothDevice.TRANSPORT_AUTO, isBatteryOnlyProbe = false)
+                        } else if (dev != null) {
+                            log("JBL vendor GATT unavailable (status=$status) -> falling back to standard Bluetooth battery (HFP)")
+                            enterStandardBluetoothBatteryMode(dev, gen, isFallback = true, tryBleBas = false)
+                        } else {
+                            disconnect()
+                        }
                     } else {
                         disconnect()
                     }
@@ -1994,14 +2102,23 @@ class T300BleManager(private val context: Context) {
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            if (gatt != bluetoothGatt) return
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 log("GATT service discovery failed: status=$status")
-                if (!activeModel.isLogitech) disconnect()
+                if (isBatteryOnlyGattProbe || activeTransport == ActiveTransport.BT_BATTERY_ONLY) return
+                if (activeModel.isJbl) {
+                    val dev = activeBtDevice
+                    if (dev != null) {
+                        enterStandardBluetoothBatteryMode(dev, sessionGen.get(), isFallback = true, tryBleBas = false)
+                        return
+                    }
+                }
+                disconnect()
                 return
             }
 
-            // Logitech G435 Bluetooth mode: read standard BLE Battery Service (0x180F / 0x2A19)
-            if (activeModel.isLogitech) {
+            // Standard Bluetooth / Logitech G435 Bluetooth mode: read BLE Battery Service (0x180F / 0x2A19)
+            if (isBatteryOnlyGattProbe || activeModel.isLogitech || activeModel.isGenericBluetooth) {
                 val bas = gatt.getService(T300GattConfig.BATTERY_SERVICE)
                 val lvlChar = bas?.getCharacteristic(T300GattConfig.BATTERY_LEVEL_CHAR)
                 if (lvlChar != null) {
@@ -2034,6 +2151,13 @@ class T300BleManager(private val context: Context) {
                             (props and BluetoothGattCharacteristic.PROPERTY_INDICATE != 0)
                         if (isWritable && foundWrite == null) foundWrite = char
                         if (isNotifiable && foundNotify == null) foundNotify = char
+                    }
+                } else {
+                    log("JBL GATT service (65786365-...) not exposed by this model -> standard Bluetooth battery fallback")
+                    val dev = activeBtDevice
+                    if (dev != null) {
+                        enterStandardBluetoothBatteryMode(dev, sessionGen.get(), isFallback = true, tryBleBas = false)
+                        return
                     }
                 }
             }
@@ -2120,7 +2244,7 @@ class T300BleManager(private val context: Context) {
         }
 
         private fun finishGattConnection() {
-            if (activeModel.isLogitech) return
+            if (isBatteryOnlyGattProbe || activeModel.isLogitech || activeModel.isGenericBluetooth) return
             _connectionState.value = BleConnectionState.CONNECTED
             finishConnectionReady(sessionGen.get())
         }
@@ -2160,7 +2284,7 @@ class T300BleManager(private val context: Context) {
         }
 
         private fun handleGattRx(bytes: ByteArray) {
-            if (activeModel.isLogitech) {
+            if (isBatteryOnlyGattProbe || activeModel.isLogitech || activeModel.isGenericBluetooth) {
                 handleBatteryCharValue(bytes)
             } else if (activeModel.isJbl) {
                 jblAcc += bytes

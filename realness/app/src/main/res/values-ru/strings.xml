@@ -26,6 +26,8 @@
     <string name="battery_case">Кейс</string>
     <string name="battery_right">Правый</string>
     <string name="battery_headset">Гарнитура</string>
+    <string name="battery_overall">Заряд устройства</string>
+    <string name="bt_standard_fallback_note">Базовый Bluetooth-профиль (HFP/BAS): отображается общий заряд устройства. Если ваша модель поддерживает расширенное управление, выберите протокол вручную в боковом меню.</string>
     <string name="battery_hours_left">~%1$.1f ч осталось</string>
     <string name="battery_voltage_mv">%1$d мВ</string>
     <string name="time_just_now">только что</string>

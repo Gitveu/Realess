@@ -138,6 +138,18 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_realness_mini_info" />
         </receiver>
+
+        <!-- Keeps widgets synced when headsets disconnect or BT turns off in the background -->
+        <receiver
+            android:name=".widget.WidgetBluetoothReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+                <action android:name="android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED" />
+                <action android:name="android.bluetooth.adapter.action.STATE_CHANGED" />
+                <action android:name="android.bluetooth.device.action.BATTERY_LEVEL_CHANGED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

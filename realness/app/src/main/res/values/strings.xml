@@ -26,6 +26,8 @@
     <string name="battery_case">Case</string>
     <string name="battery_right">Right</string>
     <string name="battery_headset">Headset</string>
+    <string name="battery_overall">Battery</string>
+    <string name="bt_standard_fallback_note">Standard Bluetooth profile (HFP/BAS): showing overall battery level. If your model supports extra features, you can pick its protocol manually in the side menu.</string>
     <string name="battery_hours_left">~%1$.1fh left</string>
     <string name="battery_voltage_mv">%1$d mV</string>
     <string name="time_just_now">just now</string>

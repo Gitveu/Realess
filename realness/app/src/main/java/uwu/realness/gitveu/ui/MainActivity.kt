@@ -399,13 +399,18 @@ fun MainScreen(
                 )
 
                 // Battery section
+                val isStandardBtMode = detectedModel.isGenericBluetooth || t300State.isStandardBluetoothFallback
                 SectionHeader(title = stringResource(R.string.section_battery))
-                if (detectedModel.isSingleBatteryHeadset) {
+                if (detectedModel.isSingleBatteryHeadset || isStandardBtMode) {
                     SingleHeadsetBatteryCard(
                         battery = t300State.leftBattery,
+                        titleRes = if (isStandardBtMode) R.string.battery_overall else R.string.battery_headset,
                         voltageMv = t300State.batteryVoltageMv,
                         hoursLeft = t300State.batteryHoursLeft
                     )
+                    if (isStandardBtMode && isConnected) {
+                        StandardBluetoothModeCard()
+                    }
                 } else {
                     val cachedCaseSubtitle = if (t300State.caseBattery.level < 0 && lastCaseBattery != null) {
                         WidgetStateStore.formatRelativeTime(context, lastCaseBattery!!.second)
@@ -444,6 +449,7 @@ fun MainScreen(
                     }
                 }
 
+                if (!isStandardBtMode) {
                 // Logitech G733 / G435 Controls (Sidetone, RGB lights, Auto power-off)
                 if (detectedModel.supportsSidetone || detectedModel.supportsRgbLights || detectedModel.supportsInactiveTime) {
                     SectionHeader(title = stringResource(R.string.section_logitech))
@@ -656,6 +662,7 @@ fun MainScreen(
                         leftMinutes = t300State.leftUseTimeMinutes,
                         rightMinutes = t300State.rightUseTimeMinutes
                     )
+                }
                 }
 
                 // Protocol Logs Console
@@ -1247,6 +1254,7 @@ fun StatusDeviceCard(
 @Composable
 fun SingleHeadsetBatteryCard(
     battery: T300Protocol.BatteryInfo,
+    titleRes: Int = R.string.battery_headset,
     voltageMv: Int?,
     hoursLeft: Float?
 ) {
@@ -1283,7 +1291,7 @@ fun SingleHeadsetBatteryCard(
                     }
                     Column {
                         Text(
-                            text = stringResource(R.string.battery_headset),
+                            text = stringResource(titleRes),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -1339,6 +1347,35 @@ fun SingleHeadsetBatteryCard(
                 },
                 trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                 strokeCap = StrokeCap.Round
+            )
+        }
+    }
+}
+
+@Composable
+fun StandardBluetoothModeCard() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Bluetooth,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = stringResource(R.string.bt_standard_fallback_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

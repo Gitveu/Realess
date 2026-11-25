@@ -42,9 +42,10 @@ class RealnessMiniWidgetProvider : AppWidgetProvider() {
             rv.setOnClickPendingIntent(R.id.widget_mini_root, openPi)
 
             val (batText, ringLevel, isCachedOnly) = when {
+                !snap.connected -> Triple("—", -1, true)
                 snap.isSingleBattery -> {
                     val lvl = snap.leftLevel
-                    if (lvl in 0..100) Triple("${lvl}%", lvl, !snap.connected) else Triple("—", -1, true)
+                    if (lvl in 0..100) Triple("${lvl}%", lvl, false) else Triple("—", -1, true)
                 }
                 snap.leftLevel in 0..100 && snap.rightLevel in 0..100 -> {
                     val minLvl = minOf(snap.leftLevel, snap.rightLevel)
@@ -53,12 +54,11 @@ class RealnessMiniWidgetProvider : AppWidgetProvider() {
                     } else {
                         "${snap.leftLevel}/${snap.rightLevel}"
                     }
-                    Triple(txt, minLvl, !snap.connected)
+                    Triple(txt, minLvl, false)
                 }
-                snap.leftLevel in 0..100 -> Triple("${snap.leftLevel}%", snap.leftLevel, !snap.connected)
-                snap.rightLevel in 0..100 -> Triple("${snap.rightLevel}%", snap.rightLevel, !snap.connected)
+                snap.leftLevel in 0..100 -> Triple("${snap.leftLevel}%", snap.leftLevel, false)
+                snap.rightLevel in 0..100 -> Triple("${snap.rightLevel}%", snap.rightLevel, false)
                 snap.caseLevel in 0..100 -> Triple("${snap.caseLevel}%", snap.caseLevel, false)
-                snap.lastCaseLevel != null -> Triple("${snap.lastCaseLevel}%", snap.lastCaseLevel, true)
                 else -> Triple("—", -1, true)
             }
 
