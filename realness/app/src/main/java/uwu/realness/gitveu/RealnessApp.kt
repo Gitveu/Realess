@@ -17,8 +17,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.os.SystemClock
-import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.sync.Mutex
@@ -34,6 +34,7 @@ import uwu.realness.gitveu.widget.RealnessVerticalWidgetProvider
 import uwu.realness.gitveu.widget.RealnessWidgetProvider
 import uwu.realness.gitveu.widget.WidgetBluetoothReceiver
 import uwu.realness.gitveu.widget.WidgetStateStore
+import java.util.concurrent.atomic.AtomicInteger
 
 class RealnessApp : Application() {
 
@@ -46,18 +47,43 @@ class RealnessApp : Application() {
     private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val syncMutex = Mutex()
     private val startedActivities = AtomicInteger(0)
+    private val powerManager: PowerManager? by lazy {
+        getSystemService(Context.POWER_SERVICE) as? PowerManager
+    }
     @Volatile private var lastWidgetSig: String? = null
-    @Volatile private var lastUnlockSyncMs: Long = 0L
+    @Volatile private var lastDisplayedCaseAge: String? = null
+    @Volatile private var lastWakeSyncMs: Long = 0L
 
-    private val screenUnlockReceiver = object : BroadcastReceiver() {
+    private val screenStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != Intent.ACTION_USER_PRESENT) return
+            val action = intent?.action ?: return
             if (!hasAnyWidgets()) return
-            val now = System.currentTimeMillis()
-            if (now - lastUnlockSyncMs < 8_000L) return
-            lastUnlockSyncMs = now
-            appScope.launch {
-                syncWidgetFromActiveDevice()
+            when (action) {
+                Intent.ACTION_SCREEN_ON,
+                Intent.ACTION_USER_PRESENT -> {
+                    // Refresh relative case age immediately (0 BT packets), then sync BT if needed
+                    refreshCaseAgeIfChanged()
+                    val now = System.currentTimeMillis()
+                    if (now - lastWakeSyncMs < 6_000L) return
+                    lastWakeSyncMs = now
+                    appScope.launch {
+                        syncWidgetFromActiveDevice()
+                    }
+                }
+                Intent.ACTION_TIME_TICK -> {
+                    // Fires once per minute ONLY while screen is ON (zero wakeups during sleep)
+                    val screenOn = try { powerManager?.isInteractive != false } catch (_: Throwable) { true }
+                    if (!screenOn) return
+                    refreshCaseAgeIfChanged()
+                    // Catch headsets connected at OS level if Android delayed ACL_CONNECTED
+                    if (bleManager.connectionState.value == BleConnectionState.DISCONNECTED) {
+                        appScope.launch {
+                            if (findOsConnectedAudioDevice() != null) {
+                                syncWidgetFromActiveDevice()
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -71,6 +97,9 @@ class RealnessApp : Application() {
             override fun onActivityStarted(activity: Activity) {
                 if (startedActivities.incrementAndGet() == 1) {
                     bleManager.setForegroundMode(true)
+                    if (hasAnyWidgets()) {
+                        updateWidgets()
+                    }
                 }
             }
             override fun onActivityStopped(activity: Activity) {
@@ -102,13 +131,17 @@ class RealnessApp : Application() {
             }
         }
 
-        // Refresh widgets silently on screen unlock while process is alive
+        // Refresh widgets on screen wake, unlock, and 1-min screen-on tick (0 battery when screen is off)
         try {
-            val filter = IntentFilter(Intent.ACTION_USER_PRESENT)
+            val filter = IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_USER_PRESENT)
+                addAction(Intent.ACTION_TIME_TICK)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(screenUnlockReceiver, filter, Context.RECEIVER_EXPORTED)
+                registerReceiver(screenStateReceiver, filter, Context.RECEIVER_EXPORTED)
             } else {
-                registerReceiver(screenUnlockReceiver, filter)
+                registerReceiver(screenStateReceiver, filter)
             }
         } catch (_: Exception) {}
     }
@@ -119,6 +152,17 @@ class RealnessApp : Application() {
         val usbConn: Boolean,
         val usbTel: LogitechUsbManager.UsbTelemetry?
     )
+
+    private fun refreshCaseAgeIfChanged() {
+        val snap = WidgetStateStore.loadSnapshot(this)
+        val ts = snap.lastCaseTimeMs ?: return
+        if (snap.caseLevel in 0..100) return
+        val age = WidgetStateStore.formatShortRelativeTime(this, ts)
+        if (age != lastDisplayedCaseAge) {
+            lastDisplayedCaseAge = age
+            updateWidgets()
+        }
+    }
 
     @SuppressLint("MissingPermission")
     private fun persistAndPushIfChanged(q: QuadState) {
@@ -155,6 +199,7 @@ class RealnessApp : Application() {
             state = q.bleSt
         }
 
+        val caseAge = snap.lastCaseTimeMs?.let { WidgetStateStore.formatShortRelativeTime(this, it) }
         val sig = buildString {
             append(connected).append('|')
             append(mac).append('|')
@@ -164,10 +209,12 @@ class RealnessApp : Application() {
             append(state.rightBattery.level).append(':').append(state.rightBattery.isCharging).append('|')
             append(state.caseBattery.level).append(':').append(state.caseBattery.isCharging).append('|')
             append(state.ancMode?.name).append('|')
-            append(state.isStandardBluetoothFallback)
+            append(state.isStandardBluetoothFallback).append('|')
+            append(caseAge)
         }
         if (sig == lastWidgetSig) return
         lastWidgetSig = sig
+        lastDisplayedCaseAge = caseAge
 
         WidgetStateStore.saveSnapshot(
             context = this,
@@ -178,10 +225,7 @@ class RealnessApp : Application() {
             state = state
         )
         updateWidgets()
-
-        if (connected) {
-            schedulePeriodicWidgetSync()
-        }
+        schedulePeriodicWidgetSync(connected = connected)
     }
 
     fun hasAnyWidgets(): Boolean {
@@ -211,6 +255,8 @@ class RealnessApp : Application() {
     }
 
     fun updateWidgets() {
+        val snap = WidgetStateStore.loadSnapshot(this)
+        lastDisplayedCaseAge = snap.lastCaseTimeMs?.let { WidgetStateStore.formatShortRelativeTime(this, it) }
         RealnessWidgetProvider.updateAll(this)
         RealnessCompactWidgetProvider.updateAll(this)
         RealnessSquareWidgetProvider.updateAll(this)
@@ -218,21 +264,23 @@ class RealnessApp : Application() {
         RealnessMiniWidgetProvider.updateAll(this)
     }
 
-    fun schedulePeriodicWidgetSync() {
+    fun schedulePeriodicWidgetSync(connected: Boolean = bleManager.connectionState.value == BleConnectionState.CONNECTED) {
         if (!hasAnyWidgets()) {
+            cancelPeriodicWidgetSync()
+            return
+        }
+        val snap = WidgetStateStore.loadSnapshot(this)
+        if (!connected && snap.lastCaseTimeMs == null) {
             cancelPeriodicWidgetSync()
             return
         }
         try {
             val am = getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
             val pi = periodicSyncPendingIntent()
-            val triggerAt = SystemClock.elapsedRealtime() + PERIODIC_SYNC_INTERVAL_MS
-            am.setInexactRepeating(
-                AlarmManager.ELAPSED_REALTIME,
-                triggerAt,
-                PERIODIC_SYNC_INTERVAL_MS,
-                pi
-            )
+            val delayMs = if (connected) PERIODIC_SYNC_CONNECTED_MS else PERIODIC_SYNC_IDLE_CASE_MS
+            val triggerAt = SystemClock.elapsedRealtime() + delayMs
+            // Non-waking ELAPSED_REALTIME one-shot (rescheduled on fire): 0 wakeups during sleep, no 15-min batching floor
+            am.set(AlarmManager.ELAPSED_REALTIME, triggerAt, pi)
         } catch (_: Throwable) {}
     }
 
@@ -264,7 +312,14 @@ class RealnessApp : Application() {
         } catch (_: SecurityException) {
             BudsProtocol.BudsModel.UNKNOWN
         }
-        return if (auto.isSupported) auto else BudsProtocol.BudsModel.GENERIC_BT
+        if (auto.isSupported) return auto
+        // Fallback for renamed headsets: reuse remembered model for this MAC before falling back to GENERIC_BT
+        val savedMac = prefs.getString(KEY_LAST_MAC, null)
+        if (savedMac != null && savedMac.equals(device.address, ignoreCase = true)) {
+            val savedModel = BudsProtocol.BudsModel.fromNameOrNull(prefs.getString(KEY_LAST_MODEL, null))
+            if (savedModel != null && savedModel.isSupported) return savedModel
+        }
+        return BudsProtocol.BudsModel.GENERIC_BT
     }
 
     private fun isDeviceConnectedAtOsLevel(device: BluetoothDevice): Boolean {
@@ -331,7 +386,6 @@ class RealnessApp : Application() {
         val alias = prefs.getString(KEY_ALIAS_PREFIX + device.address, null)?.takeIf { it.isNotBlank() }
         val devName = alias ?: try { device.name } catch (_: SecurityException) { null } ?: model.displayName
 
-        // Save device identity immediately so persistCurrentBleState uses the right MAC & model
         prefs.edit()
             .putString(KEY_LAST_MAC, device.address)
             .putString(KEY_LAST_NAME, try { device.name } catch (_: SecurityException) { null } ?: devName)
@@ -346,23 +400,20 @@ class RealnessApp : Application() {
                 persistDeviceState(devName, device.address, model)
                 updateWidgets()
             }
-            schedulePeriodicWidgetSync()
+            schedulePeriodicWidgetSync(connected = true)
             return@withLock
         }
 
-        // Brief settle delay so headset RFCOMM/GATT stack is ready after ACL/A2DP connect
         delay(900)
         bleManager.connect(device, model)
         waitForInitialTelemetry(timeoutMs = 5_000L)
         persistDeviceState(devName, device.address, model)
         updateWidgets()
-        if (bleManager.connectionState.value == BleConnectionState.CONNECTED) {
-            schedulePeriodicWidgetSync()
-        }
+        schedulePeriodicWidgetSync(connected = bleManager.connectionState.value == BleConnectionState.CONNECTED)
     }
 
     /**
-     * Silent background refresh triggered by widget onUpdate(), screen unlock, 5-min non-waking alarm,
+     * Silent background refresh triggered by widget onUpdate(), screen wake/unlock, non-waking alarm,
      * or tapping the Case panel on a widget.
      */
     @SuppressLint("MissingPermission")
@@ -377,11 +428,11 @@ class RealnessApp : Application() {
             usbManager.refreshNow()
             delay(450)
             updateWidgets()
-            schedulePeriodicWidgetSync()
+            schedulePeriodicWidgetSync(connected = true)
             return@withLock
         }
 
-        // 2. Already connected via BleManager -> query fresh battery & ANC
+        // 2. Already connected via BudsConnectionManager -> query fresh battery & ANC
         if (bleManager.connectionState.value == BleConnectionState.CONNECTED) {
             val activeDev = bleManager.activeDevice
             if (activeDev != null && !isDeviceConnectedAtOsLevel(activeDev)) {
@@ -389,7 +440,7 @@ class RealnessApp : Application() {
                 WidgetStateStore.markDisconnected(this, activeDev.address)
                 lastWidgetSig = null
                 updateWidgets()
-                cancelPeriodicWidgetSync()
+                schedulePeriodicWidgetSync(connected = false)
                 return@withLock
             }
             bleManager.refreshBattery()
@@ -399,18 +450,17 @@ class RealnessApp : Application() {
             delay(450)
             persistCurrentBleState()
             updateWidgets()
-            schedulePeriodicWidgetSync()
+            schedulePeriodicWidgetSync(connected = true)
             return@withLock
         }
 
         // 3. Check if a bonded audio headset is currently connected at Android OS Bluetooth level
         val osDevice = findOsConnectedAudioDevice()
         if (osDevice == null) {
-            // No headset connected -> ensure stale L/R levels are cleared and refresh relative case timestamp
             WidgetStateStore.markDisconnected(this)
             lastWidgetSig = null
             updateWidgets()
-            cancelPeriodicWidgetSync()
+            schedulePeriodicWidgetSync(connected = false)
             return@withLock
         }
 
@@ -423,9 +473,7 @@ class RealnessApp : Application() {
         waitForInitialTelemetry(timeoutMs = 5_000L)
         persistDeviceState(devName, osDevice.address, model)
         updateWidgets()
-        if (bleManager.connectionState.value == BleConnectionState.CONNECTED) {
-            schedulePeriodicWidgetSync()
-        }
+        schedulePeriodicWidgetSync(connected = bleManager.connectionState.value == BleConnectionState.CONNECTED)
     }
 
     private suspend fun waitForInitialTelemetry(timeoutMs: Long) {
@@ -434,7 +482,6 @@ class RealnessApp : Application() {
             delay(120)
         }
         if (bleManager.connectionState.value == BleConnectionState.CONNECTED) {
-            // Wait briefly for initial battery packet to arrive (up to ~1.4s)
             val dataDeadline = System.currentTimeMillis() + 1_400L
             while (System.currentTimeMillis() < dataDeadline) {
                 val st = bleManager.budsState.value
@@ -443,7 +490,6 @@ class RealnessApp : Application() {
                 }
                 delay(120)
             }
-            // One explicit refresh if still empty
             val st = bleManager.budsState.value
             if (st.leftBattery.level < 0 && st.rightBattery.level < 0) {
                 bleManager.refreshBattery()
@@ -454,8 +500,6 @@ class RealnessApp : Application() {
 
     /**
      * Executes an ANC mode change or refresh triggered directly from a Home Screen Widget.
-     * Reuses the live BleManager connection if active; otherwise connects briefly to the
-     * active/saved bonded headset so widgets work even when the Activity is closed.
      */
     @SuppressLint("MissingPermission")
     suspend fun executeWidgetAction(targetAnc: BudsProtocol.AncMode?, cycleAnc: Boolean = false) {
@@ -494,7 +538,6 @@ class RealnessApp : Application() {
                 return@withLock
             }
 
-            // Try OS-connected device first, then saved MAC
             val targetDevice: BluetoothDevice? = findOsConnectedAudioDevice() ?: run {
                 val mac = snap.deviceMac
                 if (mac.isNullOrBlank() || mac.startsWith("usb:")) return@run null
@@ -512,6 +555,7 @@ class RealnessApp : Application() {
                 WidgetStateStore.markDisconnected(this)
                 lastWidgetSig = null
                 updateWidgets()
+                schedulePeriodicWidgetSync(connected = false)
                 return@withLock
             }
 
@@ -532,10 +576,11 @@ class RealnessApp : Application() {
                 val alias = prefs.getString(KEY_ALIAS_PREFIX + targetDevice.address, null)?.takeIf { it.isNotBlank() }
                 val devName = alias ?: try { targetDevice.name } catch (_: SecurityException) { null } ?: model.displayName
                 persistDeviceState(devName, targetDevice.address, model)
-                schedulePeriodicWidgetSync()
+                schedulePeriodicWidgetSync(connected = true)
             } else {
                 WidgetStateStore.markDisconnected(this)
                 lastWidgetSig = null
+                schedulePeriodicWidgetSync(connected = false)
             }
             updateWidgets()
         }
@@ -573,7 +618,8 @@ class RealnessApp : Application() {
         private const val KEY_LAST_NAME = "last_device_name"
         private const val KEY_LAST_MODEL = "last_device_model"
         private const val KEY_ALIAS_PREFIX = "custom_alias_"
-        private const val PERIODIC_SYNC_INTERVAL_MS = 5 * 60 * 1000L
+        private const val PERIODIC_SYNC_CONNECTED_MS = 3 * 60 * 1000L
+        private const val PERIODIC_SYNC_IDLE_CASE_MS = 5 * 60 * 1000L
 
         private val WIDGET_PROVIDERS = listOf(
             RealnessWidgetProvider::class.java,

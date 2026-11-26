@@ -21,6 +21,7 @@ class RealnessVerticalWidgetProvider : AppWidgetProvider() {
 
     companion object {
         const val ACTION_VERTICAL_CYCLE_ANC = "uwu.realness.gitveu.widget.ACTION_VERTICAL_CYCLE_ANC"
+        const val ACTION_VERTICAL_REFRESH = "uwu.realness.gitveu.widget.ACTION_VERTICAL_REFRESH"
 
         fun updateAll(context: Context) {
             val mgr = AppWidgetManager.getInstance(context)
@@ -43,6 +44,14 @@ class RealnessVerticalWidgetProvider : AppWidgetProvider() {
                 context, 400, openIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             rv.setOnClickPendingIntent(R.id.widget_vertical_root, openPi)
+
+            val refreshIntent = Intent(context, RealnessVerticalWidgetProvider::class.java).apply {
+                action = ACTION_VERTICAL_REFRESH
+            }
+            val refreshPi = PendingIntent.getBroadcast(
+                context, 402, refreshIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            rv.setOnClickPendingIntent(R.id.widget_vertical_case_row, refreshPi)
 
             if (snap.isSingleBattery) {
                 rv.setViewVisibility(R.id.widget_vertical_tws_group, View.GONE)
@@ -180,14 +189,14 @@ class RealnessVerticalWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action != ACTION_VERTICAL_CYCLE_ANC) return
-        val pendingResult = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                RealnessApp.from(context).executeWidgetAction(targetAnc = null, cycleAnc = true)
-            } finally {
-                pendingResult.finish()
-            }
+        val cycleAnc = when (intent.action) {
+            ACTION_VERTICAL_CYCLE_ANC -> true
+            ACTION_VERTICAL_REFRESH -> false
+            else -> return
+        }
+        val app = RealnessApp.from(context)
+        app.runBroadcastSync(goAsync()) {
+            app.executeWidgetAction(targetAnc = null, cycleAnc = cycleAnc)
         }
     }
 }

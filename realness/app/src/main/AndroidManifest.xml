@@ -120,6 +120,7 @@
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="uwu.realness.gitveu.widget.ACTION_VERTICAL_CYCLE_ANC" />
+                <action android:name="uwu.realness.gitveu.widget.ACTION_VERTICAL_REFRESH" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

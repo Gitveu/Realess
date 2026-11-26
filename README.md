@@ -4,7 +4,7 @@
 
 Standalone open-source Android app (`uwu.realness.gitveu`) for direct Bluetooth & USB-OTG control of **16 audio brands across 14 protocol families** — no vendor companion apps, no accounts, no cloud services.
 
-- **Latest release:** `v1.9.6 (build 16)` — `realness 1.9.6.apk` and `realness-tiny 1.9.6.apk`
+- **Latest release:** `v1.9.7 (build 17)` — `realness 1.9.7.apk` and `realness-tiny 1.9.7.apk`
 - **Supported models:** [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md) ([Русский](SUPPORTED_DEVICES.ru.md))
 - **Technical & protocol reference:** [AGENTS.md](AGENTS.md) ([Русский](AGENTS.ru.md))
 

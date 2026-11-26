@@ -3,7 +3,7 @@
 [English](AGENTS.md) | **Русский**
 
 Дата обновления: 2026-11-26  
-Актуальный релиз: `v1.9.6 (build 16)` — **14 семейств протоколов и 16 брендов** (`realness` в нативном Material 3 Expressive + виджеты Material You + `realness-tiny` в классическом компактном дизайне). Полный список моделей: [SUPPORTED_DEVICES.ru.md](SUPPORTED_DEVICES.ru.md).
+Актуальный релиз: `v1.9.7 (build 17)` — **14 семейств протоколов и 16 брендов** (`realness` в нативном Material 3 Expressive + виджеты Material You + `realness-tiny` в классическом компактном дизайне). Полный список моделей: [SUPPORTED_DEVICES.ru.md](SUPPORTED_DEVICES.ru.md).
 
 ---
 

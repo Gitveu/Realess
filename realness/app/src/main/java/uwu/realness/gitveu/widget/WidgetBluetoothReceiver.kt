@@ -51,8 +51,8 @@ class WidgetBluetoothReceiver : BroadcastReceiver() {
             BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
                 val device = extractDevice(intent) ?: return
                 if (WidgetStateStore.markDisconnected(context, device.address)) {
-                    app.cancelPeriodicWidgetSync()
                     app.updateWidgets()
+                    app.schedulePeriodicWidgetSync(connected = false)
                 }
             }
             BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED,
@@ -68,8 +68,8 @@ class WidgetBluetoothReceiver : BroadcastReceiver() {
                     }
                     BluetoothProfile.STATE_DISCONNECTED -> {
                         if (WidgetStateStore.markDisconnected(context, device.address)) {
-                            app.cancelPeriodicWidgetSync()
                             app.updateWidgets()
+                            app.schedulePeriodicWidgetSync(connected = false)
                         }
                     }
                 }
