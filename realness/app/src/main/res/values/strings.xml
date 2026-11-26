@@ -267,4 +267,37 @@
     <string name="logs_collapse_desc">Collapse</string>
     <string name="logs_expand_desc">Expand</string>
     <string name="logs_copied_toast">Logs copied (%d lines)</string>
+
+    <!-- Connection Popup & Drawer Settings / About -->
+    <string name="drawer_tab_models">Models</string>
+    <string name="drawer_tab_settings">Settings</string>
+    <string name="settings_popup_section">Connection popup</string>
+    <string name="settings_popup_title">Show popup on connect</string>
+    <string name="settings_popup_desc">Show a floating battery &amp; ANC card when earbuds connect on an unlocked screen.</string>
+    <string name="settings_popup_perm_needed">Requires \"Display over other apps\" permission</string>
+    <string name="settings_popup_perm_grant">Grant overlay access</string>
+    <string name="settings_popup_compact_title">Compact popup</string>
+    <string name="settings_popup_compact_desc">Show only device name, status, and battery levels.</string>
+    <string name="settings_popup_anc_title">Quick ANC controls</string>
+    <string name="settings_popup_anc_desc">Show noise control pills on supported earbuds.</string>
+    <string name="settings_popup_timeout_title">Auto-dismiss after</string>
+    <string name="settings_popup_timeout_sec">%ds</string>
+    <string name="settings_popup_preview">Preview popup</string>
+    <string name="settings_popup_enabled_toast">Connection popup enabled</string>
+    <string name="settings_system_section">System &amp; background</string>
+    <string name="settings_battery_title">Battery optimization</string>
+    <string name="settings_battery_unrestricted">Unrestricted (recommended)</string>
+    <string name="settings_battery_restricted">Restricted — tap to improve widgets &amp; popup reliability</string>
+    <string name="settings_app_info_title">App permissions &amp; info</string>
+    <string name="settings_app_info_desc">Open Android system settings for realness</string>
+    <string name="settings_about_section">About</string>
+    <string name="settings_about_version">Version %1$s (build %2$d)</string>
+    <string name="settings_about_summary">Open-source multi-brand headset companion: 16 brands, 14 protocol families, plus Standard Bluetooth fallback.</string>
+    <string name="settings_about_github">GitHub repository</string>
+    <string name="settings_about_devices">Supported devices list</string>
+    <string name="popup_status_connecting">Connecting…</string>
+    <string name="popup_status_connected">Connected</string>
+    <string name="popup_status_preview">Preview</string>
+    <string name="popup_open_app">Open settings</string>
+    <string name="popup_close_desc">Close popup</string>
 </resources>

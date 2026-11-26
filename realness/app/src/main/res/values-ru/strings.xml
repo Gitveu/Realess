@@ -267,4 +267,37 @@
     <string name="logs_collapse_desc">Свернуть</string>
     <string name="logs_expand_desc">Развернуть</string>
     <string name="logs_copied_toast">Логи скопированы (%d строк)</string>
+
+    <!-- Connection Popup & Drawer Settings / About -->
+    <string name="drawer_tab_models">Модели</string>
+    <string name="drawer_tab_settings">Настройки</string>
+    <string name="settings_popup_section">Всплывающее окно</string>
+    <string name="settings_popup_title">Карточка при подключении</string>
+    <string name="settings_popup_desc">Показывать карточку заряда и шумодава при подключении наушников на разблокированном экране.</string>
+    <string name="settings_popup_perm_needed">Нужно разрешение «Поверх других окон»</string>
+    <string name="settings_popup_perm_grant">Выдать разрешение</string>
+    <string name="settings_popup_compact_title">Компактное окно</string>
+    <string name="settings_popup_compact_desc">Только название, статус подключения и заряд без кнопок.</string>
+    <string name="settings_popup_anc_title">Кнопки шумодава</string>
+    <string name="settings_popup_anc_desc">Быстрое переключение ANC прямо во всплывающем окне.</string>
+    <string name="settings_popup_timeout_title">Автозакрытие через</string>
+    <string name="settings_popup_timeout_sec">%d с</string>
+    <string name="settings_popup_preview">Проверить всплывашку</string>
+    <string name="settings_popup_enabled_toast">Всплывающее окно включено</string>
+    <string name="settings_system_section">Система и фон</string>
+    <string name="settings_battery_title">Оптимизация батареи</string>
+    <string name="settings_battery_unrestricted">Без ограничений (рекомендуется)</string>
+    <string name="settings_battery_restricted">Есть ограничения — нажмите для стабильной работы виджетов и окна</string>
+    <string name="settings_app_info_title">Системные настройки</string>
+    <string name="settings_app_info_desc">Разрешения и сведения о приложении в Android</string>
+    <string name="settings_about_section">О приложении</string>
+    <string name="settings_about_version">Версия %1$s (сборка %2$d)</string>
+    <string name="settings_about_summary">Открытый клиент для наушников: 16 брендов, 14 семейств протоколов и универсальный Standard Bluetooth.</string>
+    <string name="settings_about_github">Репозиторий на GitHub</string>
+    <string name="settings_about_devices">Список поддерживаемых устройств</string>
+    <string name="popup_status_connecting">Подключение…</string>
+    <string name="popup_status_connected">Подключено</string>
+    <string name="popup_status_preview">Предпросмотр</string>
+    <string name="popup_open_app">Открыть настройки</string>
+    <string name="popup_close_desc">Закрыть окно</string>
 </resources>

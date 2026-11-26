@@ -2,119 +2,130 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/widget_bg"
+    android:background="@drawable/widget_bg_vertical"
     android:gravity="center_horizontal"
     android:orientation="vertical"
-    android:padding="5dp">
+    android:padding="6dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:background="@drawable/widget_card_inner"
+        android:background="@drawable/widget_card_inner_vertical"
         android:gravity="center"
         android:orientation="vertical"
-        android:paddingHorizontal="3dp"
-        android:paddingVertical="4dp">
+        android:paddingHorizontal="4dp"
+        android:paddingVertical="5dp">
 
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:gravity="center"
-            android:orientation="horizontal">
-
-            <ImageView
-                android:layout_width="21dp"
-                android:layout_height="21dp"
-                android:contentDescription="@string/battery_left"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_widget_preview_ring_l" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="3dp"
-                android:includeFontPadding="false"
-                android:maxLines="1"
-                android:text="95%"
-                android:textColor="@color/widget_on_surface"
-                android:textSize="10sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:gravity="center"
-            android:orientation="horizontal">
-
-            <ImageView
-                android:layout_width="21dp"
-                android:layout_height="21dp"
-                android:contentDescription="@string/battery_right"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_widget_preview_ring_r" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="3dp"
-                android:includeFontPadding="false"
-                android:maxLines="1"
-                android:text="95%"
-                android:textColor="@color/widget_on_surface"
-                android:textSize="10sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:gravity="center"
-            android:orientation="horizontal">
-
-            <ImageView
-                android:layout_width="21dp"
-                android:layout_height="21dp"
-                android:contentDescription="@string/battery_case"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_widget_preview_ring_case" />
+            android:layout_gravity="center_horizontal"
+            android:gravity="start"
+            android:orientation="vertical">
 
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="3dp"
-                android:orientation="vertical">
+                android:gravity="center_vertical|start"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="21dp"
+                    android:layout_height="21dp"
+                    android:contentDescription="@string/battery_left"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_widget_preview_ring_l" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:fontFeatureSettings="tnum"
                     android:includeFontPadding="false"
                     android:maxLines="1"
-                    android:text="65%"
+                    android:text="95%"
                     android:textColor="@color/widget_on_surface"
                     android:textSize="10sp"
                     android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center_vertical|start"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="21dp"
+                    android:layout_height="21dp"
+                    android:contentDescription="@string/battery_right"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_widget_preview_ring_r" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:fontFeatureSettings="tnum"
                     android:includeFontPadding="false"
                     android:maxLines="1"
-                    android:text="@string/widget_preview_case_short"
-                    android:textColor="@color/widget_on_surface_variant"
-                    android:textSize="8sp" />
+                    android:text="95%"
+                    android:textColor="@color/widget_on_surface"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center_vertical|start"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="21dp"
+                    android:layout_height="21dp"
+                    android:contentDescription="@string/battery_case"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_widget_preview_ring_case" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFeatureSettings="tnum"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:text="65%"
+                        android:textColor="@color/widget_on_surface"
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:text="@string/widget_preview_case_short"
+                        android:textColor="@color/widget_on_surface_variant"
+                        android:textSize="8sp" />
+                </LinearLayout>
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="34dp"
+        android:layout_height="40dp"
         android:layout_marginTop="5dp"
-        android:background="@drawable/widget_pill_selected"
+        android:background="@drawable/widget_pill_vertical_selected"
         android:gravity="center"
         android:orientation="vertical">
 

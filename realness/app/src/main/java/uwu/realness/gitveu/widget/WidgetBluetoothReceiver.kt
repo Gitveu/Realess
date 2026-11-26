@@ -35,6 +35,7 @@ class WidgetBluetoothReceiver : BroadcastReceiver() {
             BluetoothAdapter.ACTION_STATE_CHANGED -> {
                 val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
                 if (state == BluetoothAdapter.STATE_OFF || state == BluetoothAdapter.STATE_TURNING_OFF) {
+                    app.popupManager.onDeviceDisconnected(null, force = true)
                     app.cancelPeriodicWidgetSync()
                     if (WidgetStateStore.markDisconnected(context)) {
                         app.updateWidgets()
@@ -43,13 +44,16 @@ class WidgetBluetoothReceiver : BroadcastReceiver() {
             }
             BluetoothDevice.ACTION_ACL_CONNECTED -> {
                 val device = extractDevice(intent) ?: return
-                if (!app.hasAnyWidgets()) return
+                if (!app.shouldHandleBluetoothEvents()) return
                 app.runBroadcastSync(goAsync()) {
-                    app.syncWidgetOnBluetoothConnected(device)
+                    app.syncWidgetOnBluetoothConnected(device, fromAudioProfile = false)
                 }
             }
             BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
                 val device = extractDevice(intent) ?: return
+                if (!app.isBluetoothDeviceConnected(device)) {
+                    app.popupManager.onDeviceDisconnected(device.address)
+                }
                 if (WidgetStateStore.markDisconnected(context, device.address)) {
                     app.updateWidgets()
                     app.schedulePeriodicWidgetSync(connected = false)
@@ -61,12 +65,15 @@ class WidgetBluetoothReceiver : BroadcastReceiver() {
                 val device = extractDevice(intent) ?: return
                 when (state) {
                     BluetoothProfile.STATE_CONNECTED -> {
-                        if (!app.hasAnyWidgets()) return
+                        if (!app.shouldHandleBluetoothEvents()) return
                         app.runBroadcastSync(goAsync()) {
-                            app.syncWidgetOnBluetoothConnected(device)
+                            app.syncWidgetOnBluetoothConnected(device, fromAudioProfile = true)
                         }
                     }
                     BluetoothProfile.STATE_DISCONNECTED -> {
+                        if (!app.isBluetoothDeviceConnected(device)) {
+                            app.popupManager.onDeviceDisconnected(device.address)
+                        }
                         if (WidgetStateStore.markDisconnected(context, device.address)) {
                             app.updateWidgets()
                             app.schedulePeriodicWidgetSync(connected = false)

@@ -3,34 +3,35 @@
     android:id="@+id/widget_vertical_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/widget_bg"
+    android:background="@drawable/widget_bg_vertical"
     android:gravity="center_horizontal"
     android:orientation="vertical"
-    android:padding="5dp">
+    android:padding="6dp">
 
     <!-- Circular Battery Ring Column -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:background="@drawable/widget_card_inner"
+        android:background="@drawable/widget_card_inner_vertical"
         android:gravity="center"
         android:orientation="vertical"
-        android:paddingHorizontal="3dp"
-        android:paddingVertical="4dp">
+        android:paddingHorizontal="4dp"
+        android:paddingVertical="5dp">
 
-        <!-- TWS Vertical Ring Stack (L / R / C) -->
+        <!-- TWS Vertical Ring Stack (L / R / C) - rings aligned strictly on one vertical axis -->
         <LinearLayout
             android:id="@+id/widget_vertical_tws_group"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:gravity="center"
+            android:layout_gravity="center_horizontal"
+            android:gravity="start"
             android:orientation="vertical">
 
             <LinearLayout
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:gravity="center"
+                android:gravity="center_vertical|start"
                 android:orientation="horizontal">
 
                 <ImageView
@@ -44,7 +45,8 @@
                     android:id="@+id/widget_vertical_left"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="3dp"
+                    android:layout_marginStart="4dp"
+                    android:fontFeatureSettings="tnum"
                     android:includeFontPadding="false"
                     android:maxLines="1"
                     android:text="—"
@@ -54,10 +56,10 @@
             </LinearLayout>
 
             <LinearLayout
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:gravity="center"
+                android:gravity="center_vertical|start"
                 android:orientation="horizontal">
 
                 <ImageView
@@ -71,7 +73,8 @@
                     android:id="@+id/widget_vertical_right"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="3dp"
+                    android:layout_marginStart="4dp"
+                    android:fontFeatureSettings="tnum"
                     android:includeFontPadding="false"
                     android:maxLines="1"
                     android:text="—"
@@ -82,10 +85,10 @@
 
             <LinearLayout
                 android:id="@+id/widget_vertical_case_row"
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:gravity="center"
+                android:gravity="center_vertical|start"
                 android:orientation="horizontal">
 
                 <ImageView
@@ -98,13 +101,14 @@
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="3dp"
+                    android:layout_marginStart="4dp"
                     android:orientation="vertical">
 
                     <TextView
                         android:id="@+id/widget_vertical_case"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:fontFeatureSettings="tnum"
                         android:includeFontPadding="false"
                         android:maxLines="1"
                         android:text="—"
@@ -147,6 +151,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
+                android:fontFeatureSettings="tnum"
                 android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="—"
@@ -160,9 +165,9 @@
     <LinearLayout
         android:id="@+id/widget_vertical_anc_btn"
         android:layout_width="match_parent"
-        android:layout_height="34dp"
+        android:layout_height="40dp"
         android:layout_marginTop="5dp"
-        android:background="@drawable/widget_pill_selected"
+        android:background="@drawable/widget_pill_vertical_selected"
         android:gravity="center"
         android:orientation="vertical">
 

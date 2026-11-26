@@ -149,7 +149,7 @@ class RealnessVerticalWidgetProvider : AppWidgetProvider() {
                 rv.setInt(
                     R.id.widget_vertical_anc_btn,
                     "setBackgroundResource",
-                    if (isActive) R.drawable.widget_pill_selected else R.drawable.widget_pill_normal
+                    if (isActive) R.drawable.widget_pill_vertical_selected else R.drawable.widget_pill_vertical_normal
                 )
                 rv.setImageViewBitmap(
                     R.id.widget_vertical_anc_icon,

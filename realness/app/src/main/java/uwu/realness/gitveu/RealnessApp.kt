@@ -7,6 +7,7 @@ import android.app.Application
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
@@ -25,6 +26,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import uwu.realness.gitveu.ble.BleConnectionState
 import uwu.realness.gitveu.ble.BudsConnectionManager
+import uwu.realness.gitveu.overlay.ConnectionPopupManager
 import uwu.realness.gitveu.protocol.BudsProtocol
 import uwu.realness.gitveu.usb.LogitechUsbManager
 import uwu.realness.gitveu.widget.RealnessCompactWidgetProvider
@@ -43,6 +45,13 @@ class RealnessApp : Application() {
 
     lateinit var usbManager: LogitechUsbManager
         private set
+
+    lateinit var popupManager: ConnectionPopupManager
+        private set
+
+    fun isAppInForeground(): Boolean = startedActivities.get() > 0
+
+    fun shouldHandleBluetoothEvents(): Boolean = hasAnyWidgets() || popupManager.isEnabledAndPermitted()
 
     private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val syncMutex = Mutex()
@@ -92,11 +101,15 @@ class RealnessApp : Application() {
         super.onCreate()
         bleManager = BudsConnectionManager(this)
         usbManager = LogitechUsbManager(this)
+        popupManager = ConnectionPopupManager(this)
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityStarted(activity: Activity) {
                 if (startedActivities.incrementAndGet() == 1) {
                     bleManager.setForegroundMode(true)
+                    if (!popupManager.isShowingPreview()) {
+                        popupManager.dismiss(animate = false)
+                    }
                     if (hasAnyWidgets()) {
                         updateWidgets()
                     }
@@ -322,6 +335,9 @@ class RealnessApp : Application() {
         return BudsProtocol.BudsModel.GENERIC_BT
     }
 
+    fun isBluetoothDeviceConnected(device: BluetoothDevice): Boolean =
+        isDeviceConnectedAtOsLevel(device)
+
     private fun isDeviceConnectedAtOsLevel(device: BluetoothDevice): Boolean {
         return try {
             val m = BluetoothDevice::class.java.getMethod("isConnected")
@@ -374,13 +390,39 @@ class RealnessApp : Application() {
         return null
     }
 
+    @SuppressLint("MissingPermission")
+    private fun isLikelyAudioDevice(device: BluetoothDevice, fromAudioProfile: Boolean): Boolean {
+        if (fromAudioProfile) return true
+        val auto = try {
+            BudsProtocol.BudsModel.fromDeviceName(device.name)
+        } catch (_: SecurityException) {
+            BudsProtocol.BudsModel.UNKNOWN
+        }
+        if (auto.isSupported) return true
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val savedMac = prefs.getString(KEY_LAST_MAC, null)
+        if (savedMac != null && savedMac.equals(device.address, ignoreCase = true)) return true
+        val majorClass = try {
+            device.bluetoothClass?.majorDeviceClass
+        } catch (_: SecurityException) {
+            null
+        }
+        return majorClass == BluetoothClass.Device.Major.AUDIO_VIDEO
+    }
+
     /**
      * Triggered automatically from WidgetBluetoothReceiver when a Bluetooth headset connects
      * (ACL_CONNECTED / A2DP STATE_CONNECTED / HEADSET STATE_CONNECTED) even if MainActivity is closed.
      */
     @SuppressLint("MissingPermission")
-    suspend fun syncWidgetOnBluetoothConnected(device: BluetoothDevice) = syncMutex.withLock {
-        if (!hasAnyWidgets()) return@withLock
+    suspend fun syncWidgetOnBluetoothConnected(
+        device: BluetoothDevice,
+        fromAudioProfile: Boolean = true
+    ) = syncMutex.withLock {
+        if (!shouldHandleBluetoothEvents()) return@withLock
+        if (!isLikelyAudioDevice(device, fromAudioProfile)) return@withLock
+
+        val widgetsActive = hasAnyWidgets()
         val model = resolveModelForDevice(device)
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val alias = prefs.getString(KEY_ALIAS_PREFIX + device.address, null)?.takeIf { it.isNotBlank() }
@@ -392,24 +434,37 @@ class RealnessApp : Application() {
             .putString(KEY_LAST_MODEL, model.name)
             .apply()
 
+        // Show ColorOS/FreeBuds-style connection popup immediately on unlocked screen
+        popupManager.showForBluetoothDevice(
+            mac = device.address,
+            deviceName = devName,
+            model = model
+        )
+
         if (bleManager.isConnectedOrConnectingTo(device.address, model)) {
             if (bleManager.connectionState.value == BleConnectionState.CONNECTED) {
                 bleManager.refreshBattery()
                 if (model.supportsAnc) bleManager.refreshAncState()
                 delay(450)
-                persistDeviceState(devName, device.address, model)
-                updateWidgets()
+                if (widgetsActive) {
+                    persistDeviceState(devName, device.address, model)
+                    updateWidgets()
+                }
             }
-            schedulePeriodicWidgetSync(connected = true)
+            if (widgetsActive) {
+                schedulePeriodicWidgetSync(connected = true)
+            }
             return@withLock
         }
 
         delay(900)
         bleManager.connect(device, model)
         waitForInitialTelemetry(timeoutMs = 5_000L)
-        persistDeviceState(devName, device.address, model)
-        updateWidgets()
-        schedulePeriodicWidgetSync(connected = bleManager.connectionState.value == BleConnectionState.CONNECTED)
+        if (widgetsActive) {
+            persistDeviceState(devName, device.address, model)
+            updateWidgets()
+            schedulePeriodicWidgetSync(connected = bleManager.connectionState.value == BleConnectionState.CONNECTED)
+        }
     }
 
     /**

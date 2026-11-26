@@ -24,6 +24,10 @@
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="s" />
 
+    <!-- Optional overlay permission for FreeBuds/ColorOS-style connection popup -->
+    <uses-permission
+        android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <!-- Hardware features -->
     <uses-feature
         android:name="android.hardware.bluetooth"
