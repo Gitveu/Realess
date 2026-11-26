@@ -2,8 +2,8 @@
 
 [English](AGENTS.md) | **Русский**
 
-Дата обновления: 2026-11-25  
-Актуальный релиз: `v1.9.5 (build 15)` — **14 семейств протоколов и 16 брендов** (`realness` в нативном Material 3 Expressive + виджеты Material You + `realness-tiny` в классическом компактном дизайне). Полный список моделей: [SUPPORTED_DEVICES.ru.md](SUPPORTED_DEVICES.ru.md).
+Дата обновления: 2026-11-26  
+Актуальный релиз: `v1.9.6 (build 16)` — **14 семейств протоколов и 16 брендов** (`realness` в нативном Material 3 Expressive + виджеты Material You + `realness-tiny` в классическом компактном дизайне). Полный список моделей: [SUPPORTED_DEVICES.ru.md](SUPPORTED_DEVICES.ru.md).
 
 ---
 
@@ -48,11 +48,11 @@
 
 ### 2.1. `realness/` (Kotlin + Jetpack Compose)
 - `protocol/`:
-  - `T300Protocol.kt`: кадры TL+OPPOv1 для realme / OnePlus / OPPO / DIZO, перечисление `BudsModel` (15 брендов, флаги возможностей, `customEqSpec()`, `supportsGameMode`, `supportsHardwareFindBuds`, `supportsFirmwareRename`), `T300State`, `CustomEqProfile`, `CustomEqSpec`.
-  - `HuaweiProtocol.kt`, `NothingProtocol.kt`, `GalaxyProtocol.kt`, `SonyProtocol.kt`, `BoseSoundcoreProtocol.kt`, `XiaomiProtocol.kt`, `ExtraProtocols.kt` (Sennheiser, Jabra, Pixel Buds, JBL).
+  - `BudsProtocol.kt`: кадры TL+OPPOv1 для realme / OnePlus / OPPO / DIZO, перечисление `BudsModel` (16 брендов + `GENERIC_BT`, флаги возможностей, `customEqSpec()`, `supportsGameMode`, `supportsHardwareFindBuds`, `supportsFirmwareRename`), `BudsState`, `CustomEqProfile`, `CustomEqSpec`.
+  - `HuaweiProtocol.kt`, `NothingProtocol.kt`, `GalaxyProtocol.kt`, `SonyProtocol.kt`, `BoseSoundcoreProtocol.kt`, `XiaomiProtocol.kt`, `ExtraProtocols.kt` (Sennheiser, Jabra, Pixel Buds, JBL), `LogitechProtocol.kt`.
 - `ble/`:
-  - `T300GattConfig.kt`: все вендорные и стандартные RFCOMM SPP UUID и BLE GATT UUID.
-  - `T300BleManager.kt`: менеджер RFCOMM SPP и BLE GATT с защитой от гонок через `sessionGen` (`isConnectedOrConnectingTo`), потоковые парсеры всех 13 протоколов, опрос, асинхронные события, Custom EQ, аппаратный поиск наушников, переименование Bose и `unexpectedDisconnectFlow` для автовосстановления.
+  - `BluetoothConfig.kt`: все вендорные и стандартные RFCOMM SPP UUID и BLE GATT UUID.
+  - `BudsConnectionManager.kt`: менеджер RFCOMM SPP, BLE GATT и базового Bluetooth HFP/BAS с защитой `sessionGen` (`isConnectedOrConnectingTo`), энергосберегающим опросом (2 сек на экране, 0 пакетов при выключенном экране в фоне, 1 запрос батареи раз в 60 сек при включённом экране в фоне), потоковыми парсерами всех протоколов, асинхронными событиями, Custom EQ, аппаратным поиском, переименованием Bose и `unexpectedDisconnectFlow`.
 - `audio/`:
   - `FindBudsPlayer.kt`: универсальный нарастающий стерео-сигнал поиска через `AudioTrack` (`FindBudsChannel.LEFT / BOTH / RIGHT`, тройной тональный импульс `2950 Hz + 3450 Hz`, плавное нарастание громкости `15% -> 100%` за 20 с, сохранение и восстановление громкости `STREAM_MUSIC`).
 - `viewmodel/BudsViewModel.kt`: реактивный `StateFlow`, автоподключение по A2DP/ACL, backoff-переподключение при обрывах SPP, хранение последнего устройства / ручной модели / пользовательского имени по MAC в `SharedPreferences`, `MediaPlayer` для демо Spatial Audio, контроллер `FindBudsPlayer` и трёхуровневое переименование (`прошивка Bose -> BluetoothDevice.setAlias() -> локальный алиас по MAC`).
@@ -84,7 +84,7 @@
 3. **Локальный алиас и виджеты:** сохранение по MAC в `SharedPreferences` (`custom_alias_<MAC>` / `alias_<MAC>`).
 
 ### 3.3. Виджеты Material You и последний заряд кейса
-- `RealnessApp` держит общие `T300BleManager` и `LogitechUsbManager`; `WidgetStateStore` сохраняет снимок заряда/ANC и per-MAC **последний заряд кейса + время** при каждом валидном `caseBattery.level in 0..100`.
+- `RealnessApp` держит общие `BudsConnectionManager` и `LogitechUsbManager`; `WidgetStateStore` сохраняет снимок заряда/ANC и per-MAC **последний заряд кейса + время** при каждом валидном `caseBattery.level in 0..100`.
 - `RealnessWidgetProvider` (4×2 Material You), `RealnessCompactWidgetProvider` (4×1, сжимается до 2×1), `RealnessSquareWidgetProvider` (2×2 квадратный), `RealnessVerticalWidgetProvider` (1×2 вертикальный) и `RealnessMiniWidgetProvider` (1×1 мини) — все с динамическим Material You превью `android:previewLayout` — показывают L / Кейс (с временем «когда» при закрытом кейсе) / R и переключают ANC напрямую или через быстрое фоновое подключение (`goAsync()`).
 
 ---

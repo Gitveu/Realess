@@ -50,14 +50,14 @@ object BoseProtocol {
     fun buildAutoPauseReq(): ByteArray = buildPacket(BLOCK_SETTINGS, FUNC_AUTO_PAUSE, OP_GET)
     fun buildAutoAnswerReq(): ByteArray = buildPacket(BLOCK_SETTINGS, FUNC_AUTO_ANSWER, OP_GET)
 
-    fun buildCncSet(mode: T300Protocol.AncMode): ByteArray {
+    fun buildCncSet(mode: BudsProtocol.AncMode): ByteArray {
         // CNC: 0 = max ANC (10), 10 = transparency/aware (0 ANC)
         val raw: Byte = when (mode) {
-            T300Protocol.AncMode.NOISE_REDUCTION -> 0x00
-            T300Protocol.AncMode.TRANSPARENCY -> 0x0A
-            T300Protocol.AncMode.OFF -> 0x0B // CNC disabled
+            BudsProtocol.AncMode.NOISE_REDUCTION -> 0x00
+            BudsProtocol.AncMode.TRANSPARENCY -> 0x0A
+            BudsProtocol.AncMode.OFF -> 0x0B // CNC disabled
         }
-        val enabled: Byte = if (mode == T300Protocol.AncMode.OFF) 0x00 else 0x01
+        val enabled: Byte = if (mode == BudsProtocol.AncMode.OFF) 0x00 else 0x01
         return buildPacket(BLOCK_SETTINGS, FUNC_CNC, OP_SET_GET, byteArrayOf(raw, enabled))
     }
 
@@ -71,11 +71,11 @@ object BoseProtocol {
         return buildPacket(BLOCK_SETTINGS, FUNC_CNC, OP_SET_GET, byteArrayOf(raw, 0x01))
     }
 
-    fun buildAnrSet(mode: T300Protocol.AncMode): ByteArray {
+    fun buildAnrSet(mode: BudsProtocol.AncMode): ByteArray {
         val v: Byte = when (mode) {
-            T300Protocol.AncMode.NOISE_REDUCTION -> 0x01 // High
-            T300Protocol.AncMode.TRANSPARENCY -> 0x03    // Low
-            T300Protocol.AncMode.OFF -> 0x00
+            BudsProtocol.AncMode.NOISE_REDUCTION -> 0x01 // High
+            BudsProtocol.AncMode.TRANSPARENCY -> 0x03    // Low
+            BudsProtocol.AncMode.OFF -> 0x00
         }
         return buildPacket(BLOCK_SETTINGS, FUNC_ANR, OP_SET_GET, byteArrayOf(v))
     }
@@ -115,9 +115,9 @@ object BoseProtocol {
         return packets to (if (off < total) buf.copyOfRange(off, total) else ByteArray(0))
     }
 
-    fun parseBattery(p: ByteArray): List<T300Protocol.BatteryInfo> {
+    fun parseBattery(p: ByteArray): List<BudsProtocol.BatteryInfo> {
         if (p.isEmpty()) return emptyList()
-        val out = mutableListOf<T300Protocol.BatteryInfo>()
+        val out = mutableListOf<BudsProtocol.BatteryInfo>()
         if (p.size >= 4 && p.size % 4 == 0) {
             var i = 0
             while (i + 3 < p.size) {
@@ -125,12 +125,12 @@ object BoseProtocol {
                 val id = p[i + 3].toInt() and 0xFF
                 if (lvl in 0..100) {
                     when (id) {
-                        2 -> out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.LEFT_EAR, lvl, false))
-                        1 -> out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.RIGHT_EAR, lvl, false))
-                        3 -> out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.CASE, lvl, false))
+                        2 -> out.add(BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.LEFT_EAR, lvl, false))
+                        1 -> out.add(BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.RIGHT_EAR, lvl, false))
+                        3 -> out.add(BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.CASE, lvl, false))
                         0, 4 -> {
-                            out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.LEFT_EAR, lvl, false))
-                            out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.RIGHT_EAR, lvl, false))
+                            out.add(BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.LEFT_EAR, lvl, false))
+                            out.add(BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.RIGHT_EAR, lvl, false))
                         }
                     }
                 }
@@ -139,8 +139,8 @@ object BoseProtocol {
         } else {
             val lvl = p[0].toInt() and 0xFF
             if (lvl in 0..100) {
-                out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.LEFT_EAR, lvl, false))
-                out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.RIGHT_EAR, lvl, false))
+                out.add(BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.LEFT_EAR, lvl, false))
+                out.add(BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.RIGHT_EAR, lvl, false))
             }
         }
         return out
@@ -188,11 +188,11 @@ object SoundcoreProtocol {
 
     fun buildStateReq(): ByteArray = buildPacket(CMD_STATE)
 
-    fun buildAncSet(mode: T300Protocol.AncMode, lastSoundBody: ByteArray?): ByteArray {
+    fun buildAncSet(mode: BudsProtocol.AncMode, lastSoundBody: ByteArray?): ByteArray {
         val ambient: Byte = when (mode) {
-            T300Protocol.AncMode.NOISE_REDUCTION -> 0x00
-            T300Protocol.AncMode.TRANSPARENCY -> 0x01
-            T300Protocol.AncMode.OFF -> 0x02
+            BudsProtocol.AncMode.NOISE_REDUCTION -> 0x00
+            BudsProtocol.AncMode.TRANSPARENCY -> 0x01
+            BudsProtocol.AncMode.OFF -> 0x02
         }
         val body = if (lastSoundBody != null && lastSoundBody.size >= 4) {
             lastSoundBody.copyOf().also { it[0] = ambient }

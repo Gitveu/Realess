@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import uwu.realness.gitveu.protocol.LogitechProtocol
-import uwu.realness.gitveu.protocol.T300Protocol
+import uwu.realness.gitveu.protocol.BudsProtocol
 
 /**
  * Android USB-OTG HID manager for Logitech G733 (HID++ 2.0) and G435 (046D:0ACB Vendor FFC0 Report 6).
@@ -41,7 +41,7 @@ class LogitechUsbManager(private val context: Context) {
 
     data class UsbHeadsetInfo(
         val device: UsbDevice,
-        val model: T300Protocol.BudsModel,
+        val model: BudsProtocol.BudsModel,
         val displayName: String,
         val usbId: String,
         val hasPermission: Boolean
@@ -76,7 +76,7 @@ class LogitechUsbManager(private val context: Context) {
     val logFlow: SharedFlow<String> = _logFlow.asSharedFlow()
 
     private var activeDevice: UsbDevice? = null
-    private var activeModel: T300Protocol.BudsModel = T300Protocol.BudsModel.UNKNOWN
+    private var activeModel: BudsProtocol.BudsModel = BudsProtocol.BudsModel.UNKNOWN
     private var pollJob: Job? = null
     private var g435Seq = 1
 
@@ -144,7 +144,7 @@ class LogitechUsbManager(private val context: Context) {
         startSession(device, model)
     }
 
-    private fun startSession(device: UsbDevice, model: T300Protocol.BudsModel) {
+    private fun startSession(device: UsbDevice, model: BudsProtocol.BudsModel) {
         pollJob?.cancel()
         activeDevice = device
         activeModel = model
@@ -154,7 +154,7 @@ class LogitechUsbManager(private val context: Context) {
 
         pollJob = scope.launch {
             refreshNowInternal()
-            val interval = if (model == T300Protocol.BudsModel.LOGITECH_G435) G435_POLL_MS else G733_POLL_MS
+            val interval = if (model == BudsProtocol.BudsModel.LOGITECH_G435) G435_POLL_MS else G733_POLL_MS
             while (isActive && _connected.value) {
                 delay(interval)
                 if (!_connected.value) break
@@ -167,7 +167,7 @@ class LogitechUsbManager(private val context: Context) {
         pollJob?.cancel()
         pollJob = null
         activeDevice = null
-        activeModel = T300Protocol.BudsModel.UNKNOWN
+        activeModel = BudsProtocol.BudsModel.UNKNOWN
         _connected.value = false
         _telemetry.value = null
     }
@@ -185,8 +185,8 @@ class LogitechUsbManager(private val context: Context) {
         val model = activeModel
         ioMutex.withLock {
             when (model) {
-                T300Protocol.BudsModel.LOGITECH_G733 -> pollG733(dev)
-                T300Protocol.BudsModel.LOGITECH_G435 -> pollG435(dev)
+                BudsProtocol.BudsModel.LOGITECH_G733 -> pollG733(dev)
+                BudsProtocol.BudsModel.LOGITECH_G435 -> pollG435(dev)
                 else -> {}
             }
         }
@@ -198,7 +198,7 @@ class LogitechUsbManager(private val context: Context) {
 
     fun setG733Sidetone(level: Int) {
         val dev = activeDevice ?: return
-        if (activeModel != T300Protocol.BudsModel.LOGITECH_G733) return
+        if (activeModel != BudsProtocol.BudsModel.LOGITECH_G733) return
         val clamped = level.coerceIn(0, 100)
         scope.launch {
             ioMutex.withLock {
@@ -215,7 +215,7 @@ class LogitechUsbManager(private val context: Context) {
 
     fun setG733Lights(on: Boolean) {
         val dev = activeDevice ?: return
-        if (activeModel != T300Protocol.BudsModel.LOGITECH_G733) return
+        if (activeModel != BudsProtocol.BudsModel.LOGITECH_G733) return
         scope.launch {
             ioMutex.withLock {
                 val pkts = LogitechProtocol.buildG733LightsPackets(on)
@@ -235,7 +235,7 @@ class LogitechUsbManager(private val context: Context) {
 
     fun setG733InactiveTime(minutes: Int) {
         val dev = activeDevice ?: return
-        if (activeModel != T300Protocol.BudsModel.LOGITECH_G733) return
+        if (activeModel != BudsProtocol.BudsModel.LOGITECH_G733) return
         val clamped = minutes.coerceIn(0, 90)
         scope.launch {
             ioMutex.withLock {

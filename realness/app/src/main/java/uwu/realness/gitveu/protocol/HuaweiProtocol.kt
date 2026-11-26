@@ -137,11 +137,11 @@ object HuaweiProtocol {
 
     fun buildAncReadRequest(): ByteArray = buildReadRequest(CMD_ANC_READ, 1, 2)
 
-    fun buildAncModeWrite(mode: T300Protocol.AncMode): ByteArray {
+    fun buildAncModeWrite(mode: BudsProtocol.AncMode): ByteArray {
         val modeByte: Byte = when (mode) {
-            T300Protocol.AncMode.OFF -> 0x00
-            T300Protocol.AncMode.NOISE_REDUCTION -> 0x01
-            T300Protocol.AncMode.TRANSPARENCY -> 0x02
+            BudsProtocol.AncMode.OFF -> 0x00
+            BudsProtocol.AncMode.NOISE_REDUCTION -> 0x01
+            BudsProtocol.AncMode.TRANSPARENCY -> 0x02
         }
         val second: Byte = if (modeByte.toInt() == 0) 0x00 else 0xFF.toByte()
         return buildPacket(CMD_ANC_WRITE, listOf(1 to byteArrayOf(modeByte, second)))
@@ -151,11 +151,11 @@ object HuaweiProtocol {
      * HONOR CHOICE Earbuds (X8 / X5 / X5 Pro / X3 / X2 / X):
      * 1-байтовое значение режима ANC в param 1 команды 0x2B04.
      */
-    fun buildHonorChoiceAncWrite(mode: T300Protocol.AncMode): ByteArray {
+    fun buildHonorChoiceAncWrite(mode: BudsProtocol.AncMode): ByteArray {
         val modeByte: Byte = when (mode) {
-            T300Protocol.AncMode.OFF -> 0x00
-            T300Protocol.AncMode.NOISE_REDUCTION -> 0x01
-            T300Protocol.AncMode.TRANSPARENCY -> 0x02
+            BudsProtocol.AncMode.OFF -> 0x00
+            BudsProtocol.AncMode.NOISE_REDUCTION -> 0x01
+            BudsProtocol.AncMode.TRANSPARENCY -> 0x02
         }
         return buildByteWrite(CMD_ANC_WRITE, 1, modeByte)
     }
@@ -163,12 +163,12 @@ object HuaweiProtocol {
     /**
      * HONOR CHOICE Earbuds EQ write: команда 0x2701, param 1 = 1 байт (0=Balanced, 1=Bass, 2=Vocal).
      */
-    fun buildHonorChoiceEqWrite(preset: T300Protocol.EqPreset): ByteArray {
+    fun buildHonorChoiceEqWrite(preset: BudsProtocol.EqPreset): ByteArray {
         val code: Byte = when (preset) {
-            T300Protocol.EqPreset.ORIGINAL_SOUND -> 0x00
-            T300Protocol.EqPreset.DEEP_BASS,
-            T300Protocol.EqPreset.PURE_BASS -> 0x01
-            T300Protocol.EqPreset.SERENADE -> 0x02
+            BudsProtocol.EqPreset.ORIGINAL_SOUND -> 0x00
+            BudsProtocol.EqPreset.DEEP_BASS,
+            BudsProtocol.EqPreset.PURE_BASS -> 0x01
+            BudsProtocol.EqPreset.SERENADE -> 0x02
         }
         return buildByteWrite(CMD_HONOR_EQ_WRITE, 1, code)
     }
@@ -201,13 +201,13 @@ object HuaweiProtocol {
     fun buildTripleTapRead(): ByteArray = buildReadRequest(CMD_TRIPLE_TAP_READ, 1, 2)
     fun buildLongTapRead(): ByteArray = buildReadRequest(CMD_LONG_TAP_READ, 1, 2)
 
-    fun buildKeyWrite(gesture: T300Protocol.TouchGesture, side: T300Protocol.TouchSide, code: Byte): ByteArray {
+    fun buildKeyWrite(gesture: BudsProtocol.TouchGesture, side: BudsProtocol.TouchSide, code: Byte): ByteArray {
         val cmd = when (gesture) {
-            T300Protocol.TouchGesture.DOUBLE_TAP -> CMD_DUAL_TAP_WRITE
-            T300Protocol.TouchGesture.TRIPLE_TAP -> CMD_TRIPLE_TAP_WRITE
-            T300Protocol.TouchGesture.LONG_PRESS -> CMD_LONG_TAP_WRITE
+            BudsProtocol.TouchGesture.DOUBLE_TAP -> CMD_DUAL_TAP_WRITE
+            BudsProtocol.TouchGesture.TRIPLE_TAP -> CMD_TRIPLE_TAP_WRITE
+            BudsProtocol.TouchGesture.LONG_PRESS -> CMD_LONG_TAP_WRITE
         }
-        val paramType = if (side == T300Protocol.TouchSide.LEFT) 1 else 2
+        val paramType = if (side == BudsProtocol.TouchSide.LEFT) 1 else 2
         return buildByteWrite(cmd, paramType, code)
     }
 
@@ -260,39 +260,39 @@ object HuaweiProtocol {
     }
 
     // Маппинг EQ между нашим UI (EqPreset) и Huawei EQ ID
-    fun eqPresetToHuaweiId(preset: T300Protocol.EqPreset, pro3Ids: Boolean): Byte {
+    fun eqPresetToHuaweiId(preset: BudsProtocol.EqPreset, pro3Ids: Boolean): Byte {
         return if (pro3Ids) {
             when (preset) {
-                T300Protocol.EqPreset.ORIGINAL_SOUND -> 5
-                T300Protocol.EqPreset.DEEP_BASS -> 1
-                T300Protocol.EqPreset.PURE_BASS -> 2
-                T300Protocol.EqPreset.SERENADE -> 9
+                BudsProtocol.EqPreset.ORIGINAL_SOUND -> 5
+                BudsProtocol.EqPreset.DEEP_BASS -> 1
+                BudsProtocol.EqPreset.PURE_BASS -> 2
+                BudsProtocol.EqPreset.SERENADE -> 9
             }
         } else {
             when (preset) {
-                T300Protocol.EqPreset.ORIGINAL_SOUND -> 1
-                T300Protocol.EqPreset.DEEP_BASS -> 2
-                T300Protocol.EqPreset.PURE_BASS -> 3
-                T300Protocol.EqPreset.SERENADE -> 9
+                BudsProtocol.EqPreset.ORIGINAL_SOUND -> 1
+                BudsProtocol.EqPreset.DEEP_BASS -> 2
+                BudsProtocol.EqPreset.PURE_BASS -> 3
+                BudsProtocol.EqPreset.SERENADE -> 9
             }
         }
     }
 
-    fun huaweiIdToEqPreset(id: Int, pro3Ids: Boolean): T300Protocol.EqPreset? {
+    fun huaweiIdToEqPreset(id: Int, pro3Ids: Boolean): BudsProtocol.EqPreset? {
         return if (pro3Ids) {
             when (id) {
-                5 -> T300Protocol.EqPreset.ORIGINAL_SOUND
-                1 -> T300Protocol.EqPreset.DEEP_BASS
-                2 -> T300Protocol.EqPreset.PURE_BASS
-                9 -> T300Protocol.EqPreset.SERENADE
+                5 -> BudsProtocol.EqPreset.ORIGINAL_SOUND
+                1 -> BudsProtocol.EqPreset.DEEP_BASS
+                2 -> BudsProtocol.EqPreset.PURE_BASS
+                9 -> BudsProtocol.EqPreset.SERENADE
                 else -> null
             }
         } else {
             when (id) {
-                1 -> T300Protocol.EqPreset.ORIGINAL_SOUND
-                2 -> T300Protocol.EqPreset.DEEP_BASS
-                3 -> T300Protocol.EqPreset.PURE_BASS
-                9 -> T300Protocol.EqPreset.SERENADE
+                1 -> BudsProtocol.EqPreset.ORIGINAL_SOUND
+                2 -> BudsProtocol.EqPreset.DEEP_BASS
+                3 -> BudsProtocol.EqPreset.PURE_BASS
+                9 -> BudsProtocol.EqPreset.SERENADE
                 else -> null
             }
         }
@@ -321,97 +321,97 @@ object HuaweiProtocol {
     // Маппинг действий жестов Huawei <-> TouchAction
     fun huaweiTapCodeToAction(
         code: Int,
-        gesture: T300Protocol.TouchGesture,
+        gesture: BudsProtocol.TouchGesture,
         isFreeBuds3: Boolean
-    ): T300Protocol.TouchAction {
-        if (gesture == T300Protocol.TouchGesture.LONG_PRESS) {
+    ): BudsProtocol.TouchAction {
+        if (gesture == BudsProtocol.TouchGesture.LONG_PRESS) {
             return when (code) {
-                10 -> T300Protocol.TouchAction.ANC_TOGGLE
-                0 -> T300Protocol.TouchAction.VOICE_ASSISTANT
-                18 -> T300Protocol.TouchAction.VOLUME_UP
-                19 -> T300Protocol.TouchAction.VOLUME_DOWN
-                else -> T300Protocol.TouchAction.NONE
+                10 -> BudsProtocol.TouchAction.ANC_TOGGLE
+                0 -> BudsProtocol.TouchAction.VOICE_ASSISTANT
+                18 -> BudsProtocol.TouchAction.VOLUME_UP
+                19 -> BudsProtocol.TouchAction.VOLUME_DOWN
+                else -> BudsProtocol.TouchAction.NONE
             }
         }
         if (isFreeBuds3) {
             return when (code) {
-                0 -> T300Protocol.TouchAction.VOICE_ASSISTANT
-                1 -> T300Protocol.TouchAction.PLAY_PAUSE
-                3 -> T300Protocol.TouchAction.ANC_TOGGLE
-                4 -> T300Protocol.TouchAction.NEXT_TRACK
-                else -> T300Protocol.TouchAction.NONE
+                0 -> BudsProtocol.TouchAction.VOICE_ASSISTANT
+                1 -> BudsProtocol.TouchAction.PLAY_PAUSE
+                3 -> BudsProtocol.TouchAction.ANC_TOGGLE
+                4 -> BudsProtocol.TouchAction.NEXT_TRACK
+                else -> BudsProtocol.TouchAction.NONE
             }
         }
         return when (code) {
-            1 -> T300Protocol.TouchAction.PLAY_PAUSE
-            2 -> T300Protocol.TouchAction.NEXT_TRACK
-            7 -> T300Protocol.TouchAction.PREV_TRACK
-            0 -> T300Protocol.TouchAction.VOICE_ASSISTANT
-            else -> T300Protocol.TouchAction.NONE
+            1 -> BudsProtocol.TouchAction.PLAY_PAUSE
+            2 -> BudsProtocol.TouchAction.NEXT_TRACK
+            7 -> BudsProtocol.TouchAction.PREV_TRACK
+            0 -> BudsProtocol.TouchAction.VOICE_ASSISTANT
+            else -> BudsProtocol.TouchAction.NONE
         }
     }
 
     fun actionToHuaweiTapCode(
-        action: T300Protocol.TouchAction,
-        gesture: T300Protocol.TouchGesture,
+        action: BudsProtocol.TouchAction,
+        gesture: BudsProtocol.TouchGesture,
         isFreeBuds3: Boolean
     ): Byte {
-        if (gesture == T300Protocol.TouchGesture.LONG_PRESS) {
+        if (gesture == BudsProtocol.TouchGesture.LONG_PRESS) {
             return when (action) {
-                T300Protocol.TouchAction.ANC_TOGGLE -> 10
-                T300Protocol.TouchAction.VOICE_ASSISTANT -> 0
-                T300Protocol.TouchAction.VOLUME_UP -> 18
-                T300Protocol.TouchAction.VOLUME_DOWN -> 19
+                BudsProtocol.TouchAction.ANC_TOGGLE -> 10
+                BudsProtocol.TouchAction.VOICE_ASSISTANT -> 0
+                BudsProtocol.TouchAction.VOLUME_UP -> 18
+                BudsProtocol.TouchAction.VOLUME_DOWN -> 19
                 else -> (-1).toByte()
             }
         }
         if (isFreeBuds3) {
             return when (action) {
-                T300Protocol.TouchAction.VOICE_ASSISTANT -> 0
-                T300Protocol.TouchAction.PLAY_PAUSE -> 1
-                T300Protocol.TouchAction.ANC_TOGGLE -> 3
-                T300Protocol.TouchAction.NEXT_TRACK -> 4
+                BudsProtocol.TouchAction.VOICE_ASSISTANT -> 0
+                BudsProtocol.TouchAction.PLAY_PAUSE -> 1
+                BudsProtocol.TouchAction.ANC_TOGGLE -> 3
+                BudsProtocol.TouchAction.NEXT_TRACK -> 4
                 else -> (-1).toByte()
             }
         }
         return when (action) {
-            T300Protocol.TouchAction.PLAY_PAUSE -> 1
-            T300Protocol.TouchAction.NEXT_TRACK -> 2
-            T300Protocol.TouchAction.PREV_TRACK -> 7
-            T300Protocol.TouchAction.VOICE_ASSISTANT -> 0
+            BudsProtocol.TouchAction.PLAY_PAUSE -> 1
+            BudsProtocol.TouchAction.NEXT_TRACK -> 2
+            BudsProtocol.TouchAction.PREV_TRACK -> 7
+            BudsProtocol.TouchAction.VOICE_ASSISTANT -> 0
             else -> (-1).toByte()
         }
     }
 
     fun getAvailableActions(
-        model: T300Protocol.BudsModel,
-        gesture: T300Protocol.TouchGesture
-    ): List<T300Protocol.TouchAction> {
+        model: BudsProtocol.BudsModel,
+        gesture: BudsProtocol.TouchGesture
+    ): List<BudsProtocol.TouchAction> {
         return when (gesture) {
-            T300Protocol.TouchGesture.LONG_PRESS -> listOf(
-                T300Protocol.TouchAction.ANC_TOGGLE,
-                T300Protocol.TouchAction.VOICE_ASSISTANT,
-                T300Protocol.TouchAction.VOLUME_UP,
-                T300Protocol.TouchAction.VOLUME_DOWN,
-                T300Protocol.TouchAction.NONE
+            BudsProtocol.TouchGesture.LONG_PRESS -> listOf(
+                BudsProtocol.TouchAction.ANC_TOGGLE,
+                BudsProtocol.TouchAction.VOICE_ASSISTANT,
+                BudsProtocol.TouchAction.VOLUME_UP,
+                BudsProtocol.TouchAction.VOLUME_DOWN,
+                BudsProtocol.TouchAction.NONE
             )
-            T300Protocol.TouchGesture.DOUBLE_TAP,
-            T300Protocol.TouchGesture.TRIPLE_TAP -> {
-                if (model == T300Protocol.BudsModel.HUAWEI_FREEBUDS_3) {
+            BudsProtocol.TouchGesture.DOUBLE_TAP,
+            BudsProtocol.TouchGesture.TRIPLE_TAP -> {
+                if (model == BudsProtocol.BudsModel.HUAWEI_FREEBUDS_3) {
                     listOf(
-                        T300Protocol.TouchAction.PLAY_PAUSE,
-                        T300Protocol.TouchAction.NEXT_TRACK,
-                        T300Protocol.TouchAction.ANC_TOGGLE,
-                        T300Protocol.TouchAction.VOICE_ASSISTANT,
-                        T300Protocol.TouchAction.NONE
+                        BudsProtocol.TouchAction.PLAY_PAUSE,
+                        BudsProtocol.TouchAction.NEXT_TRACK,
+                        BudsProtocol.TouchAction.ANC_TOGGLE,
+                        BudsProtocol.TouchAction.VOICE_ASSISTANT,
+                        BudsProtocol.TouchAction.NONE
                     )
                 } else {
                     listOf(
-                        T300Protocol.TouchAction.PLAY_PAUSE,
-                        T300Protocol.TouchAction.NEXT_TRACK,
-                        T300Protocol.TouchAction.PREV_TRACK,
-                        T300Protocol.TouchAction.VOICE_ASSISTANT,
-                        T300Protocol.TouchAction.NONE
+                        BudsProtocol.TouchAction.PLAY_PAUSE,
+                        BudsProtocol.TouchAction.NEXT_TRACK,
+                        BudsProtocol.TouchAction.PREV_TRACK,
+                        BudsProtocol.TouchAction.VOICE_ASSISTANT,
+                        BudsProtocol.TouchAction.NONE
                     )
                 }
             }
@@ -422,10 +422,10 @@ object HuaweiProtocol {
      * Parse 36-byte custom EQ entries from 0x2B4A param 8:
      *   [0]=id, [1]=bandCount (10), [2..2+n]=gains(s8, 0.1 dB units), [2+n..35]=UTF-8 name NUL-terminated.
      */
-    fun parseCustomEqProfiles(param8: ByteArray?, activeId: Int? = null): List<T300Protocol.CustomEqProfile> {
+    fun parseCustomEqProfiles(param8: ByteArray?, activeId: Int? = null): List<BudsProtocol.CustomEqProfile> {
         if (param8 == null || param8.size < 36) return emptyList()
         val freqs = listOf(31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000)
-        val out = mutableListOf<T300Protocol.CustomEqProfile>()
+        val out = mutableListOf<BudsProtocol.CustomEqProfile>()
         var off = 0
         while (off + 36 <= param8.size) {
             val id = param8[off].toInt()
@@ -444,7 +444,7 @@ object HuaweiProtocol {
                 "Custom #$id"
             }
             out.add(
-                T300Protocol.CustomEqProfile(
+                BudsProtocol.CustomEqProfile(
                     id = id,
                     name = name,
                     freqs = freqs.take(count),

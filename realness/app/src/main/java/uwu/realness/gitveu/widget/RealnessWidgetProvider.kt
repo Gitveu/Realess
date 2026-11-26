@@ -14,7 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import uwu.realness.gitveu.R
 import uwu.realness.gitveu.RealnessApp
-import uwu.realness.gitveu.protocol.T300Protocol
+import uwu.realness.gitveu.protocol.BudsProtocol
 import uwu.realness.gitveu.ui.MainActivity
 
 class RealnessWidgetProvider : AppWidgetProvider() {
@@ -168,21 +168,21 @@ class RealnessWidgetProvider : AppWidgetProvider() {
                     R.id.widget_anc_icon_nr,
                     R.id.widget_anc_label_nr,
                     R.drawable.ic_widget_anc,
-                    snap.ancMode == T300Protocol.AncMode.NOISE_REDUCTION
+                    snap.ancMode == BudsProtocol.AncMode.NOISE_REDUCTION
                 )
                 styleTile(
                     R.id.widget_anc_btn_off,
                     R.id.widget_anc_icon_off,
                     R.id.widget_anc_label_off,
                     R.drawable.ic_widget_anc_off,
-                    snap.ancMode == T300Protocol.AncMode.OFF
+                    snap.ancMode == BudsProtocol.AncMode.OFF
                 )
                 styleTile(
                     R.id.widget_anc_btn_tr,
                     R.id.widget_anc_icon_tr,
                     R.id.widget_anc_label_tr,
                     R.drawable.ic_widget_anc_trans,
-                    snap.ancMode == T300Protocol.AncMode.TRANSPARENCY
+                    snap.ancMode == BudsProtocol.AncMode.TRANSPARENCY
                 )
 
                 rv.setOnClickPendingIntent(R.id.widget_anc_btn_nr, actionPendingIntent(context, ACTION_ANC_NR, 101))
@@ -216,9 +216,9 @@ class RealnessWidgetProvider : AppWidgetProvider() {
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         val targetAnc = when (intent.action) {
-            ACTION_ANC_NR -> T300Protocol.AncMode.NOISE_REDUCTION
-            ACTION_ANC_OFF -> T300Protocol.AncMode.OFF
-            ACTION_ANC_TR -> T300Protocol.AncMode.TRANSPARENCY
+            ACTION_ANC_NR -> BudsProtocol.AncMode.NOISE_REDUCTION
+            ACTION_ANC_OFF -> BudsProtocol.AncMode.OFF
+            ACTION_ANC_TR -> BudsProtocol.AncMode.TRANSPARENCY
             ACTION_REFRESH -> null
             else -> return
         }

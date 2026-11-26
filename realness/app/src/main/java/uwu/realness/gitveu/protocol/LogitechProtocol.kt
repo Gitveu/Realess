@@ -20,11 +20,11 @@ object LogitechProtocol {
     // Logitech G435 Lightspeed USB dongle
     const val G435_PID = 0x0ACB
 
-    fun modelFromUsbIds(vendorId: Int, productId: Int): T300Protocol.BudsModel? {
+    fun modelFromUsbIds(vendorId: Int, productId: Int): BudsProtocol.BudsModel? {
         if (vendorId != VENDOR_LOGITECH) return null
         return when (productId) {
-            in G733_PIDS -> T300Protocol.BudsModel.LOGITECH_G733
-            G435_PID -> T300Protocol.BudsModel.LOGITECH_G435
+            in G733_PIDS -> BudsProtocol.BudsModel.LOGITECH_G733
+            G435_PID -> BudsProtocol.BudsModel.LOGITECH_G435
             else -> null
         }
     }

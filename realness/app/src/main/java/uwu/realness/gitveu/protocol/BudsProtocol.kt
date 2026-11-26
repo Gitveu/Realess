@@ -19,7 +19,7 @@ import java.nio.ByteOrder
  *   Offset 3..4: Payload Length (little-endian)
  *   Offset 5..N: Payload
  */
-object T300Protocol {
+object BudsProtocol {
 
     const val DEVICE_ADDRESS_DEFAULT: Byte = 0x00
     const val OPPO_SOF: Byte = 0xAA.toByte()
@@ -1074,7 +1074,7 @@ object T300Protocol {
         val isConnected: Boolean get() = connectState != 0
     }
 
-    data class T300State(
+    data class BudsState(
         val leftBattery: BatteryInfo = BatteryInfo(ComponentRole.LEFT_EAR, -1, false),
         val rightBattery: BatteryInfo = BatteryInfo(ComponentRole.RIGHT_EAR, -1, false),
         val caseBattery: BatteryInfo = BatteryInfo(ComponentRole.CASE, -1, false),

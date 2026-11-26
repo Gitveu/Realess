@@ -256,11 +256,11 @@ object XiaomiProtocol {
         return freqs to gains
     }
 
-    fun buildAncSet(mode: T300Protocol.AncMode): ByteArray {
+    fun buildAncSet(mode: BudsProtocol.AncMode): ByteArray {
         val m: Byte = when (mode) {
-            T300Protocol.AncMode.OFF -> 0x00
-            T300Protocol.AncMode.NOISE_REDUCTION -> 0x01
-            T300Protocol.AncMode.TRANSPARENCY -> 0x02
+            BudsProtocol.AncMode.OFF -> 0x00
+            BudsProtocol.AncMode.NOISE_REDUCTION -> 0x01
+            BudsProtocol.AncMode.TRANSPARENCY -> 0x02
         }
         return buildRequest(OP_ANC, byteArrayOf(0x02, 0x04, m))
     }
@@ -278,12 +278,12 @@ object XiaomiProtocol {
     fun buildEarDetectionSet(on: Boolean): ByteArray =
         buildRequest(OP_ANC, byteArrayOf(0x02, 0x06, if (on) 0x00 else 0x01))
 
-    fun buildEqSet(preset: T300Protocol.EqPreset): ByteArray {
+    fun buildEqSet(preset: BudsProtocol.EqPreset): ByteArray {
         val id: Byte = when (preset) {
-            T300Protocol.EqPreset.ORIGINAL_SOUND -> 0x00 // Standard
-            T300Protocol.EqPreset.SERENADE -> 0x01       // Vocal
-            T300Protocol.EqPreset.PURE_BASS -> 0x06      // Treble boost
-            T300Protocol.EqPreset.DEEP_BASS -> 0x05      // Bass boost
+            BudsProtocol.EqPreset.ORIGINAL_SOUND -> 0x00 // Standard
+            BudsProtocol.EqPreset.SERENADE -> 0x01       // Vocal
+            BudsProtocol.EqPreset.PURE_BASS -> 0x06      // Treble boost
+            BudsProtocol.EqPreset.DEEP_BASS -> 0x05      // Bass boost
         }
         return buildSetConfig(CFG_EQ_PRESET, byteArrayOf(id))
     }
@@ -320,17 +320,17 @@ object XiaomiProtocol {
         return packets to (if (off < total) buf.copyOfRange(off, total) else ByteArray(0))
     }
 
-    fun parseBatteryTriplet(p: ByteArray, offset: Int): List<T300Protocol.BatteryInfo> {
+    fun parseBatteryTriplet(p: ByteArray, offset: Int): List<BudsProtocol.BatteryInfo> {
         if (p.size < offset + 3) return emptyList()
-        fun decode(idx: Int, role: T300Protocol.ComponentRole): T300Protocol.BatteryInfo {
+        fun decode(idx: Int, role: BudsProtocol.ComponentRole): BudsProtocol.BatteryInfo {
             val v = p[offset + idx].toInt() and 0xFF
-            if (v == 0xFF || (v and 0x7F) > 100) return T300Protocol.BatteryInfo(role, -1, false)
-            return T300Protocol.BatteryInfo(role, v and 0x7F, (v and 0x80) != 0)
+            if (v == 0xFF || (v and 0x7F) > 100) return BudsProtocol.BatteryInfo(role, -1, false)
+            return BudsProtocol.BatteryInfo(role, v and 0x7F, (v and 0x80) != 0)
         }
         return listOf(
-            decode(0, T300Protocol.ComponentRole.LEFT_EAR),
-            decode(1, T300Protocol.ComponentRole.RIGHT_EAR),
-            decode(2, T300Protocol.ComponentRole.CASE)
+            decode(0, BudsProtocol.ComponentRole.LEFT_EAR),
+            decode(1, BudsProtocol.ComponentRole.RIGHT_EAR),
+            decode(2, BudsProtocol.ComponentRole.CASE)
         )
     }
 }

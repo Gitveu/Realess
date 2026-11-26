@@ -1,6 +1,7 @@
 package uwu.realness.gitveu
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.app.AlarmManager
 import android.app.Application
 import android.app.PendingIntent
@@ -15,14 +16,16 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
+import android.os.Bundle
 import android.os.SystemClock
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import uwu.realness.gitveu.ble.BleConnectionState
-import uwu.realness.gitveu.ble.T300BleManager
-import uwu.realness.gitveu.protocol.T300Protocol
+import uwu.realness.gitveu.ble.BudsConnectionManager
+import uwu.realness.gitveu.protocol.BudsProtocol
 import uwu.realness.gitveu.usb.LogitechUsbManager
 import uwu.realness.gitveu.widget.RealnessCompactWidgetProvider
 import uwu.realness.gitveu.widget.RealnessMiniWidgetProvider
@@ -34,7 +37,7 @@ import uwu.realness.gitveu.widget.WidgetStateStore
 
 class RealnessApp : Application() {
 
-    lateinit var bleManager: T300BleManager
+    lateinit var bleManager: BudsConnectionManager
         private set
 
     lateinit var usbManager: LogitechUsbManager
@@ -42,6 +45,7 @@ class RealnessApp : Application() {
 
     private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val syncMutex = Mutex()
+    private val startedActivities = AtomicInteger(0)
     @Volatile private var lastWidgetSig: String? = null
     @Volatile private var lastUnlockSyncMs: Long = 0L
 
@@ -50,7 +54,7 @@ class RealnessApp : Application() {
             if (intent?.action != Intent.ACTION_USER_PRESENT) return
             if (!hasAnyWidgets()) return
             val now = System.currentTimeMillis()
-            if (now - lastUnlockSyncMs < 15_000L) return
+            if (now - lastUnlockSyncMs < 8_000L) return
             lastUnlockSyncMs = now
             appScope.launch {
                 syncWidgetFromActiveDevice()
@@ -60,14 +64,34 @@ class RealnessApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        bleManager = T300BleManager(this)
+        bleManager = BudsConnectionManager(this)
         usbManager = LogitechUsbManager(this)
+
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityStarted(activity: Activity) {
+                if (startedActivities.incrementAndGet() == 1) {
+                    bleManager.setForegroundMode(true)
+                }
+            }
+            override fun onActivityStopped(activity: Activity) {
+                val remaining = startedActivities.decrementAndGet().coerceAtLeast(0)
+                startedActivities.set(remaining)
+                if (remaining == 0) {
+                    bleManager.setForegroundMode(false)
+                }
+            }
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+            override fun onActivityResumed(activity: Activity) {}
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {}
+        })
 
         // Process-wide observer: keep Home Screen Widgets live even when MainActivity is closed
         appScope.launch {
             combine(
                 bleManager.connectionState,
-                bleManager.t300State,
+                bleManager.budsState,
                 usbManager.connected,
                 usbManager.telemetry
             ) { bleConn, bleSt, usbConn, usbTel ->
@@ -91,7 +115,7 @@ class RealnessApp : Application() {
 
     private data class QuadState(
         val bleConn: BleConnectionState,
-        val bleSt: T300Protocol.T300State,
+        val bleSt: BudsProtocol.BudsState,
         val usbConn: Boolean,
         val usbTel: LogitechUsbManager.UsbTelemetry?
     )
@@ -104,9 +128,9 @@ class RealnessApp : Application() {
 
         val connected: Boolean
         val mac: String?
-        val model: T300Protocol.BudsModel
+        val model: BudsProtocol.BudsModel
         val name: String?
-        val state: T300Protocol.T300State
+        val state: BudsProtocol.BudsState
 
         if (q.usbConn && q.usbTel != null) {
             connected = true
@@ -115,10 +139,10 @@ class RealnessApp : Application() {
             val alias = mac?.let { prefs.getString(KEY_ALIAS_PREFIX + it, null) }?.takeIf { it.isNotBlank() }
             name = alias ?: usbInfo?.displayName ?: snap.deviceName
             val lvl = if (q.usbTel.online) q.usbTel.percent else -1
-            state = T300Protocol.T300State(
-                leftBattery = T300Protocol.BatteryInfo(T300Protocol.ComponentRole.LEFT_EAR, lvl, q.usbTel.charging),
-                rightBattery = T300Protocol.BatteryInfo(T300Protocol.ComponentRole.RIGHT_EAR, lvl, q.usbTel.charging),
-                caseBattery = T300Protocol.BatteryInfo(T300Protocol.ComponentRole.CASE, -1, false)
+            state = BudsProtocol.BudsState(
+                leftBattery = BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.LEFT_EAR, lvl, q.usbTel.charging),
+                rightBattery = BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.RIGHT_EAR, lvl, q.usbTel.charging),
+                caseBattery = BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.CASE, -1, false)
             )
         } else {
             connected = q.bleConn == BleConnectionState.CONNECTED
@@ -231,16 +255,16 @@ class RealnessApp : Application() {
         )
     }
 
-    private fun resolveModelForDevice(device: BluetoothDevice): T300Protocol.BudsModel {
+    private fun resolveModelForDevice(device: BluetoothDevice): BudsProtocol.BudsModel {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val manual = T300Protocol.BudsModel.fromNameOrNull(prefs.getString(KEY_MANUAL_MODEL, null))
+        val manual = BudsProtocol.BudsModel.fromNameOrNull(prefs.getString(KEY_MANUAL_MODEL, null))
         if (manual != null && manual.isSupported) return manual
         val auto = try {
-            T300Protocol.BudsModel.fromDeviceName(device.name)
+            BudsProtocol.BudsModel.fromDeviceName(device.name)
         } catch (_: SecurityException) {
-            T300Protocol.BudsModel.UNKNOWN
+            BudsProtocol.BudsModel.UNKNOWN
         }
-        return if (auto.isSupported) auto else T300Protocol.BudsModel.GENERIC_BT
+        return if (auto.isSupported) auto else BudsProtocol.BudsModel.GENERIC_BT
     }
 
     private fun isDeviceConnectedAtOsLevel(device: BluetoothDevice): Boolean {
@@ -281,7 +305,7 @@ class RealnessApp : Application() {
         // Next prefer any connected recognized audio headset
         val connectedBonded = bonded.filter { isDeviceConnectedAtOsLevel(it) }
         val connectedSupported = connectedBonded.firstOrNull { dev ->
-            try { T300Protocol.BudsModel.fromDeviceName(dev.name).isSupported } catch (_: Throwable) { false }
+            try { BudsProtocol.BudsModel.fromDeviceName(dev.name).isSupported } catch (_: Throwable) { false }
         }
         if (connectedSupported != null) return connectedSupported
 
@@ -413,14 +437,14 @@ class RealnessApp : Application() {
             // Wait briefly for initial battery packet to arrive (up to ~1.4s)
             val dataDeadline = System.currentTimeMillis() + 1_400L
             while (System.currentTimeMillis() < dataDeadline) {
-                val st = bleManager.t300State.value
+                val st = bleManager.budsState.value
                 if (st.leftBattery.level >= 0 || st.rightBattery.level >= 0 || st.caseBattery.level >= 0) {
                     break
                 }
                 delay(120)
             }
             // One explicit refresh if still empty
-            val st = bleManager.t300State.value
+            val st = bleManager.budsState.value
             if (st.leftBattery.level < 0 && st.rightBattery.level < 0) {
                 bleManager.refreshBattery()
                 delay(350)
@@ -434,7 +458,7 @@ class RealnessApp : Application() {
      * active/saved bonded headset so widgets work even when the Activity is closed.
      */
     @SuppressLint("MissingPermission")
-    suspend fun executeWidgetAction(targetAnc: T300Protocol.AncMode?, cycleAnc: Boolean = false) {
+    suspend fun executeWidgetAction(targetAnc: BudsProtocol.AncMode?, cycleAnc: Boolean = false) {
         if (targetAnc == null && !cycleAnc) {
             syncWidgetFromActiveDevice()
             return
@@ -445,9 +469,9 @@ class RealnessApp : Application() {
             val effectiveAnc = when {
                 targetAnc != null -> targetAnc
                 cycleAnc -> when (snap.ancMode) {
-                    T300Protocol.AncMode.NOISE_REDUCTION -> T300Protocol.AncMode.TRANSPARENCY
-                    T300Protocol.AncMode.TRANSPARENCY -> T300Protocol.AncMode.OFF
-                    else -> T300Protocol.AncMode.NOISE_REDUCTION
+                    BudsProtocol.AncMode.NOISE_REDUCTION -> BudsProtocol.AncMode.TRANSPARENCY
+                    BudsProtocol.AncMode.TRANSPARENCY -> BudsProtocol.AncMode.OFF
+                    else -> BudsProtocol.AncMode.NOISE_REDUCTION
                 }
                 else -> null
             }
@@ -517,8 +541,8 @@ class RealnessApp : Application() {
         }
     }
 
-    private fun persistDeviceState(name: String?, mac: String?, model: T300Protocol.BudsModel) {
-        val st = bleManager.t300State.value
+    private fun persistDeviceState(name: String?, mac: String?, model: BudsProtocol.BudsModel) {
+        val st = bleManager.budsState.value
         val connected = bleManager.connectionState.value == BleConnectionState.CONNECTED
         lastWidgetSig = null
         WidgetStateStore.saveSnapshot(

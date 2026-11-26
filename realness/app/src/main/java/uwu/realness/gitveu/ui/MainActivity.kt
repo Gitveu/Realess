@@ -62,12 +62,12 @@ import uwu.realness.gitveu.R
 import uwu.realness.gitveu.ble.BleConnectionState
 import uwu.realness.gitveu.protocol.HuaweiProtocol
 import uwu.realness.gitveu.protocol.NothingProtocol
-import uwu.realness.gitveu.protocol.T300Protocol
-import uwu.realness.gitveu.protocol.T300Protocol.AncMode
-import uwu.realness.gitveu.protocol.T300Protocol.TouchAction
-import uwu.realness.gitveu.protocol.T300Protocol.TouchGesture
-import uwu.realness.gitveu.protocol.T300Protocol.TouchSide
-import uwu.realness.gitveu.protocol.T300Protocol.getAvailableActions
+import uwu.realness.gitveu.protocol.BudsProtocol
+import uwu.realness.gitveu.protocol.BudsProtocol.AncMode
+import uwu.realness.gitveu.protocol.BudsProtocol.TouchAction
+import uwu.realness.gitveu.protocol.BudsProtocol.TouchGesture
+import uwu.realness.gitveu.protocol.BudsProtocol.TouchSide
+import uwu.realness.gitveu.protocol.BudsProtocol.getAvailableActions
 import uwu.realness.gitveu.viewmodel.BudsViewModel
 import uwu.realness.gitveu.viewmodel.RenameScope
 import uwu.realness.gitveu.viewmodel.SystemDeviceStatus
@@ -262,7 +262,7 @@ fun MainScreen(
 ) {
     val context = LocalContext.current
     val connectionState by viewModel.connectionState.collectAsState()
-    val t300State by viewModel.t300State.collectAsState()
+    val budsState by viewModel.budsState.collectAsState()
     val deviceStatus by viewModel.deviceStatus.collectAsState()
     val detectedDevice by viewModel.detectedBudsDevice.collectAsState()
     val usbHeadsetInfo by viewModel.usbHeadsetInfo.collectAsState()
@@ -285,7 +285,7 @@ fun MainScreen(
     var activeEditingGesture by remember { mutableStateOf<Pair<TouchSide, TouchGesture>?>(null) }
 
     var showCustomEqSheet by remember { mutableStateOf(false) }
-    var editingCustomProfile by remember { mutableStateOf<T300Protocol.CustomEqProfile?>(null) }
+    var editingCustomProfile by remember { mutableStateOf<BudsProtocol.CustomEqProfile?>(null) }
     var creatingNewCustomProfile by remember { mutableStateOf(false) }
     var showFindBudsSheet by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -391,7 +391,7 @@ fun MainScreen(
                     displayMac = displayDeviceMac,
                     manualModelOverride = manualModelOverride,
                     unsupportedDeviceName = unsupportedDeviceName,
-                    findIsPlaying = findIsPlaying || t300State.hardwareFindActive,
+                    findIsPlaying = findIsPlaying || budsState.hardwareFindActive,
                     canRename = hasKnownDevice,
                     onRetryConnect = { viewModel.manualReconnect() },
                     onOpenFindBuds = { showFindBudsSheet = true },
@@ -399,28 +399,28 @@ fun MainScreen(
                 )
 
                 // Battery section
-                val isStandardBtMode = detectedModel.isGenericBluetooth || t300State.isStandardBluetoothFallback
+                val isStandardBtMode = detectedModel.isGenericBluetooth || budsState.isStandardBluetoothFallback
                 SectionHeader(title = stringResource(R.string.section_battery))
                 if (detectedModel.isSingleBatteryHeadset || isStandardBtMode) {
                     SingleHeadsetBatteryCard(
-                        battery = t300State.leftBattery,
+                        battery = budsState.leftBattery,
                         titleRes = if (isStandardBtMode) R.string.battery_overall else R.string.battery_headset,
-                        voltageMv = t300State.batteryVoltageMv,
-                        hoursLeft = t300State.batteryHoursLeft
+                        voltageMv = budsState.batteryVoltageMv,
+                        hoursLeft = budsState.batteryHoursLeft
                     )
                     if (isStandardBtMode && isConnected) {
                         StandardBluetoothModeCard()
                     }
                 } else {
-                    val cachedCaseSubtitle = if (t300State.caseBattery.level < 0 && lastCaseBattery != null) {
+                    val cachedCaseSubtitle = if (budsState.caseBattery.level < 0 && lastCaseBattery != null) {
                         WidgetStateStore.formatRelativeTime(context, lastCaseBattery!!.second)
                     } else null
-                    val effectiveCaseBattery = if (t300State.caseBattery.level >= 0) {
-                        t300State.caseBattery
+                    val effectiveCaseBattery = if (budsState.caseBattery.level >= 0) {
+                        budsState.caseBattery
                     } else if (lastCaseBattery != null) {
-                        T300Protocol.BatteryInfo(T300Protocol.ComponentRole.CASE, lastCaseBattery!!.first, false)
+                        BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.CASE, lastCaseBattery!!.first, false)
                     } else {
-                        t300State.caseBattery
+                        budsState.caseBattery
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -429,7 +429,7 @@ fun MainScreen(
                         BatteryCard(
                             modifier = Modifier.weight(1f),
                             title = stringResource(R.string.battery_left),
-                            battery = t300State.leftBattery,
+                            battery = budsState.leftBattery,
                             icon = Icons.Rounded.Headphones
                         )
                         BatteryCard(
@@ -443,7 +443,7 @@ fun MainScreen(
                         BatteryCard(
                             modifier = Modifier.weight(1f),
                             title = stringResource(R.string.battery_right),
-                            battery = t300State.rightBattery,
+                            battery = budsState.rightBattery,
                             icon = Icons.Rounded.Headphones
                         )
                     }
@@ -454,9 +454,9 @@ fun MainScreen(
                 if (detectedModel.supportsSidetone || detectedModel.supportsRgbLights || detectedModel.supportsInactiveTime) {
                     SectionHeader(title = stringResource(R.string.section_logitech))
                     LogitechG733ControlsCard(
-                        sidetoneLevel = t300State.sidetoneLevel,
-                        lightsEnabled = t300State.lightsEnabled,
-                        inactiveMinutes = t300State.inactiveMinutes,
+                        sidetoneLevel = budsState.sidetoneLevel,
+                        lightsEnabled = budsState.lightsEnabled,
+                        inactiveMinutes = budsState.inactiveMinutes,
                         enabled = isConnected,
                         onSidetoneChanged = { viewModel.setSidetone(it) },
                         onLightsToggle = { viewModel.setLights(it) },
@@ -468,8 +468,8 @@ fun MainScreen(
                 if (!detectedModel.isSupported || detectedModel.supportsAnc) {
                     SectionHeader(title = stringResource(R.string.section_anc))
                     AncModeSelector(
-                        currentMode = t300State.ancMode,
-                        currentLevel = t300State.ancLevel,
+                        currentMode = budsState.ancMode,
+                        currentLevel = budsState.ancLevel,
                         supportsAncLevel = detectedModel.supportsAncLevel,
                         supportsAncDynamic = detectedModel.supportsAncDynamic,
                         galaxyAdaptiveOnly = detectedModel.isGalaxy,
@@ -485,10 +485,10 @@ fun MainScreen(
                 if (!detectedModel.isSupported || detectedModel.supportsEq || customEqSpec != null) {
                     SectionHeader(title = stringResource(R.string.section_eq))
                     EqPresetSelector(
-                        currentPreset = t300State.eqPreset,
-                        activeCustomName = t300State.activeCustomEqName,
-                        activeCustomId = t300State.activeCustomEqId,
-                        customProfiles = t300State.customEqProfiles,
+                        currentPreset = budsState.eqPreset,
+                        activeCustomName = budsState.activeCustomEqName,
+                        activeCustomId = budsState.activeCustomEqId,
+                        customProfiles = budsState.customEqProfiles,
                         customEqSpec = customEqSpec,
                         showPresets = !detectedModel.isSupported || (detectedModel.supportsEq && !detectedModel.isBose && !detectedModel.isSoundcore && !detectedModel.isSennheiser && !detectedModel.isPixelBuds),
                         model = detectedModel,
@@ -507,8 +507,8 @@ fun MainScreen(
                             showCustomEqSheet = true
                         },
                         onOpenDirectCustomEq = {
-                            editingCustomProfile = t300State.customEqProfiles.firstOrNull { it.isSelected }
-                                ?: t300State.customEqProfiles.firstOrNull()
+                            editingCustomProfile = budsState.customEqProfiles.firstOrNull { it.isSelected }
+                                ?: budsState.customEqProfiles.firstOrNull()
                             creatingNewCustomProfile = false
                             showCustomEqSheet = true
                         }
@@ -526,7 +526,7 @@ fun MainScreen(
                     ButtonSettingsCard(
                         selectedSide = selectedTouchSide,
                         gestures = visibleGestures,
-                        touchSettings = t300State.touchSettings,
+                        touchSettings = budsState.touchSettings,
                         enabled = isConnected,
                         onSideSelected = { selectedTouchSide = it },
                         onGestureClick = { gesture ->
@@ -539,8 +539,8 @@ fun MainScreen(
                 if (!detectedModel.isSupported || detectedModel.supportsSpatialAudio) {
                     SectionHeader(title = stringResource(R.string.section_spatial_audio))
                     SpatialAudioCard(
-                        spatialAudio = t300State.spatialAudio,
-                        spatialAudioMode = t300State.spatialAudioMode,
+                        spatialAudio = budsState.spatialAudio,
+                        spatialAudioMode = budsState.spatialAudioMode,
                         nothingSpatialModes = detectedModel.nothingSpatialModes,
                         isPlayingDemo = isPlayingDemo,
                         showRealmeDemo = !detectedModel.isSupported || detectedModel.isRealme,
@@ -563,7 +563,7 @@ fun MainScreen(
                         title = stringResource(R.string.high_quality_audio_title),
                         description = stringResource(codecDescRes),
                         icon = Icons.Rounded.HighQuality,
-                        checked = t300State.highQualityAudio,
+                        checked = budsState.highQualityAudio,
                         enabled = isConnected,
                         onToggle = { viewModel.setHighQualityAudio(it) }
                     )
@@ -574,8 +574,8 @@ fun MainScreen(
                     if (detectedModel.supportsBassLevel) {
                         BassBoostLevelCard(
                             enabled = isConnected,
-                            checked = t300State.dynamicAudio,
-                            level = t300State.bassLevel,
+                            checked = budsState.dynamicAudio,
+                            level = budsState.bassLevel,
                             onToggle = { viewModel.setDynamicAudio(it) },
                             onLevelSelected = { viewModel.setBassLevel(it) }
                         )
@@ -584,7 +584,7 @@ fun MainScreen(
                             title = stringResource(R.string.dynamic_audio_title),
                             description = stringResource(R.string.dynamic_audio_desc),
                             icon = Icons.Rounded.Equalizer,
-                            checked = t300State.dynamicAudio,
+                            checked = budsState.dynamicAudio,
                             enabled = isConnected,
                             onToggle = { viewModel.setDynamicAudio(it) }
                         )
@@ -606,7 +606,7 @@ fun MainScreen(
                             title = stringResource(if (useLowLatencyLabel) R.string.low_latency_title else R.string.game_mode_title),
                             description = stringResource(if (useLowLatencyLabel) R.string.low_latency_desc else R.string.game_mode_desc),
                             icon = Icons.Rounded.SportsEsports,
-                            checked = t300State.gameMode,
+                            checked = budsState.gameMode,
                             enabled = isConnected,
                             allowToggleWhenUnknown = detectedModel.isXiaomi || detectedModel.isGalaxy || detectedModel.isSoundcore,
                             onToggle = { viewModel.setGameMode(it) }
@@ -619,14 +619,14 @@ fun MainScreen(
                                 title = stringResource(R.string.dual_connection_galaxy_title),
                                 description = stringResource(R.string.dual_connection_galaxy_desc),
                                 icon = Icons.Rounded.Devices,
-                                checked = t300State.dualConnection,
+                                checked = budsState.dualConnection,
                                 enabled = isConnected,
                                 onToggle = { viewModel.setDualConnection(it) }
                             )
                         } else {
                             DualConnectionCard(
-                                dualConnection = t300State.dualConnection,
-                                connectedDevices = t300State.connectedDevices,
+                                dualConnection = budsState.dualConnection,
+                                connectedDevices = budsState.connectedDevices,
                                 enabled = isConnected,
                                 onToggle = { viewModel.setDualConnection(it) }
                             )
@@ -638,7 +638,7 @@ fun MainScreen(
                             title = stringResource(R.string.auto_play_pause_title),
                             description = stringResource(R.string.auto_play_pause_desc),
                             icon = Icons.Rounded.Earbuds,
-                            checked = t300State.autoPlayPause,
+                            checked = budsState.autoPlayPause,
                             enabled = isConnected,
                             onToggle = { viewModel.setAutoPlayPause(it) }
                         )
@@ -649,7 +649,7 @@ fun MainScreen(
                             title = stringResource(R.string.auto_answer_title),
                             description = stringResource(R.string.auto_answer_desc),
                             icon = Icons.Rounded.Call,
-                            checked = t300State.autoAnswer,
+                            checked = budsState.autoAnswer,
                             enabled = isConnected,
                             onToggle = { viewModel.setAutoAnswer(it) }
                         )
@@ -657,10 +657,10 @@ fun MainScreen(
                 }
 
                 // Total Usage Time Statistics (L / R)
-                if (t300State.leftUseTimeMinutes != null || t300State.rightUseTimeMinutes != null) {
+                if (budsState.leftUseTimeMinutes != null || budsState.rightUseTimeMinutes != null) {
                     UseTimeCard(
-                        leftMinutes = t300State.leftUseTimeMinutes,
-                        rightMinutes = t300State.rightUseTimeMinutes
+                        leftMinutes = budsState.leftUseTimeMinutes,
+                        rightMinutes = budsState.rightUseTimeMinutes
                     )
                 }
                 }
@@ -688,7 +688,7 @@ fun MainScreen(
             // Gesture Action Selection Dialog
             if (activeEditingGesture != null) {
                 val (side, gesture) = activeEditingGesture!!
-                val currentAction = t300State.touchSettings[Pair(side, gesture)]
+                val currentAction = budsState.touchSettings[Pair(side, gesture)]
                 GestureActionSelectionDialog(
                     model = detectedModel,
                     side = side,
@@ -707,7 +707,7 @@ fun MainScreen(
             if (showCustomEqSheet && activeSpec != null) {
                 CustomEqEditorSheet(
                     spec = activeSpec,
-                    initialGains = t300State.customEqGains,
+                    initialGains = budsState.customEqGains,
                     editingProfile = editingCustomProfile,
                     isCreatingNew = creatingNewCustomProfile,
                     onDismiss = { showCustomEqSheet = false },
@@ -734,7 +734,7 @@ fun MainScreen(
                     volumeProgress = findVolumeProgress,
                     selectedChannel = findChannel,
                     supportsHardwareRing = detectedModel.supportsHardwareFindBuds,
-                    hardwareRingActive = t300State.hardwareFindActive,
+                    hardwareRingActive = budsState.hardwareFindActive,
                     isConnected = isConnected,
                     onChannelSelected = { viewModel.setFindChannel(it) },
                     onTogglePlay = {
@@ -788,11 +788,11 @@ private fun SectionHeader(title: String) {
 
 @Composable
 fun ModelPickerDrawerContent(
-    autoDetectedModel: T300Protocol.BudsModel,
-    manualModelOverride: T300Protocol.BudsModel?,
-    onSelectModel: (T300Protocol.BudsModel?) -> Unit
+    autoDetectedModel: BudsProtocol.BudsModel,
+    manualModelOverride: BudsProtocol.BudsModel?,
+    onSelectModel: (BudsProtocol.BudsModel?) -> Unit
 ) {
-    val grouped = remember { T300Protocol.BudsModel.modelsByBrand }
+    val grouped = remember { BudsProtocol.BudsModel.modelsByBrand }
     val isAutoSelected = manualModelOverride == null
 
     ModalDrawerSheet(
@@ -1051,7 +1051,7 @@ fun StatusDeviceCard(
     device: BluetoothDevice?,
     displayName: String?,
     displayMac: String?,
-    manualModelOverride: T300Protocol.BudsModel?,
+    manualModelOverride: BudsProtocol.BudsModel?,
     unsupportedDeviceName: String?,
     findIsPlaying: Boolean,
     canRename: Boolean,
@@ -1253,7 +1253,7 @@ fun StatusDeviceCard(
 
 @Composable
 fun SingleHeadsetBatteryCard(
-    battery: T300Protocol.BatteryInfo,
+    battery: BudsProtocol.BatteryInfo,
     titleRes: Int = R.string.battery_headset,
     voltageMv: Int?,
     hoursLeft: Float?
@@ -1385,7 +1385,7 @@ fun StandardBluetoothModeCard() {
 fun BatteryCard(
     modifier: Modifier = Modifier,
     title: String,
-    battery: T300Protocol.BatteryInfo,
+    battery: BudsProtocol.BatteryInfo,
     icon: ImageVector,
     subtitle: String? = null,
     isCached: Boolean = false
@@ -1841,18 +1841,18 @@ fun AncModeSelector(
 
 @Composable
 fun EqPresetSelector(
-    currentPreset: T300Protocol.EqPreset?,
+    currentPreset: BudsProtocol.EqPreset?,
     activeCustomName: String?,
     activeCustomId: Int?,
-    customProfiles: List<T300Protocol.CustomEqProfile>,
-    customEqSpec: T300Protocol.CustomEqSpec?,
+    customProfiles: List<BudsProtocol.CustomEqProfile>,
+    customEqSpec: BudsProtocol.CustomEqSpec?,
     showPresets: Boolean,
-    model: T300Protocol.BudsModel,
+    model: BudsProtocol.BudsModel,
     enabled: Boolean,
-    onPresetSelected: (T300Protocol.EqPreset) -> Unit,
-    onSelectCustomProfile: (T300Protocol.CustomEqProfile) -> Unit,
-    onEditCustomProfile: (T300Protocol.CustomEqProfile) -> Unit,
-    onDeleteCustomProfile: (T300Protocol.CustomEqProfile) -> Unit,
+    onPresetSelected: (BudsProtocol.EqPreset) -> Unit,
+    onSelectCustomProfile: (BudsProtocol.CustomEqProfile) -> Unit,
+    onEditCustomProfile: (BudsProtocol.CustomEqProfile) -> Unit,
+    onDeleteCustomProfile: (BudsProtocol.CustomEqProfile) -> Unit,
     onCreateCustomProfile: () -> Unit,
     onOpenDirectCustomEq: () -> Unit
 ) {
@@ -1870,16 +1870,16 @@ fun EqPresetSelector(
             if (showPresets) {
                 val presets = if (model.isHonorChoice) {
                     listOf(
-                        T300Protocol.EqPreset.ORIGINAL_SOUND,
-                        T300Protocol.EqPreset.DEEP_BASS,
-                        T300Protocol.EqPreset.SERENADE
+                        BudsProtocol.EqPreset.ORIGINAL_SOUND,
+                        BudsProtocol.EqPreset.DEEP_BASS,
+                        BudsProtocol.EqPreset.SERENADE
                     )
                 } else {
                     listOf(
-                        T300Protocol.EqPreset.SERENADE,
-                        T300Protocol.EqPreset.ORIGINAL_SOUND,
-                        T300Protocol.EqPreset.PURE_BASS,
-                        T300Protocol.EqPreset.DEEP_BASS
+                        BudsProtocol.EqPreset.SERENADE,
+                        BudsProtocol.EqPreset.ORIGINAL_SOUND,
+                        BudsProtocol.EqPreset.PURE_BASS,
+                        BudsProtocol.EqPreset.DEEP_BASS
                     )
                 }
 
@@ -1892,52 +1892,52 @@ fun EqPresetSelector(
                             val selected = (preset == currentPreset) && (activeCustomName == null)
                             val titleRes = when {
                                 model.isHuawei -> when (preset) {
-                                    T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
-                                    T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_huawei_default
-                                    T300Protocol.EqPreset.PURE_BASS -> R.string.eq_huawei_treble
-                                    T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
+                                    BudsProtocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
+                                    BudsProtocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_huawei_default
+                                    BudsProtocol.EqPreset.PURE_BASS -> R.string.eq_huawei_treble
+                                    BudsProtocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
                                 }
                                 model.isHonorChoice -> when (preset) {
-                                    T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_nothing_balanced
-                                    T300Protocol.EqPreset.DEEP_BASS,
-                                    T300Protocol.EqPreset.PURE_BASS -> R.string.eq_huawei_bass
-                                    T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
+                                    BudsProtocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_nothing_balanced
+                                    BudsProtocol.EqPreset.DEEP_BASS,
+                                    BudsProtocol.EqPreset.PURE_BASS -> R.string.eq_huawei_bass
+                                    BudsProtocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
                                 }
                                 model.isNothing && model.nothingUsesListeningModeEq -> when (preset) {
-                                    T300Protocol.EqPreset.SERENADE -> R.string.eq_cmf_vocals
-                                    T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_cmf_pop
-                                    T300Protocol.EqPreset.PURE_BASS -> R.string.eq_cmf_electronic
-                                    T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_cmf_rock
+                                    BudsProtocol.EqPreset.SERENADE -> R.string.eq_cmf_vocals
+                                    BudsProtocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_cmf_pop
+                                    BudsProtocol.EqPreset.PURE_BASS -> R.string.eq_cmf_electronic
+                                    BudsProtocol.EqPreset.DEEP_BASS -> R.string.eq_cmf_rock
                                 }
                                 model.isNothing -> when (preset) {
-                                    T300Protocol.EqPreset.SERENADE -> R.string.eq_nothing_voice
-                                    T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_nothing_balanced
-                                    T300Protocol.EqPreset.PURE_BASS -> R.string.eq_nothing_more_treble
-                                    T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_nothing_more_bass
+                                    BudsProtocol.EqPreset.SERENADE -> R.string.eq_nothing_voice
+                                    BudsProtocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_nothing_balanced
+                                    BudsProtocol.EqPreset.PURE_BASS -> R.string.eq_nothing_more_treble
+                                    BudsProtocol.EqPreset.DEEP_BASS -> R.string.eq_nothing_more_bass
                                 }
                                 model.isGalaxy -> when (preset) {
-                                    T300Protocol.EqPreset.SERENADE -> R.string.eq_galaxy_clear
-                                    T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_galaxy_normal
-                                    T300Protocol.EqPreset.PURE_BASS -> R.string.eq_galaxy_dynamic
-                                    T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_galaxy_bass
+                                    BudsProtocol.EqPreset.SERENADE -> R.string.eq_galaxy_clear
+                                    BudsProtocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_galaxy_normal
+                                    BudsProtocol.EqPreset.PURE_BASS -> R.string.eq_galaxy_dynamic
+                                    BudsProtocol.EqPreset.DEEP_BASS -> R.string.eq_galaxy_bass
                                 }
                                 model.isSony -> when (preset) {
-                                    T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
-                                    T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.anc_off
-                                    T300Protocol.EqPreset.PURE_BASS -> R.string.eq_sony_bright
-                                    T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
+                                    BudsProtocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
+                                    BudsProtocol.EqPreset.ORIGINAL_SOUND -> R.string.anc_off
+                                    BudsProtocol.EqPreset.PURE_BASS -> R.string.eq_sony_bright
+                                    BudsProtocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
                                 }
                                 model.isXiaomi -> when (preset) {
-                                    T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
-                                    T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_huawei_default
-                                    T300Protocol.EqPreset.PURE_BASS -> R.string.eq_huawei_treble
-                                    T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
+                                    BudsProtocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
+                                    BudsProtocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_huawei_default
+                                    BudsProtocol.EqPreset.PURE_BASS -> R.string.eq_huawei_treble
+                                    BudsProtocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
                                 }
                                 model.isJbl -> when (preset) {
-                                    T300Protocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
-                                    T300Protocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_jbl_studio
-                                    T300Protocol.EqPreset.PURE_BASS -> R.string.eq_jbl_club
-                                    T300Protocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
+                                    BudsProtocol.EqPreset.SERENADE -> R.string.eq_huawei_voices
+                                    BudsProtocol.EqPreset.ORIGINAL_SOUND -> R.string.eq_jbl_studio
+                                    BudsProtocol.EqPreset.PURE_BASS -> R.string.eq_jbl_club
+                                    BudsProtocol.EqPreset.DEEP_BASS -> R.string.eq_huawei_bass
                                 }
                                 else -> preset.titleRes
                             }
@@ -2241,7 +2241,7 @@ fun ButtonSettingsCard(
 
 @Composable
 fun GestureActionSelectionDialog(
-    model: T300Protocol.BudsModel,
+    model: BudsProtocol.BudsModel,
     side: TouchSide,
     gesture: TouchGesture,
     currentAction: TouchAction?,
@@ -2552,7 +2552,7 @@ fun SwitchFeatureCard(
 @Composable
 fun DualConnectionCard(
     dualConnection: Boolean?,
-    connectedDevices: List<T300Protocol.ConnectedDeviceInfo>,
+    connectedDevices: List<BudsProtocol.ConnectedDeviceInfo>,
     enabled: Boolean,
     onToggle: (Boolean) -> Unit
 ) {

@@ -116,20 +116,20 @@ object JabraProtocol {
     fun buildAmbienceReq(): ByteArray = buildPacket(TYPE_QUERY, FEAT_AMBIENCE, byteArrayOf(0x01))
     fun buildNoiseModeReq(): ByteArray = buildPacket(TYPE_QUERY, FEAT_NOISE_MODE)
 
-    fun buildAmbienceSet(mode: T300Protocol.AncMode): ByteArray {
+    fun buildAmbienceSet(mode: BudsProtocol.AncMode): ByteArray {
         val m: Byte = when (mode) {
-            T300Protocol.AncMode.OFF -> 0x01
-            T300Protocol.AncMode.TRANSPARENCY -> 0x02
-            T300Protocol.AncMode.NOISE_REDUCTION -> 0x04
+            BudsProtocol.AncMode.OFF -> 0x01
+            BudsProtocol.AncMode.TRANSPARENCY -> 0x02
+            BudsProtocol.AncMode.NOISE_REDUCTION -> 0x04
         }
         return buildPacket(TYPE_CMD, FEAT_AMBIENCE, byteArrayOf(0x01, m))
     }
 
-    fun buildNoiseModeSet(mode: T300Protocol.AncMode): ByteArray {
+    fun buildNoiseModeSet(mode: BudsProtocol.AncMode): ByteArray {
         val m: Byte = when (mode) {
-            T300Protocol.AncMode.OFF -> 0x00
-            T300Protocol.AncMode.NOISE_REDUCTION -> 0x01
-            T300Protocol.AncMode.TRANSPARENCY -> 0x03
+            BudsProtocol.AncMode.OFF -> 0x00
+            BudsProtocol.AncMode.NOISE_REDUCTION -> 0x01
+            BudsProtocol.AncMode.TRANSPARENCY -> 0x03
         }
         return buildPacket(TYPE_CMD, FEAT_NOISE_MODE, byteArrayOf(m))
     }
@@ -158,13 +158,13 @@ object JabraProtocol {
         return packets to (if (off < total) buf.copyOfRange(off, total) else ByteArray(0))
     }
 
-    fun parseBattery(p: ByteArray): List<T300Protocol.BatteryInfo> {
+    fun parseBattery(p: ByteArray): List<BudsProtocol.BatteryInfo> {
         if (p.size < 2) return emptyList()
         val flags = p[0].toInt() and 0xFF
         val mainLvl = p[1].toInt() and 0xFF
         if (mainLvl > 100) return emptyList()
         val chg = (flags and 0x01) != 0
-        val out = mutableListOf<T300Protocol.BatteryInfo>()
+        val out = mutableListOf<BudsProtocol.BatteryInfo>()
         if ((flags and 0x80) != 0 && p.size >= 5) {
             val count = p[4].toInt() and 0xFF
             if (p.size >= 5 + count * 3) {
@@ -174,17 +174,17 @@ object JabraProtocol {
                     val unit = p[o + 2].toInt() and 0xFF
                     if (lvl in 0..100) {
                         when (unit) {
-                            5 -> out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.LEFT_EAR, lvl, false))
-                            4 -> out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.RIGHT_EAR, lvl, false))
-                            21 -> out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.CASE, lvl, false))
+                            5 -> out.add(BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.LEFT_EAR, lvl, false))
+                            4 -> out.add(BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.RIGHT_EAR, lvl, false))
+                            21 -> out.add(BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.CASE, lvl, false))
                         }
                     }
                 }
             }
         }
         if (out.isEmpty()) {
-            out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.LEFT_EAR, mainLvl, chg))
-            out.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.RIGHT_EAR, mainLvl, chg))
+            out.add(BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.LEFT_EAR, mainLvl, chg))
+            out.add(BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.RIGHT_EAR, mainLvl, chg))
         }
         return out
     }
@@ -460,18 +460,18 @@ object JblProtocol {
     fun buildNoiseReq(): ByteArray = buildPacket(CMD_NOISE, byteArrayOf(0x11))
     fun buildStatusReq(field: Byte): ByteArray = buildPacket(CMD_STATUS_GET, byteArrayOf(field))
 
-    fun buildAncSet(mode: T300Protocol.AncMode): ByteArray {
-        val anc: Byte = if (mode == T300Protocol.AncMode.NOISE_REDUCTION) 0x01 else 0x00
-        val amb: Byte = if (mode == T300Protocol.AncMode.TRANSPARENCY) 0x01 else 0x00
+    fun buildAncSet(mode: BudsProtocol.AncMode): ByteArray {
+        val anc: Byte = if (mode == BudsProtocol.AncMode.NOISE_REDUCTION) 0x01 else 0x00
+        val amb: Byte = if (mode == BudsProtocol.AncMode.TRANSPARENCY) 0x01 else 0x00
         return buildPacket(CMD_NOISE, byteArrayOf(0x10, 0x01, anc, 0x02, amb, 0x03, 0x00))
     }
 
-    fun buildEqSet(preset: T300Protocol.EqPreset): ByteArray {
+    fun buildEqSet(preset: BudsProtocol.EqPreset): ByteArray {
         val code: Byte = when (preset) {
-            T300Protocol.EqPreset.ORIGINAL_SOUND -> 0x00 // Off/Studio
-            T300Protocol.EqPreset.SERENADE -> 0x02       // Vocal
-            T300Protocol.EqPreset.PURE_BASS -> 0x07      // Club
-            T300Protocol.EqPreset.DEEP_BASS -> 0x03      // Bass
+            BudsProtocol.EqPreset.ORIGINAL_SOUND -> 0x00 // Off/Studio
+            BudsProtocol.EqPreset.SERENADE -> 0x02       // Vocal
+            BudsProtocol.EqPreset.PURE_BASS -> 0x07      // Club
+            BudsProtocol.EqPreset.DEEP_BASS -> 0x03      // Bass
         }
         return buildPacket(CMD_EQ_PRESET, byteArrayOf(code))
     }

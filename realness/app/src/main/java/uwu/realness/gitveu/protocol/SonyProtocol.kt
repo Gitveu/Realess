@@ -76,13 +76,13 @@ object SonyProtocol {
     fun buildAncReq(seq: Int): ByteArray =
         pack(TYPE_DATA_MDR, seq, byteArrayOf(CMD_NCASM_GET_PARAM.toByte(), 0x17))
 
-    fun buildAncSet(seq: Int, mode: T300Protocol.AncMode): ByteArray {
+    fun buildAncSet(seq: Int, mode: BudsProtocol.AncMode): ByteArray {
         // MODE_NC_ASM_DUAL_NC_MODE_SWITCH_AND_ASM_SEAMLESS (0x17):
         // [0x68, 0x17, valueChange=0x01, ncAsmTotal(1=on,0=off), ncAsmMode(0=NC,1=ASM), asmMode(0=normal), asmLevel(10)]
         val payload = when (mode) {
-            T300Protocol.AncMode.OFF -> byteArrayOf(CMD_NCASM_SET_PARAM.toByte(), 0x17, 0x01, 0x00, 0x00, 0x00, 0x00)
-            T300Protocol.AncMode.NOISE_REDUCTION -> byteArrayOf(CMD_NCASM_SET_PARAM.toByte(), 0x17, 0x01, 0x01, 0x00, 0x00, 0x00)
-            T300Protocol.AncMode.TRANSPARENCY -> byteArrayOf(CMD_NCASM_SET_PARAM.toByte(), 0x17, 0x01, 0x01, 0x01, 0x00, 0x10)
+            BudsProtocol.AncMode.OFF -> byteArrayOf(CMD_NCASM_SET_PARAM.toByte(), 0x17, 0x01, 0x00, 0x00, 0x00, 0x00)
+            BudsProtocol.AncMode.NOISE_REDUCTION -> byteArrayOf(CMD_NCASM_SET_PARAM.toByte(), 0x17, 0x01, 0x01, 0x00, 0x00, 0x00)
+            BudsProtocol.AncMode.TRANSPARENCY -> byteArrayOf(CMD_NCASM_SET_PARAM.toByte(), 0x17, 0x01, 0x01, 0x01, 0x00, 0x10)
         }
         return pack(TYPE_DATA_MDR, seq, payload)
     }
@@ -90,12 +90,12 @@ object SonyProtocol {
     fun buildEqReq(seq: Int): ByteArray =
         pack(TYPE_DATA_MDR, seq, byteArrayOf(CMD_EQ_GET_PARAM.toByte(), 0x01))
 
-    fun buildEqSet(seq: Int, preset: T300Protocol.EqPreset): ByteArray {
+    fun buildEqSet(seq: Int, preset: BudsProtocol.EqPreset): ByteArray {
         val sonyPreset: Byte = when (preset) {
-            T300Protocol.EqPreset.ORIGINAL_SOUND -> 0x00 // Off
-            T300Protocol.EqPreset.SERENADE -> 0x04       // Vocal
-            T300Protocol.EqPreset.PURE_BASS -> 0x01      // Bright / Excited
-            T300Protocol.EqPreset.DEEP_BASS -> 0x05      // Bass Boost (Clear Bass)
+            BudsProtocol.EqPreset.ORIGINAL_SOUND -> 0x00 // Off
+            BudsProtocol.EqPreset.SERENADE -> 0x04       // Vocal
+            BudsProtocol.EqPreset.PURE_BASS -> 0x01      // Bright / Excited
+            BudsProtocol.EqPreset.DEEP_BASS -> 0x05      // Bass Boost (Clear Bass)
         }
         return pack(TYPE_DATA_MDR, seq, byteArrayOf(CMD_EQ_SET_PARAM.toByte(), 0x01, sonyPreset, 0x00))
     }

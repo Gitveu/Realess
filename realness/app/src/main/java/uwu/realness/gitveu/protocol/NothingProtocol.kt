@@ -142,11 +142,11 @@ object NothingProtocol {
     fun buildBatteryRequest(): ByteArray = buildPacket(CMD_BATTERY_REQ)
     fun buildAncReadRequest(): ByteArray = buildPacket(CMD_ANC_REQ)
 
-    fun buildAncModeWrite(mode: T300Protocol.AncMode, preferredLevel: HuaweiProtocol.AncLevel?): ByteArray {
+    fun buildAncModeWrite(mode: BudsProtocol.AncMode, preferredLevel: HuaweiProtocol.AncLevel?): ByteArray {
         val code: Byte = when (mode) {
-            T300Protocol.AncMode.OFF -> ANC_OFF
-            T300Protocol.AncMode.TRANSPARENCY -> ANC_TRANSPARENCY
-            T300Protocol.AncMode.NOISE_REDUCTION -> ancLevelToByte(preferredLevel ?: HuaweiProtocol.AncLevel.ULTRA)
+            BudsProtocol.AncMode.OFF -> ANC_OFF
+            BudsProtocol.AncMode.TRANSPARENCY -> ANC_TRANSPARENCY
+            BudsProtocol.AncMode.NOISE_REDUCTION -> ancLevelToByte(preferredLevel ?: HuaweiProtocol.AncLevel.ULTRA)
         }
         return buildPacket(CMD_ANC_SET, byteArrayOf(0x01, code, 0x00))
     }
@@ -161,13 +161,13 @@ object NothingProtocol {
         HuaweiProtocol.AncLevel.DYNAMIC -> ANC_ADAPTIVE
     }
 
-    fun byteToAncState(code: Int): Pair<T300Protocol.AncMode, HuaweiProtocol.AncLevel?>? = when (code) {
-        1 -> T300Protocol.AncMode.NOISE_REDUCTION to HuaweiProtocol.AncLevel.ULTRA
-        2 -> T300Protocol.AncMode.NOISE_REDUCTION to HuaweiProtocol.AncLevel.GENERAL
-        3 -> T300Protocol.AncMode.NOISE_REDUCTION to HuaweiProtocol.AncLevel.COMFORT
-        4 -> T300Protocol.AncMode.NOISE_REDUCTION to HuaweiProtocol.AncLevel.DYNAMIC
-        5 -> T300Protocol.AncMode.OFF to null
-        7 -> T300Protocol.AncMode.TRANSPARENCY to null
+    fun byteToAncState(code: Int): Pair<BudsProtocol.AncMode, HuaweiProtocol.AncLevel?>? = when (code) {
+        1 -> BudsProtocol.AncMode.NOISE_REDUCTION to HuaweiProtocol.AncLevel.ULTRA
+        2 -> BudsProtocol.AncMode.NOISE_REDUCTION to HuaweiProtocol.AncLevel.GENERAL
+        3 -> BudsProtocol.AncMode.NOISE_REDUCTION to HuaweiProtocol.AncLevel.COMFORT
+        4 -> BudsProtocol.AncMode.NOISE_REDUCTION to HuaweiProtocol.AncLevel.DYNAMIC
+        5 -> BudsProtocol.AncMode.OFF to null
+        7 -> BudsProtocol.AncMode.TRANSPARENCY to null
         else -> null
     }
 
@@ -175,7 +175,7 @@ object NothingProtocol {
         buildPacket(if (useListeningMode) CMD_EQ_LISTENING_REQ else CMD_EQ_CLASSIC_REQ)
 
     fun buildEqWrite(
-        preset: T300Protocol.EqPreset,
+        preset: BudsProtocol.EqPreset,
         useListeningMode: Boolean,
         isCmfBuds2a: Boolean = false
     ): ByteArray {
@@ -185,23 +185,23 @@ object NothingProtocol {
     }
 
     fun eqPresetToNothingId(
-        preset: T300Protocol.EqPreset,
+        preset: BudsProtocol.EqPreset,
         useListeningMode: Boolean,
         isCmfBuds2a: Boolean = false
     ): Byte {
         return if (useListeningMode) {
             when (preset) {
-                T300Protocol.EqPreset.ORIGINAL_SOUND -> if (isCmfBuds2a) 0x07 else 0x00 // Balanced / Dirac Opteo
-                T300Protocol.EqPreset.SERENADE -> 0x04       // Enhance Vocals
-                T300Protocol.EqPreset.PURE_BASS -> 0x02      // Electronic
-                T300Protocol.EqPreset.DEEP_BASS -> 0x01      // Rock / Pop bass
+                BudsProtocol.EqPreset.ORIGINAL_SOUND -> if (isCmfBuds2a) 0x07 else 0x00 // Balanced / Dirac Opteo
+                BudsProtocol.EqPreset.SERENADE -> 0x04       // Enhance Vocals
+                BudsProtocol.EqPreset.PURE_BASS -> 0x02      // Electronic
+                BudsProtocol.EqPreset.DEEP_BASS -> 0x01      // Rock / Pop bass
             }
         } else {
             when (preset) {
-                T300Protocol.EqPreset.ORIGINAL_SOUND -> 0x00 // Balanced
-                T300Protocol.EqPreset.SERENADE -> 0x01       // Voice
-                T300Protocol.EqPreset.PURE_BASS -> 0x02      // More Treble
-                T300Protocol.EqPreset.DEEP_BASS -> 0x03      // More Bass
+                BudsProtocol.EqPreset.ORIGINAL_SOUND -> 0x00 // Balanced
+                BudsProtocol.EqPreset.SERENADE -> 0x01       // Voice
+                BudsProtocol.EqPreset.PURE_BASS -> 0x02      // More Treble
+                BudsProtocol.EqPreset.DEEP_BASS -> 0x03      // More Bass
             }
         }
     }
@@ -212,14 +212,14 @@ object NothingProtocol {
         return if (p.size > 1) (p[1].toInt() and 0xFF) else (p[0].toInt() and 0xFF)
     }
 
-    fun nothingIdToEqPreset(id: Int, useListeningMode: Boolean): Pair<T300Protocol.EqPreset?, String?> {
+    fun nothingIdToEqPreset(id: Int, useListeningMode: Boolean): Pair<BudsProtocol.EqPreset?, String?> {
         return if (useListeningMode) {
             when (id) {
-                0, 7 -> T300Protocol.EqPreset.ORIGINAL_SOUND to null
-                3 -> T300Protocol.EqPreset.ORIGINAL_SOUND to null // Pop
-                4 -> T300Protocol.EqPreset.SERENADE to null
-                2 -> T300Protocol.EqPreset.PURE_BASS to null
-                1 -> T300Protocol.EqPreset.DEEP_BASS to null
+                0, 7 -> BudsProtocol.EqPreset.ORIGINAL_SOUND to null
+                3 -> BudsProtocol.EqPreset.ORIGINAL_SOUND to null // Pop
+                4 -> BudsProtocol.EqPreset.SERENADE to null
+                2 -> BudsProtocol.EqPreset.PURE_BASS to null
+                1 -> BudsProtocol.EqPreset.DEEP_BASS to null
                 5 -> null to "Classical"
                 6 -> null to "Custom"
                 8 -> null to "Immersion Boost"
@@ -227,10 +227,10 @@ object NothingProtocol {
             }
         } else {
             when (id) {
-                0 -> T300Protocol.EqPreset.ORIGINAL_SOUND to null
-                1, 6 -> T300Protocol.EqPreset.SERENADE to null
-                2, 7 -> T300Protocol.EqPreset.PURE_BASS to null
-                3 -> T300Protocol.EqPreset.DEEP_BASS to null
+                0 -> BudsProtocol.EqPreset.ORIGINAL_SOUND to null
+                1, 6 -> BudsProtocol.EqPreset.SERENADE to null
+                2, 7 -> BudsProtocol.EqPreset.PURE_BASS to null
+                3 -> BudsProtocol.EqPreset.DEEP_BASS to null
                 5 -> null to "Custom"
                 else -> null to "EQ #$id"
             }
@@ -317,86 +317,86 @@ object NothingProtocol {
     fun buildGestureRead(): ByteArray = buildPacket(CMD_GESTURE_REQ)
 
     fun buildGestureWrite(
-        side: T300Protocol.TouchSide,
-        gesture: T300Protocol.TouchGesture,
-        action: T300Protocol.TouchAction
+        side: BudsProtocol.TouchSide,
+        gesture: BudsProtocol.TouchGesture,
+        action: BudsProtocol.TouchAction
     ): ByteArray {
-        val devByte: Byte = if (side == T300Protocol.TouchSide.LEFT) 0x02 else 0x03
+        val devByte: Byte = if (side == BudsProtocol.TouchSide.LEFT) 0x02 else 0x03
         val typeByte: Byte = when (gesture) {
-            T300Protocol.TouchGesture.DOUBLE_TAP -> 0x02
-            T300Protocol.TouchGesture.TRIPLE_TAP -> 0x03
-            T300Protocol.TouchGesture.LONG_PRESS -> 0x07
+            BudsProtocol.TouchGesture.DOUBLE_TAP -> 0x02
+            BudsProtocol.TouchGesture.TRIPLE_TAP -> 0x03
+            BudsProtocol.TouchGesture.LONG_PRESS -> 0x07
         }
-        val isLong = gesture == T300Protocol.TouchGesture.LONG_PRESS
+        val isLong = gesture == BudsProtocol.TouchGesture.LONG_PRESS
         val actionByte: Byte = when (action) {
-            T300Protocol.TouchAction.NONE -> 0x01
-            T300Protocol.TouchAction.PLAY_PAUSE -> 0x02
-            T300Protocol.TouchAction.PREV_TRACK -> 0x08
-            T300Protocol.TouchAction.NEXT_TRACK -> 0x09
-            T300Protocol.TouchAction.ANC_TOGGLE -> 0x0A
-            T300Protocol.TouchAction.VOICE_ASSISTANT -> 0x0B
-            T300Protocol.TouchAction.VOLUME_UP -> if (isLong) 0x12 else 0x06
-            T300Protocol.TouchAction.VOLUME_DOWN -> if (isLong) 0x13 else 0x07
+            BudsProtocol.TouchAction.NONE -> 0x01
+            BudsProtocol.TouchAction.PLAY_PAUSE -> 0x02
+            BudsProtocol.TouchAction.PREV_TRACK -> 0x08
+            BudsProtocol.TouchAction.NEXT_TRACK -> 0x09
+            BudsProtocol.TouchAction.ANC_TOGGLE -> 0x0A
+            BudsProtocol.TouchAction.VOICE_ASSISTANT -> 0x0B
+            BudsProtocol.TouchAction.VOLUME_UP -> if (isLong) 0x12 else 0x06
+            BudsProtocol.TouchAction.VOLUME_DOWN -> if (isLong) 0x13 else 0x07
             else -> 0x01
         }
         return buildPacket(CMD_GESTURE_SET, byteArrayOf(0x01, devByte, 0x01, typeByte, actionByte))
     }
 
-    fun parseGesturesPayload(p: ByteArray): List<T300Protocol.KeySettingItem> {
+    fun parseGesturesPayload(p: ByteArray): List<BudsProtocol.KeySettingItem> {
         if (p.isEmpty()) return emptyList()
         val count = p[0].toInt() and 0xFF
         if (p.size < 1 + count * 4) return emptyList()
-        val out = mutableListOf<T300Protocol.KeySettingItem>()
+        val out = mutableListOf<BudsProtocol.KeySettingItem>()
         for (i in 0 until count) {
             val off = 1 + i * 4
             val side = when (p[off].toInt() and 0xFF) {
-                0x02 -> T300Protocol.TouchSide.LEFT
-                0x03 -> T300Protocol.TouchSide.RIGHT
+                0x02 -> BudsProtocol.TouchSide.LEFT
+                0x03 -> BudsProtocol.TouchSide.RIGHT
                 else -> null
             } ?: continue
             val gesture = when (p[off + 2].toInt() and 0xFF) {
-                0x02 -> T300Protocol.TouchGesture.DOUBLE_TAP
-                0x03 -> T300Protocol.TouchGesture.TRIPLE_TAP
-                0x07 -> T300Protocol.TouchGesture.LONG_PRESS
+                0x02 -> BudsProtocol.TouchGesture.DOUBLE_TAP
+                0x03 -> BudsProtocol.TouchGesture.TRIPLE_TAP
+                0x07 -> BudsProtocol.TouchGesture.LONG_PRESS
                 else -> null
             } ?: continue
             val action = when (p[off + 3].toInt() and 0xFF) {
-                0x01 -> T300Protocol.TouchAction.NONE
-                0x02 -> T300Protocol.TouchAction.PLAY_PAUSE
-                0x06, 0x12 -> T300Protocol.TouchAction.VOLUME_UP
-                0x07, 0x13 -> T300Protocol.TouchAction.VOLUME_DOWN
-                0x08 -> T300Protocol.TouchAction.PREV_TRACK
-                0x09 -> T300Protocol.TouchAction.NEXT_TRACK
-                0x0A, 0x16 -> T300Protocol.TouchAction.ANC_TOGGLE
-                0x0B -> T300Protocol.TouchAction.VOICE_ASSISTANT
-                else -> T300Protocol.TouchAction.NONE
+                0x01 -> BudsProtocol.TouchAction.NONE
+                0x02 -> BudsProtocol.TouchAction.PLAY_PAUSE
+                0x06, 0x12 -> BudsProtocol.TouchAction.VOLUME_UP
+                0x07, 0x13 -> BudsProtocol.TouchAction.VOLUME_DOWN
+                0x08 -> BudsProtocol.TouchAction.PREV_TRACK
+                0x09 -> BudsProtocol.TouchAction.NEXT_TRACK
+                0x0A, 0x16 -> BudsProtocol.TouchAction.ANC_TOGGLE
+                0x0B -> BudsProtocol.TouchAction.VOICE_ASSISTANT
+                else -> BudsProtocol.TouchAction.NONE
             }
-            out.add(T300Protocol.KeySettingItem(side, gesture, action))
+            out.add(BudsProtocol.KeySettingItem(side, gesture, action))
         }
         return out
     }
 
-    fun getAvailableActions(gesture: T300Protocol.TouchGesture): List<T300Protocol.TouchAction> = when (gesture) {
-        T300Protocol.TouchGesture.DOUBLE_TAP,
-        T300Protocol.TouchGesture.TRIPLE_TAP -> listOf(
-            T300Protocol.TouchAction.PLAY_PAUSE,
-            T300Protocol.TouchAction.NEXT_TRACK,
-            T300Protocol.TouchAction.PREV_TRACK,
-            T300Protocol.TouchAction.VOLUME_UP,
-            T300Protocol.TouchAction.VOLUME_DOWN,
-            T300Protocol.TouchAction.VOICE_ASSISTANT,
-            T300Protocol.TouchAction.ANC_TOGGLE,
-            T300Protocol.TouchAction.NONE
+    fun getAvailableActions(gesture: BudsProtocol.TouchGesture): List<BudsProtocol.TouchAction> = when (gesture) {
+        BudsProtocol.TouchGesture.DOUBLE_TAP,
+        BudsProtocol.TouchGesture.TRIPLE_TAP -> listOf(
+            BudsProtocol.TouchAction.PLAY_PAUSE,
+            BudsProtocol.TouchAction.NEXT_TRACK,
+            BudsProtocol.TouchAction.PREV_TRACK,
+            BudsProtocol.TouchAction.VOLUME_UP,
+            BudsProtocol.TouchAction.VOLUME_DOWN,
+            BudsProtocol.TouchAction.VOICE_ASSISTANT,
+            BudsProtocol.TouchAction.ANC_TOGGLE,
+            BudsProtocol.TouchAction.NONE
         )
-        T300Protocol.TouchGesture.LONG_PRESS -> listOf(
-            T300Protocol.TouchAction.ANC_TOGGLE,
-            T300Protocol.TouchAction.VOICE_ASSISTANT,
-            T300Protocol.TouchAction.VOLUME_UP,
-            T300Protocol.TouchAction.VOLUME_DOWN,
-            T300Protocol.TouchAction.PLAY_PAUSE,
-            T300Protocol.TouchAction.NEXT_TRACK,
-            T300Protocol.TouchAction.PREV_TRACK,
-            T300Protocol.TouchAction.NONE
+        BudsProtocol.TouchGesture.LONG_PRESS -> listOf(
+            BudsProtocol.TouchAction.ANC_TOGGLE,
+            BudsProtocol.TouchAction.VOICE_ASSISTANT,
+            BudsProtocol.TouchAction.VOLUME_UP,
+            BudsProtocol.TouchAction.VOLUME_DOWN,
+            BudsProtocol.TouchAction.PLAY_PAUSE,
+            BudsProtocol.TouchAction.NEXT_TRACK,
+            BudsProtocol.TouchAction.PREV_TRACK,
+            BudsProtocol.TouchAction.NONE
         )
     }
 
@@ -480,10 +480,10 @@ object NothingProtocol {
     fun buildRingBuds(sideByte: Byte, enable: Boolean): ByteArray =
         buildPacket(CMD_RING_BUDS_SET, byteArrayOf(sideByte, if (enable) 0x01 else 0x00))
 
-    fun parseBatteryPayload(payload: ByteArray): List<T300Protocol.BatteryInfo> {
+    fun parseBatteryPayload(payload: ByteArray): List<BudsProtocol.BatteryInfo> {
         if (payload.isEmpty()) return emptyList()
         val count = payload[0].toInt() and 0xFF
-        val result = mutableListOf<T300Protocol.BatteryInfo>()
+        val result = mutableListOf<BudsProtocol.BatteryInfo>()
         var off = 1
         for (i in 0 until count) {
             if (off + 1 >= payload.size) break
@@ -494,16 +494,16 @@ object NothingProtocol {
             val charging = (raw and 0x80) != 0
             val validLevel = if (level in 0..100) level else -1
             when (part) {
-                0x02 -> result.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.LEFT_EAR, validLevel, charging))
-                0x03 -> result.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.RIGHT_EAR, validLevel, charging))
+                0x02 -> result.add(BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.LEFT_EAR, validLevel, charging))
+                0x03 -> result.add(BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.RIGHT_EAR, validLevel, charging))
                 0x04 -> {
                     val effective = if (validLevel == 0 && !charging) -1 else validLevel
-                    result.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.CASE, effective, charging))
+                    result.add(BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.CASE, effective, charging))
                 }
                 0x06 -> {
                     // Single battery headphone (Headphone (1) / Neckband Pro)
-                    result.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.LEFT_EAR, validLevel, charging))
-                    result.add(T300Protocol.BatteryInfo(T300Protocol.ComponentRole.RIGHT_EAR, validLevel, charging))
+                    result.add(BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.LEFT_EAR, validLevel, charging))
+                    result.add(BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.RIGHT_EAR, validLevel, charging))
                 }
             }
         }
@@ -514,7 +514,7 @@ object NothingProtocol {
      * Парсинг ответа / события ANC (0x401E / 0xE003 / 0x6003).
      * Поддерживает как тройки [kind==1, value, extra], так и 2-байтный ответ [_, value].
      */
-    fun parseAncPayload(payload: ByteArray): Pair<T300Protocol.AncMode, HuaweiProtocol.AncLevel?>? {
+    fun parseAncPayload(payload: ByteArray): Pair<BudsProtocol.AncMode, HuaweiProtocol.AncLevel?>? {
         var off = 0
         while (off + 1 < payload.size) {
             val kind = payload[off].toInt() and 0xFF

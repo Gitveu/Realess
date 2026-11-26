@@ -2,8 +2,8 @@
 
 **English** | [Русский](AGENTS.ru.md)
 
-Last updated: 2026-11-25  
-Current release: `v1.9.5 (build 15)` — **14 protocol families across 16 brands** (`realness` in native Material 3 Expressive + Material You widgets + `realness-tiny` in classic compact UI). Full model matrix: [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md).
+Last updated: 2026-11-26  
+Current release: `v1.9.6 (build 16)` — **14 protocol families across 16 brands** (`realness` in native Material 3 Expressive + Material You widgets + `realness-tiny` in classic compact UI). Full model matrix: [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md).
 
 ---
 
@@ -48,11 +48,11 @@ Current release: `v1.9.5 (build 15)` — **14 protocol families across 16 brands
 
 ### 2.1. `realness/` (Kotlin + Jetpack Compose)
 - `protocol/`:
-  - `T300Protocol.kt`: realme / OnePlus / OPPO / DIZO TL+OPPOv1 framing, `BudsModel` enum (15 brands, capability flags, `customEqSpec()`, `supportsGameMode`, `supportsHardwareFindBuds`, `supportsFirmwareRename`), `T300State`, `CustomEqProfile`, `CustomEqSpec`.
-  - `HuaweiProtocol.kt`, `NothingProtocol.kt`, `GalaxyProtocol.kt`, `SonyProtocol.kt`, `BoseSoundcoreProtocol.kt`, `XiaomiProtocol.kt`, `ExtraProtocols.kt` (Sennheiser, Jabra, Pixel Buds, JBL).
+  - `BudsProtocol.kt`: realme / OnePlus / OPPO / DIZO TL+OPPOv1 framing, `BudsModel` enum (16 brands + `GENERIC_BT`, capability flags, `customEqSpec()`, `supportsGameMode`, `supportsHardwareFindBuds`, `supportsFirmwareRename`), `BudsState`, `CustomEqProfile`, `CustomEqSpec`.
+  - `HuaweiProtocol.kt`, `NothingProtocol.kt`, `GalaxyProtocol.kt`, `SonyProtocol.kt`, `BoseSoundcoreProtocol.kt`, `XiaomiProtocol.kt`, `ExtraProtocols.kt` (Sennheiser, Jabra, Pixel Buds, JBL), `LogitechProtocol.kt`.
 - `ble/`:
-  - `T300GattConfig.kt`: all vendor & standard RFCOMM SPP UUIDs and BLE GATT service/characteristic UUIDs.
-  - `T300BleManager.kt`: `sessionGen`-guarded RFCOMM SPP & BLE GATT connection manager (`isConnectedOrConnectingTo` prevents duplicate connect races), streaming packet parsers for all 13 families, polling, async event handling, Custom EQ read/write, hardware Find Buds, Bose firmware rename, and `unexpectedDisconnectFlow` for transient drop recovery.
+  - `BluetoothConfig.kt`: all vendor & standard RFCOMM SPP UUIDs and BLE GATT service/characteristic UUIDs.
+  - `BudsConnectionManager.kt`: `sessionGen`-guarded RFCOMM SPP, BLE GATT, and Standard BT HFP/BAS connection manager (`isConnectedOrConnectingTo` prevents duplicate connect races), foreground/screen-aware power-saving polling (`2s` foreground, `0` packets when screen off in background, `60s` battery-only when screen on in background), streaming packet parsers for all protocol families, async event handling, Custom EQ read/write, hardware Find Buds, Bose firmware rename, and `unexpectedDisconnectFlow`.
 - `audio/`:
   - `FindBudsPlayer.kt`: universal escalating stereo `AudioTrack` locator tone (`FindBudsChannel.LEFT / BOTH / RIGHT`, dual-harmonic triple-chirp `2950 Hz + 3450 Hz`, smooth `15% -> 100%` ramp over 20 s, saves and restores `STREAM_MUSIC` volume on Stop).
 - `viewmodel/BudsViewModel.kt`: reactive `StateFlow`, zero-touch A2DP/ACL auto-connect, exponential backoff reconnect on transient drops, persistent last-device / manual model override / per-MAC rename alias in `SharedPreferences`, `MediaPlayer` spatial demo, `FindBudsPlayer` controller, and 3-tier device rename (`Bose firmware -> BluetoothDevice.setAlias() -> per-MAC local alias`).
@@ -84,7 +84,7 @@ Current release: `v1.9.5 (build 15)` — **14 protocol families across 16 brands
 3. **Persistent app & widget alias:** saved per MAC in `SharedPreferences` (`custom_alias_<MAC>` / `alias_<MAC>`).
 
 ### 3.3. Material You Widgets & Last Known Case Battery
-- `RealnessApp` holds process-wide `T300BleManager` and `LogitechUsbManager` singletons; `WidgetStateStore` persists battery snapshot, ANC state, and per-MAC **last known case battery + timestamp** whenever `caseBattery.level in 0..100` is received.
+- `RealnessApp` holds process-wide `BudsConnectionManager` and `LogitechUsbManager` singletons; `WidgetStateStore` persists battery snapshot, ANC state, and per-MAC **last known case battery + timestamp** whenever `caseBattery.level in 0..100` is received.
 - `RealnessWidgetProvider` (4×2 Material You card), `RealnessCompactWidgetProvider` (4×1 pill, resizable to 2×1), `RealnessSquareWidgetProvider` (2×2 square tile), `RealnessVerticalWidgetProvider` (1×2 vertical pill), and `RealnessMiniWidgetProvider` (1×1 mini tile) — all with dynamic Material You `android:previewLayout` previews — display L / Case (with relative timestamp when closed) / R and trigger live or background-reconnect ANC switches via `goAsync()`.
 
 ---

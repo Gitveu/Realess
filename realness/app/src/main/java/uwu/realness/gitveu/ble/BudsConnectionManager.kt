@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.bluetooth.*
 import android.content.Context
 import android.os.Build
+import android.os.PowerManager
 import android.util.Log
 import uwu.realness.gitveu.audio.FindBudsChannel
 import uwu.realness.gitveu.protocol.BoseProtocol
@@ -16,16 +17,16 @@ import uwu.realness.gitveu.protocol.PixelBudsProtocol
 import uwu.realness.gitveu.protocol.SennheiserProtocol
 import uwu.realness.gitveu.protocol.SonyProtocol
 import uwu.realness.gitveu.protocol.SoundcoreProtocol
-import uwu.realness.gitveu.protocol.T300Protocol
+import uwu.realness.gitveu.protocol.BudsProtocol
 import uwu.realness.gitveu.protocol.XiaomiProtocol
 import java.util.concurrent.atomic.AtomicInteger
-import uwu.realness.gitveu.protocol.T300Protocol.AncMode
-import uwu.realness.gitveu.protocol.T300Protocol.ComponentRole
-import uwu.realness.gitveu.protocol.T300Protocol.CustomEqProfile
-import uwu.realness.gitveu.protocol.T300Protocol.EqPreset
-import uwu.realness.gitveu.protocol.T300Protocol.TouchSide
-import uwu.realness.gitveu.protocol.T300Protocol.TouchGesture
-import uwu.realness.gitveu.protocol.T300Protocol.TouchAction
+import uwu.realness.gitveu.protocol.BudsProtocol.AncMode
+import uwu.realness.gitveu.protocol.BudsProtocol.ComponentRole
+import uwu.realness.gitveu.protocol.BudsProtocol.CustomEqProfile
+import uwu.realness.gitveu.protocol.BudsProtocol.EqPreset
+import uwu.realness.gitveu.protocol.BudsProtocol.TouchSide
+import uwu.realness.gitveu.protocol.BudsProtocol.TouchGesture
+import uwu.realness.gitveu.protocol.BudsProtocol.TouchAction
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,16 +57,21 @@ enum class ActiveTransport {
 }
 
 @SuppressLint("MissingPermission")
-class T300BleManager(private val context: Context) {
+class BudsConnectionManager(private val context: Context) {
 
     companion object {
-        private const val TAG = "T300BleManager"
+        private const val TAG = "BudsConnectionManager"
         private const val POLL_INTERVAL_MS = 2_000L
+        private const val BACKGROUND_POLL_INTERVAL_MS = 60_000L
         private const val EVENT_REFRESH_DELAY_MS = 120L
         private const val SPP_CONNECT_TIMEOUT_MS = 3_500L
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val powerManager: PowerManager? by lazy {
+        context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+    }
+    @Volatile private var isForegroundMode: Boolean = false
 
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
         val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -88,9 +94,9 @@ class T300BleManager(private val context: Context) {
     private var activeBtDevice: BluetoothDevice? = null
 
     private var activeTransport = ActiveTransport.NONE
-    private var activeModel = T300Protocol.BudsModel.UNKNOWN
+    private var activeModel = BudsProtocol.BudsModel.UNKNOWN
     private var activeDeviceAddress: String? = null
-    private val huaweiMultiDevices = mutableMapOf<Int, T300Protocol.ConnectedDeviceInfo>()
+    private val huaweiMultiDevices = mutableMapOf<Int, BudsProtocol.ConnectedDeviceInfo>()
     private var galaxyManagerInfoSent = false
     private var nothingLastBassLevel = 3
     private var sonySeq = 0
@@ -105,8 +111,8 @@ class T300BleManager(private val context: Context) {
     private val _connectionState = MutableStateFlow(BleConnectionState.DISCONNECTED)
     val connectionState: StateFlow<BleConnectionState> = _connectionState.asStateFlow()
 
-    private val _t300State = MutableStateFlow(T300Protocol.T300State())
-    val t300State: StateFlow<T300Protocol.T300State> = _t300State.asStateFlow()
+    private val _budsState = MutableStateFlow(BudsProtocol.BudsState())
+    val budsState: StateFlow<BudsProtocol.BudsState> = _budsState.asStateFlow()
 
     private val _logFlow = MutableSharedFlow<String>(replay = 50)
     val logFlow: SharedFlow<String> = _logFlow.asSharedFlow()
@@ -114,7 +120,7 @@ class T300BleManager(private val context: Context) {
     private val _unexpectedDisconnectFlow = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
     val unexpectedDisconnectFlow: SharedFlow<Unit> = _unexpectedDisconnectFlow.asSharedFlow()
 
-    fun isConnectedOrConnectingTo(address: String?, model: T300Protocol.BudsModel): Boolean {
+    fun isConnectedOrConnectingTo(address: String?, model: BudsProtocol.BudsModel): Boolean {
         if (address == null) return false
         return activeDeviceAddress == address &&
             activeModel == model &&
@@ -122,7 +128,25 @@ class T300BleManager(private val context: Context) {
     }
 
     val activeDevice: BluetoothDevice? get() = activeBtDevice
-    val currentModel: T300Protocol.BudsModel get() = activeModel
+    val currentModel: BudsProtocol.BudsModel get() = activeModel
+
+    fun setForegroundMode(foreground: Boolean) {
+        if (isForegroundMode == foreground) return
+        isForegroundMode = foreground
+        val gen = sessionGen.get()
+        if (_connectionState.value == BleConnectionState.CONNECTED) {
+            if (foreground) {
+                scope.launch {
+                    refreshBattery()
+                    if (activeModel.supportsAnc && activeTransport != ActiveTransport.BT_BATTERY_ONLY) {
+                        delay(60)
+                        refreshAncState()
+                    }
+                }
+            }
+            startPolling(gen)
+        }
+    }
 
     private var pollJob: Job? = null
     private var eventRefreshJob: Job? = null
@@ -189,8 +213,8 @@ class T300BleManager(private val context: Context) {
      * Connect to supported headset (all 13 protocol families).
      * Guards against concurrent duplicate connect() calls using sessionGen & connectJob.
      */
-    fun connect(device: BluetoothDevice, overrideModel: T300Protocol.BudsModel? = null) {
-        val targetModel = overrideModel ?: T300Protocol.BudsModel.fromDeviceName(device.name)
+    fun connect(device: BluetoothDevice, overrideModel: BudsProtocol.BudsModel? = null) {
+        val targetModel = overrideModel ?: BudsProtocol.BudsModel.fromDeviceName(device.name)
         if (isConnectedOrConnectingTo(device.address, targetModel)) {
             return
         }
@@ -250,7 +274,7 @@ class T300BleManager(private val context: Context) {
      * Connects (or switches) directly into Standard Bluetooth Battery Mode (HFP getBatteryLevel + optional BLE BAS 0x180F).
      * Used for generic Bluetooth audio devices and as an automatic fallback when vendor GATT/SPP is unavailable (e.g. JBL WAVE200TWS).
      */
-    fun connectStandardBluetoothFallback(device: BluetoothDevice, model: T300Protocol.BudsModel) {
+    fun connectStandardBluetoothFallback(device: BluetoothDevice, model: BudsProtocol.BudsModel) {
         val gen = sessionGen.incrementAndGet()
         closeResourcesOnly()
         activeModel = model
@@ -282,7 +306,7 @@ class T300BleManager(private val context: Context) {
 
         activeTransport = ActiveTransport.BT_BATTERY_ONLY
         activeBtDevice = device
-        _t300State.value = T300Protocol.T300State(isStandardBluetoothFallback = isFallback)
+        _budsState.value = BudsProtocol.BudsState(isStandardBluetoothFallback = isFallback)
         _connectionState.value = BleConnectionState.CONNECTED
         log("Standard Bluetooth battery mode active (HFP${if (tryBleBas) " + BLE BAS 0x180F" else ""})")
         pollStandardBluetoothBattery(device)
@@ -296,18 +320,18 @@ class T300BleManager(private val context: Context) {
         if (level !in 0..100) return
         if (activeTransport != ActiveTransport.BT_BATTERY_ONLY) return
         if (!address.equals(activeDeviceAddress, ignoreCase = true)) return
-        val hours = if (activeModel == T300Protocol.BudsModel.LOGITECH_G435) (level / 100f) * 18.0f else null
+        val hours = if (activeModel == BudsProtocol.BudsModel.LOGITECH_G435) (level / 100f) * 18.0f else null
         log("RX BT HFP Battery broadcast: $level%")
         updateBatteryState(
             listOf(
-                T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, level, false),
-                T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, level, false),
-                T300Protocol.BatteryInfo(ComponentRole.CASE, -1, false)
+                BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, level, false),
+                BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, level, false),
+                BudsProtocol.BatteryInfo(ComponentRole.CASE, -1, false)
             ),
             isSnapshot = true
         )
         if (hours != null) {
-            _t300State.value = _t300State.value.copy(batteryHoursLeft = hours)
+            _budsState.value = _budsState.value.copy(batteryHoursLeft = hours)
         }
     }
 
@@ -318,45 +342,45 @@ class T300BleManager(private val context: Context) {
         bluetoothAdapter?.cancelDiscovery()
 
         val candidateUuids = when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
-                if (activeModel.prefersHuaweiPrivateUuid) T300GattConfig.HUAWEI_SPP_UUIDS_PORT16_FIRST
-                else T300GattConfig.HUAWEI_SPP_UUIDS_PORT1_FIRST
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
+                if (activeModel.prefersHuaweiPrivateUuid) BluetoothConfig.HUAWEI_SPP_UUIDS_PORT16_FIRST
+                else BluetoothConfig.HUAWEI_SPP_UUIDS_PORT1_FIRST
             }
-            T300Protocol.ProtocolFamily.HONOR_CHOICE_SPP -> T300GattConfig.HUAWEI_SPP_UUIDS_PORT1_FIRST
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> T300GattConfig.NOTHING_SPP_UUIDS
-            T300Protocol.ProtocolFamily.GALAXY_BUDS_SPP -> when (activeModel) {
-                T300Protocol.BudsModel.GALAXY_BUDS -> T300GattConfig.GALAXY_LEGACY_SPP_UUIDS
-                T300Protocol.BudsModel.GALAXY_BUDS_PLUS -> T300GattConfig.GALAXY_PLUS_SPP_UUIDS
-                else -> T300GattConfig.GALAXY_MODERN_SPP_UUIDS
+            BudsProtocol.ProtocolFamily.HONOR_CHOICE_SPP -> BluetoothConfig.HUAWEI_SPP_UUIDS_PORT1_FIRST
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> BluetoothConfig.NOTHING_SPP_UUIDS
+            BudsProtocol.ProtocolFamily.GALAXY_BUDS_SPP -> when (activeModel) {
+                BudsProtocol.BudsModel.GALAXY_BUDS -> BluetoothConfig.GALAXY_LEGACY_SPP_UUIDS
+                BudsProtocol.BudsModel.GALAXY_BUDS_PLUS -> BluetoothConfig.GALAXY_PLUS_SPP_UUIDS
+                else -> BluetoothConfig.GALAXY_MODERN_SPP_UUIDS
             }
-            T300Protocol.ProtocolFamily.SONY_MDR_SPP -> T300GattConfig.SONY_SPP_UUIDS
-            T300Protocol.ProtocolFamily.XIAOMI_SPP -> T300GattConfig.XIAOMI_SPP_UUIDS
-            T300Protocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> T300GattConfig.SENNHEISER_SPP_UUIDS
-            T300Protocol.ProtocolFamily.PIXEL_BUDS_SPP -> T300GattConfig.PIXEL_BUDS_SPP_UUIDS
-            T300Protocol.ProtocolFamily.BOSE_BMAP_SPP,
-            T300Protocol.ProtocolFamily.SOUNDCORE_SPP,
-            T300Protocol.ProtocolFamily.JABRA_SPP -> T300GattConfig.STANDARD_SPP_ONLY_UUIDS
+            BudsProtocol.ProtocolFamily.SONY_MDR_SPP -> BluetoothConfig.SONY_SPP_UUIDS
+            BudsProtocol.ProtocolFamily.XIAOMI_SPP -> BluetoothConfig.XIAOMI_SPP_UUIDS
+            BudsProtocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> BluetoothConfig.SENNHEISER_SPP_UUIDS
+            BudsProtocol.ProtocolFamily.PIXEL_BUDS_SPP -> BluetoothConfig.PIXEL_BUDS_SPP_UUIDS
+            BudsProtocol.ProtocolFamily.BOSE_BMAP_SPP,
+            BudsProtocol.ProtocolFamily.SOUNDCORE_SPP,
+            BudsProtocol.ProtocolFamily.JABRA_SPP -> BluetoothConfig.STANDARD_SPP_ONLY_UUIDS
             else -> {
-                if (activeModel.isOppoOrOnePlus) T300GattConfig.OPPO_ONEPLUS_SPP_UUIDS
-                else T300GattConfig.KNOWN_SPP_UUIDS
+                if (activeModel.isOppoOrOnePlus) BluetoothConfig.OPPO_ONEPLUS_SPP_UUIDS
+                else BluetoothConfig.KNOWN_SPP_UUIDS
             }
         }
 
         for (uuid in candidateUuids) {
             if (gen != sessionGen.get()) return false
             val uuidLabel = when (uuid) {
-                T300GattConfig.REALME_VENDOR_SPP_UUID -> "Realme Vendor SPP"
-                T300GattConfig.OPPO_ONEPLUS_SPP_UUID -> "OPPO/OnePlus SPP"
-                T300GattConfig.HUAWEI_VENDOR_SPP_UUID -> "Huawei Private SPP"
-                T300GattConfig.NOTHING_SPP_UUID -> "Nothing SPP"
-                T300GattConfig.GALAXY_SPP_UUID -> "Galaxy Buds SPP"
-                T300GattConfig.GALAXY_LEGACY_SPP_UUID -> "Galaxy Buds Legacy SPP"
-                T300GattConfig.SONY_V2_SPP_UUID -> "Sony MDR V2 SPP"
-                T300GattConfig.SONY_V1_SPP_UUID -> "Sony MDR V1 SPP"
-                T300GattConfig.XIAOMI_SPP_UUID -> "Xiaomi SPP"
-                T300GattConfig.SENNHEISER_SPP_UUID -> "Sennheiser GAIA SPP"
-                T300GattConfig.PIXEL_BUDS_SPP_UUID -> "Pixel Buds Maestro SPP"
-                T300GattConfig.STANDARD_SPP_UUID -> "Standard SPP"
+                BluetoothConfig.REALME_VENDOR_SPP_UUID -> "Realme Vendor SPP"
+                BluetoothConfig.OPPO_ONEPLUS_SPP_UUID -> "OPPO/OnePlus SPP"
+                BluetoothConfig.HUAWEI_VENDOR_SPP_UUID -> "Huawei Private SPP"
+                BluetoothConfig.NOTHING_SPP_UUID -> "Nothing SPP"
+                BluetoothConfig.GALAXY_SPP_UUID -> "Galaxy Buds SPP"
+                BluetoothConfig.GALAXY_LEGACY_SPP_UUID -> "Galaxy Buds Legacy SPP"
+                BluetoothConfig.SONY_V2_SPP_UUID -> "Sony MDR V2 SPP"
+                BluetoothConfig.SONY_V1_SPP_UUID -> "Sony MDR V1 SPP"
+                BluetoothConfig.XIAOMI_SPP_UUID -> "Xiaomi SPP"
+                BluetoothConfig.SENNHEISER_SPP_UUID -> "Sennheiser GAIA SPP"
+                BluetoothConfig.PIXEL_BUDS_SPP_UUID -> "Pixel Buds Maestro SPP"
+                BluetoothConfig.STANDARD_SPP_UUID -> "Standard SPP"
                 else -> "SPP $uuid"
             }
             log("Attempting SPP ($uuidLabel)...")
@@ -432,59 +456,59 @@ class T300BleManager(private val context: Context) {
                     accumulated += incoming
 
                     when (activeModel.protocolFamily) {
-                        T300Protocol.ProtocolFamily.HUAWEI_SPP,
-                        T300Protocol.ProtocolFamily.HONOR_CHOICE_SPP -> {
+                        BudsProtocol.ProtocolFamily.HUAWEI_SPP,
+                        BudsProtocol.ProtocolFamily.HONOR_CHOICE_SPP -> {
                             val (packets, remaining) = HuaweiProtocol.parsePacketsFromStreamBuffer(accumulated)
                             accumulated = remaining
                             for (pkg in packets) handleIncomingHuaweiPacket(pkg)
                         }
-                        T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+                        BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                             val (packets, remaining) = NothingProtocol.parsePacketsFromStreamBuffer(accumulated)
                             accumulated = remaining
                             for (pkg in packets) handleIncomingNothingPacket(pkg)
                         }
-                        T300Protocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
+                        BudsProtocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
                             val (packets, remaining) = GalaxyProtocol.parsePacketsFromStreamBuffer(accumulated)
                             accumulated = remaining
                             for (pkg in packets) handleIncomingGalaxyPacket(pkg)
                         }
-                        T300Protocol.ProtocolFamily.SONY_MDR_SPP -> {
+                        BudsProtocol.ProtocolFamily.SONY_MDR_SPP -> {
                             val (packets, remaining) = SonyProtocol.parsePacketsFromStreamBuffer(accumulated)
                             accumulated = remaining
                             for (pkg in packets) handleIncomingSonyPacket(pkg)
                         }
-                        T300Protocol.ProtocolFamily.BOSE_BMAP_SPP -> {
+                        BudsProtocol.ProtocolFamily.BOSE_BMAP_SPP -> {
                             val (packets, remaining) = BoseProtocol.parsePacketsFromStreamBuffer(accumulated)
                             accumulated = remaining
                             for (pkg in packets) handleIncomingBosePacket(pkg)
                         }
-                        T300Protocol.ProtocolFamily.SOUNDCORE_SPP -> {
+                        BudsProtocol.ProtocolFamily.SOUNDCORE_SPP -> {
                             val (packets, remaining) = SoundcoreProtocol.parsePacketsFromStreamBuffer(accumulated)
                             accumulated = remaining
                             for (pkg in packets) handleIncomingSoundcorePacket(pkg)
                         }
-                        T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
+                        BudsProtocol.ProtocolFamily.XIAOMI_SPP -> {
                             val (packets, remaining) = XiaomiProtocol.parsePacketsFromStreamBuffer(accumulated)
                             accumulated = remaining
                             for (pkg in packets) handleIncomingXiaomiPacket(pkg)
                         }
-                        T300Protocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
+                        BudsProtocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
                             val (packets, remaining) = SennheiserProtocol.parsePacketsFromStreamBuffer(accumulated)
                             accumulated = remaining
                             for (pkg in packets) handleIncomingSennheiserPacket(pkg)
                         }
-                        T300Protocol.ProtocolFamily.JABRA_SPP -> {
+                        BudsProtocol.ProtocolFamily.JABRA_SPP -> {
                             val (packets, remaining) = JabraProtocol.parsePacketsFromStreamBuffer(accumulated)
                             accumulated = remaining
                             for (pkg in packets) handleIncomingJabraPacket(pkg)
                         }
-                        T300Protocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
+                        BudsProtocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
                             val (packets, remaining) = PixelBudsProtocol.parsePacketsFromStreamBuffer(accumulated)
                             accumulated = remaining
                             for (pkg in packets) handleIncomingPixelBudsPacket(pkg)
                         }
                         else -> {
-                            val (frames, remaining) = T300Protocol.parseFramesFromStreamBuffer(accumulated)
+                            val (frames, remaining) = BudsProtocol.parseFramesFromStreamBuffer(accumulated)
                             accumulated = remaining
                             for (frame in frames) handleIncomingFrame(frame)
                         }
@@ -577,11 +601,11 @@ class T300BleManager(private val context: Context) {
     private fun disconnectInternal(emitUnexpected: Boolean) {
         sessionGen.incrementAndGet()
         closeResourcesOnly()
-        activeModel = T300Protocol.BudsModel.UNKNOWN
+        activeModel = BudsProtocol.BudsModel.UNKNOWN
         activeDeviceAddress = null
         _connectionState.value = BleConnectionState.DISCONNECTED
         if (!emitUnexpected) {
-            _t300State.value = T300Protocol.T300State()
+            _budsState.value = BudsProtocol.BudsState()
         }
         log("Connection closed")
         if (emitUnexpected) {
@@ -601,58 +625,58 @@ class T300BleManager(private val context: Context) {
      */
     fun setAncMode(mode: AncMode) {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 val pkt = HuaweiProtocol.buildAncModeWrite(mode)
                 log("TX Huawei ANC [${mode.name}]")
                 sendRawBytes(pkt)
-                _t300State.value = _t300State.value.copy(ancMode = mode)
+                _budsState.value = _budsState.value.copy(ancMode = mode)
                 scope.launch { delay(180); refreshAncState() }
             }
-            T300Protocol.ProtocolFamily.HONOR_CHOICE_SPP -> {
+            BudsProtocol.ProtocolFamily.HONOR_CHOICE_SPP -> {
                 val pkt = HuaweiProtocol.buildHonorChoiceAncWrite(mode)
                 log("TX HonorChoice ANC [${mode.name}]")
                 sendRawBytes(pkt)
-                _t300State.value = _t300State.value.copy(ancMode = mode)
+                _budsState.value = _budsState.value.copy(ancMode = mode)
                 scope.launch { delay(180); refreshAncState() }
             }
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
-                val pkt = NothingProtocol.buildAncModeWrite(mode, _t300State.value.ancLevel)
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
+                val pkt = NothingProtocol.buildAncModeWrite(mode, _budsState.value.ancLevel)
                 log("TX Nothing ANC [${mode.name}]")
                 sendRawBytes(pkt)
-                _t300State.value = _t300State.value.copy(ancMode = mode)
+                _budsState.value = _budsState.value.copy(ancMode = mode)
                 scope.launch { delay(180); refreshAncState() }
             }
-            T300Protocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
+            BudsProtocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
                 val pkt = GalaxyProtocol.buildAncWrite(mode, activeModel)
                 log("TX Galaxy ANC [${mode.name}]")
                 sendRawBytes(pkt)
-                _t300State.value = _t300State.value.copy(ancMode = mode)
+                _budsState.value = _budsState.value.copy(ancMode = mode)
             }
-            T300Protocol.ProtocolFamily.SONY_MDR_SPP -> {
+            BudsProtocol.ProtocolFamily.SONY_MDR_SPP -> {
                 log("TX Sony ANC [${mode.name}]")
                 sendRawBytes(SonyProtocol.buildAncSet(sonySeq, mode))
-                _t300State.value = _t300State.value.copy(ancMode = mode)
+                _budsState.value = _budsState.value.copy(ancMode = mode)
             }
-            T300Protocol.ProtocolFamily.BOSE_BMAP_SPP -> {
+            BudsProtocol.ProtocolFamily.BOSE_BMAP_SPP -> {
                 log("TX Bose ANC [${mode.name}]")
-                if (activeModel == T300Protocol.BudsModel.BOSE_QC_45_35) {
+                if (activeModel == BudsProtocol.BudsModel.BOSE_QC_45_35) {
                     sendRawBytes(BoseProtocol.buildAnrSet(mode))
                 } else {
                     sendRawBytes(BoseProtocol.buildCncSet(mode))
                 }
-                _t300State.value = _t300State.value.copy(ancMode = mode)
+                _budsState.value = _budsState.value.copy(ancMode = mode)
             }
-            T300Protocol.ProtocolFamily.SOUNDCORE_SPP -> {
+            BudsProtocol.ProtocolFamily.SOUNDCORE_SPP -> {
                 log("TX Soundcore ANC [${mode.name}]")
                 sendRawBytes(SoundcoreProtocol.buildAncSet(mode, soundcoreLastSound))
-                _t300State.value = _t300State.value.copy(ancMode = mode)
+                _budsState.value = _budsState.value.copy(ancMode = mode)
             }
-            T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
+            BudsProtocol.ProtocolFamily.XIAOMI_SPP -> {
                 log("TX Xiaomi ANC [${mode.name}]")
                 sendRawBytes(XiaomiProtocol.buildAncSet(mode))
-                _t300State.value = _t300State.value.copy(ancMode = mode)
+                _budsState.value = _budsState.value.copy(ancMode = mode)
             }
-            T300Protocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
+            BudsProtocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
                 log("TX Sennheiser ANC [${mode.name}]")
                 when (mode) {
                     AncMode.NOISE_REDUCTION -> {
@@ -668,18 +692,18 @@ class T300BleManager(private val context: Context) {
                         sendRawBytes(SennheiserProtocol.buildPacket(SennheiserProtocol.CMD_SET_TRANSPARENT, byteArrayOf(0x00)))
                     }
                 }
-                _t300State.value = _t300State.value.copy(ancMode = mode)
+                _budsState.value = _budsState.value.copy(ancMode = mode)
             }
-            T300Protocol.ProtocolFamily.JABRA_SPP -> {
+            BudsProtocol.ProtocolFamily.JABRA_SPP -> {
                 log("TX Jabra ANC [${mode.name}]")
-                if (activeModel == T300Protocol.BudsModel.JABRA_ELITE_CLASSIC) {
+                if (activeModel == BudsProtocol.BudsModel.JABRA_ELITE_CLASSIC) {
                     sendRawBytes(JabraProtocol.buildNoiseModeSet(mode))
                 } else {
                     sendRawBytes(JabraProtocol.buildAmbienceSet(mode))
                 }
-                _t300State.value = _t300State.value.copy(ancMode = mode)
+                _budsState.value = _budsState.value.copy(ancMode = mode)
             }
-            T300Protocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
+            BudsProtocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
                 log("TX PixelBuds ANC [${mode.name}]")
                 val v = when (mode) {
                     AncMode.OFF -> 1L
@@ -687,18 +711,18 @@ class T300BleManager(private val context: Context) {
                     AncMode.TRANSPARENCY -> 3L
                 }
                 sendRawBytes(PixelBudsProtocol.buildWriteSettingVarint(pixelActiveChannel, PixelBudsProtocol.SETTING_ANC, v))
-                _t300State.value = _t300State.value.copy(ancMode = mode)
+                _budsState.value = _budsState.value.copy(ancMode = mode)
             }
-            T300Protocol.ProtocolFamily.JBL_GATT -> {
+            BudsProtocol.ProtocolFamily.JBL_GATT -> {
                 log("TX JBL ANC [${mode.name}]")
                 sendRawBytes(JblProtocol.buildAncSet(mode))
-                _t300State.value = _t300State.value.copy(ancMode = mode)
+                _budsState.value = _budsState.value.copy(ancMode = mode)
             }
             else -> {
-                val frame = T300Protocol.buildAncCommandFrame(mode)
+                val frame = BudsProtocol.buildAncCommandFrame(mode)
                 log("TX ANC [${mode.name}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
-                _t300State.value = _t300State.value.copy(ancMode = mode)
+                _budsState.value = _budsState.value.copy(ancMode = mode)
             }
         }
     }
@@ -708,45 +732,45 @@ class T300BleManager(private val context: Context) {
      */
     fun setAncLevel(level: HuaweiProtocol.AncLevel) {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 val pkt = HuaweiProtocol.buildAncLevelWrite(level)
                 log("TX Huawei ANC Level [${level.name}]")
                 sendRawBytes(pkt)
-                _t300State.value = _t300State.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
+                _budsState.value = _budsState.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
                 scope.launch { delay(180); refreshAncState() }
             }
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                 val pkt = NothingProtocol.buildAncLevelWrite(level)
                 log("TX Nothing ANC Level [${level.name}]")
                 sendRawBytes(pkt)
-                _t300State.value = _t300State.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
+                _budsState.value = _budsState.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
                 scope.launch { delay(180); refreshAncState() }
             }
-            T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
+            BudsProtocol.ProtocolFamily.XIAOMI_SPP -> {
                 log("TX Xiaomi ANC Level [${level.name}]")
                 sendRawBytes(XiaomiProtocol.buildAncStrengthSet(level))
-                _t300State.value = _t300State.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
+                _budsState.value = _budsState.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
             }
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildAncLevelCommandFrame(level)
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildAncLevelCommandFrame(level)
                 log("TX Realme ANC Level [${level.name}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
-                _t300State.value = _t300State.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
+                _budsState.value = _budsState.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
             }
-            T300Protocol.ProtocolFamily.BOSE_BMAP_SPP -> {
+            BudsProtocol.ProtocolFamily.BOSE_BMAP_SPP -> {
                 log("TX Bose CNC Level [${level.name}]")
                 sendRawBytes(BoseProtocol.buildCncLevelSet(level))
-                _t300State.value = _t300State.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
+                _budsState.value = _budsState.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
             }
-            T300Protocol.ProtocolFamily.SOUNDCORE_SPP -> {
+            BudsProtocol.ProtocolFamily.SOUNDCORE_SPP -> {
                 log("TX Soundcore ANC Level [${level.name}]")
                 sendRawBytes(SoundcoreProtocol.buildAncLevelSet(level, soundcoreLastSound))
-                _t300State.value = _t300State.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
+                _budsState.value = _budsState.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
             }
-            T300Protocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
+            BudsProtocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
                 log("TX Galaxy ANC Level [${level.name}]")
                 sendRawBytes(GalaxyProtocol.buildAncLevelWrite(level, activeModel))
-                _t300State.value = _t300State.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
+                _budsState.value = _budsState.value.copy(ancMode = AncMode.NOISE_REDUCTION, ancLevel = level)
             }
             else -> return
         }
@@ -766,34 +790,34 @@ class T300BleManager(private val context: Context) {
             return
         }
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.HUAWEI_SPP,
-            T300Protocol.ProtocolFamily.HONOR_CHOICE_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP,
+            BudsProtocol.ProtocolFamily.HONOR_CHOICE_SPP -> {
                 log("TX Huawei/Honor Battery Req")
                 sendRawBytes(HuaweiProtocol.buildBatteryRequest())
             }
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                 log("TX Nothing Battery Req")
                 sendRawBytes(NothingProtocol.buildBatteryRequest())
             }
-            T300Protocol.ProtocolFamily.GALAXY_BUDS_SPP,
-            T300Protocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
+            BudsProtocol.ProtocolFamily.GALAXY_BUDS_SPP,
+            BudsProtocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
                 // Push-based protocols
             }
-            T300Protocol.ProtocolFamily.SONY_MDR_SPP -> {
+            BudsProtocol.ProtocolFamily.SONY_MDR_SPP -> {
                 sendRawBytes(SonyProtocol.buildBatteryReq(sonySeq, 0x00))
                 sendRawBytes(SonyProtocol.buildBatteryReq(sonySeq, 0x01))
                 sendRawBytes(SonyProtocol.buildBatteryReq(sonySeq, 0x02))
             }
-            T300Protocol.ProtocolFamily.BOSE_BMAP_SPP -> sendRawBytes(BoseProtocol.buildBatteryReq())
-            T300Protocol.ProtocolFamily.SOUNDCORE_SPP -> sendRawBytes(SoundcoreProtocol.buildStateReq())
-            T300Protocol.ProtocolFamily.XIAOMI_SPP -> if (xiaomiAuthenticated) sendRawBytes(XiaomiProtocol.buildDeviceInfoReq())
-            T300Protocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
+            BudsProtocol.ProtocolFamily.BOSE_BMAP_SPP -> sendRawBytes(BoseProtocol.buildBatteryReq())
+            BudsProtocol.ProtocolFamily.SOUNDCORE_SPP -> sendRawBytes(SoundcoreProtocol.buildStateReq())
+            BudsProtocol.ProtocolFamily.XIAOMI_SPP -> if (xiaomiAuthenticated) sendRawBytes(XiaomiProtocol.buildDeviceInfoReq())
+            BudsProtocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
                 sendRawBytes(SennheiserProtocol.buildPacket(SennheiserProtocol.CMD_GET_BATTERY))
                 sendRawBytes(SennheiserProtocol.buildPacket(SennheiserProtocol.CMD_GET_CHARGING))
             }
-            T300Protocol.ProtocolFamily.JABRA_SPP -> sendRawBytes(JabraProtocol.buildBatteryReq())
-            T300Protocol.ProtocolFamily.JBL_GATT -> sendRawBytes(JblProtocol.buildBatteryReq())
-            T300Protocol.ProtocolFamily.LOGITECH_HID -> {
+            BudsProtocol.ProtocolFamily.JABRA_SPP -> sendRawBytes(JabraProtocol.buildBatteryReq())
+            BudsProtocol.ProtocolFamily.JBL_GATT -> sendRawBytes(JblProtocol.buildBatteryReq())
+            BudsProtocol.ProtocolFamily.LOGITECH_HID -> {
                 activeBtDevice?.let { pollStandardBluetoothBattery(it) }
                 val gatt = bluetoothGatt
                 val bChar = batteryLevelCharacteristic
@@ -802,7 +826,7 @@ class T300BleManager(private val context: Context) {
                 }
             }
             else -> {
-                val frame = T300Protocol.buildBatteryRequestFrame()
+                val frame = BudsProtocol.buildBatteryRequestFrame()
                 log("TX Battery Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
             }
@@ -814,40 +838,40 @@ class T300BleManager(private val context: Context) {
      */
     fun refreshAncState() {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.HUAWEI_SPP,
-            T300Protocol.ProtocolFamily.HONOR_CHOICE_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP,
+            BudsProtocol.ProtocolFamily.HONOR_CHOICE_SPP -> {
                 log("TX Huawei/Honor ANC Req")
                 sendRawBytes(HuaweiProtocol.buildAncReadRequest())
             }
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                 log("TX Nothing ANC Req")
                 sendRawBytes(NothingProtocol.buildAncReadRequest())
             }
-            T300Protocol.ProtocolFamily.GALAXY_BUDS_SPP,
-            T300Protocol.ProtocolFamily.SOUNDCORE_SPP -> {}
-            T300Protocol.ProtocolFamily.SONY_MDR_SPP -> sendRawBytes(SonyProtocol.buildAncReq(sonySeq))
-            T300Protocol.ProtocolFamily.BOSE_BMAP_SPP -> {
+            BudsProtocol.ProtocolFamily.GALAXY_BUDS_SPP,
+            BudsProtocol.ProtocolFamily.SOUNDCORE_SPP -> {}
+            BudsProtocol.ProtocolFamily.SONY_MDR_SPP -> sendRawBytes(SonyProtocol.buildAncReq(sonySeq))
+            BudsProtocol.ProtocolFamily.BOSE_BMAP_SPP -> {
                 sendRawBytes(BoseProtocol.buildCncReq())
                 sendRawBytes(BoseProtocol.buildAnrReq())
             }
-            T300Protocol.ProtocolFamily.XIAOMI_SPP -> if (xiaomiAuthenticated) {
+            BudsProtocol.ProtocolFamily.XIAOMI_SPP -> if (xiaomiAuthenticated) {
                 sendRawBytes(XiaomiProtocol.buildRunInfoReq())
                 sendRawBytes(XiaomiProtocol.buildGetConfigReq(XiaomiProtocol.CFG_EFFECT_STRENGTH))
             }
-            T300Protocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
+            BudsProtocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
                 sendRawBytes(SennheiserProtocol.buildPacket(SennheiserProtocol.CMD_GET_ANC_ENABLED))
                 sendRawBytes(SennheiserProtocol.buildPacket(SennheiserProtocol.CMD_GET_TRANSPARENT))
             }
-            T300Protocol.ProtocolFamily.JABRA_SPP -> {
+            BudsProtocol.ProtocolFamily.JABRA_SPP -> {
                 sendRawBytes(JabraProtocol.buildAmbienceReq())
                 sendRawBytes(JabraProtocol.buildNoiseModeReq())
             }
-            T300Protocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
+            BudsProtocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
                 sendRawBytes(PixelBudsProtocol.buildReadSetting(pixelActiveChannel, PixelBudsProtocol.SETTING_ANC))
             }
-            T300Protocol.ProtocolFamily.JBL_GATT -> sendRawBytes(JblProtocol.buildNoiseReq())
+            BudsProtocol.ProtocolFamily.JBL_GATT -> sendRawBytes(JblProtocol.buildNoiseReq())
             else -> {
-                val frame = T300Protocol.buildAncStateRequestFrame()
+                val frame = BudsProtocol.buildAncStateRequestFrame()
                 log("TX ANC State Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
             }
@@ -859,22 +883,22 @@ class T300BleManager(private val context: Context) {
      */
     fun refreshGameMode() {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 log("TX Huawei LowLatency Req")
                 sendRawBytes(HuaweiProtocol.buildLowLatencyRead())
             }
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                 log("TX Nothing LowLatency Req")
                 sendRawBytes(NothingProtocol.buildLowLatencyRead())
             }
-            T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
+            BudsProtocol.ProtocolFamily.XIAOMI_SPP -> {
                 if (xiaomiAuthenticated) {
                     log("TX Xiaomi LowLatency Req (0x002F)")
                     sendRawBytes(XiaomiProtocol.buildLowLatencyReq())
                 }
             }
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_GAME_MODE)
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildSwitchFeatureRequestFrame(BudsProtocol.FEATURE_ID_GAME_MODE)
                 log("TX GameMode Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
             }
@@ -887,42 +911,42 @@ class T300BleManager(private val context: Context) {
      */
     fun setGameMode(enabled: Boolean) {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 log("TX Huawei LowLatency [${if (enabled) "ON" else "OFF"}]")
                 sendRawBytes(HuaweiProtocol.buildLowLatencyWrite(enabled))
-                _t300State.value = _t300State.value.copy(gameMode = enabled)
+                _budsState.value = _budsState.value.copy(gameMode = enabled)
                 scope.launch { delay(500); refreshGameMode() }
             }
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                 log("TX Nothing LowLatency [${if (enabled) "ON" else "OFF"}]")
                 sendRawBytes(NothingProtocol.buildLowLatencyWrite(enabled))
-                _t300State.value = _t300State.value.copy(gameMode = enabled)
+                _budsState.value = _budsState.value.copy(gameMode = enabled)
                 scope.launch { delay(250); refreshGameMode() }
             }
-            T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
+            BudsProtocol.ProtocolFamily.XIAOMI_SPP -> {
                 if (!xiaomiAuthenticated) return
                 log("TX Xiaomi LowLatency (0x002F) [${if (enabled) "ON" else "OFF"}]")
                 sendRawBytes(XiaomiProtocol.buildLowLatencySet(enabled))
-                _t300State.value = _t300State.value.copy(gameMode = enabled)
+                _budsState.value = _budsState.value.copy(gameMode = enabled)
                 scope.launch { delay(220); refreshGameMode() }
             }
-            T300Protocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
-                val legacy = activeModel == T300Protocol.BudsModel.GALAXY_BUDS
+            BudsProtocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
+                val legacy = activeModel == BudsProtocol.BudsModel.GALAXY_BUDS
                 log("TX Galaxy GamingMode (0x87) [${if (enabled) "ON" else "OFF"}]")
                 sendRawBytes(GalaxyProtocol.buildGameModeWrite(enabled, legacy))
-                _t300State.value = _t300State.value.copy(gameMode = enabled)
+                _budsState.value = _budsState.value.copy(gameMode = enabled)
             }
-            T300Protocol.ProtocolFamily.SOUNDCORE_SPP -> {
-                val isLiberty = activeModel == T300Protocol.BudsModel.SOUNDCORE_LIBERTY_4_NC
+            BudsProtocol.ProtocolFamily.SOUNDCORE_SPP -> {
+                val isLiberty = activeModel == BudsProtocol.BudsModel.SOUNDCORE_LIBERTY_4_NC
                 log("TX Soundcore Gaming [${if (enabled) "ON" else "OFF"}]")
                 sendRawBytes(SoundcoreProtocol.buildGameModeSet(enabled, isLiberty))
-                _t300State.value = _t300State.value.copy(gameMode = enabled)
+                _budsState.value = _budsState.value.copy(gameMode = enabled)
             }
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_GAME_MODE, enabled)
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildSwitchFeatureCommandFrame(BudsProtocol.FEATURE_ID_GAME_MODE, enabled)
                 log("TX GameMode [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
-                _t300State.value = _t300State.value.copy(gameMode = enabled)
+                _budsState.value = _budsState.value.copy(gameMode = enabled)
             }
             else -> return
         }
@@ -933,13 +957,13 @@ class T300BleManager(private val context: Context) {
      */
     fun refreshSpatialAudio() {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                 if (!activeModel.supportsNothingSpatial) return
                 log("TX Nothing SpatialAudio Req")
                 sendRawBytes(NothingProtocol.buildSpatialRead())
             }
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_SPATIAL_AUDIO)
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildSwitchFeatureRequestFrame(BudsProtocol.FEATURE_ID_SPATIAL_AUDIO)
                 log("TX SpatialAudio Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
             }
@@ -952,29 +976,29 @@ class T300BleManager(private val context: Context) {
      */
     fun setSpatialAudio(enabled: Boolean) {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                 val modes = activeModel.nothingSpatialModes
                 val mode = if (enabled) modes.firstOrNull { it != NothingProtocol.SPATIAL_OFF } ?: NothingProtocol.SPATIAL_FIXED else NothingProtocol.SPATIAL_OFF
                 setSpatialAudioMode(mode)
             }
-            T300Protocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
+            BudsProtocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
                 sendRawBytes(SennheiserProtocol.buildPacket(SennheiserProtocol.CMD_SET_SPATIAL, byteArrayOf(if (enabled) 0x01 else 0x00)))
-                _t300State.value = _t300State.value.copy(spatialAudio = enabled)
+                _budsState.value = _budsState.value.copy(spatialAudio = enabled)
             }
-            T300Protocol.ProtocolFamily.SOUNDCORE_SPP -> {
+            BudsProtocol.ProtocolFamily.SOUNDCORE_SPP -> {
                 log("TX Soundcore Surround [${if (enabled) "ON" else "OFF"}]")
                 sendRawBytes(SoundcoreProtocol.buildSurroundSet(enabled))
-                _t300State.value = _t300State.value.copy(spatialAudio = enabled)
+                _budsState.value = _budsState.value.copy(spatialAudio = enabled)
             }
-            T300Protocol.ProtocolFamily.JBL_GATT -> {
+            BudsProtocol.ProtocolFamily.JBL_GATT -> {
                 sendRawBytes(JblProtocol.buildSpatialSet(enabled))
-                _t300State.value = _t300State.value.copy(spatialAudio = enabled)
+                _budsState.value = _budsState.value.copy(spatialAudio = enabled)
             }
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_SPATIAL_AUDIO, enabled)
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildSwitchFeatureCommandFrame(BudsProtocol.FEATURE_ID_SPATIAL_AUDIO, enabled)
                 log("TX SpatialAudio [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
-                _t300State.value = _t300State.value.copy(spatialAudio = enabled)
+                _budsState.value = _budsState.value.copy(spatialAudio = enabled)
             }
             else -> return
         }
@@ -987,7 +1011,7 @@ class T300BleManager(private val context: Context) {
         if (!activeModel.isNothing || !activeModel.supportsNothingSpatial) return
         log("TX Nothing SpatialAudio [mode=$mode]")
         sendRawBytes(NothingProtocol.buildSpatialWrite(mode))
-        _t300State.value = _t300State.value.copy(
+        _budsState.value = _budsState.value.copy(
             spatialAudioMode = mode,
             spatialAudio = mode != NothingProtocol.SPATIAL_OFF
         )
@@ -999,12 +1023,12 @@ class T300BleManager(private val context: Context) {
      */
     fun refreshHighQualityAudio() {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 log("TX Huawei SoundQuality Req")
                 sendRawBytes(HuaweiProtocol.buildSoundQualityRead())
             }
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_HIGH_QUALITY_AUDIO)
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildSwitchFeatureRequestFrame(BudsProtocol.FEATURE_ID_HIGH_QUALITY_AUDIO)
                 log("TX HighQualityAudio Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
             }
@@ -1017,17 +1041,17 @@ class T300BleManager(private val context: Context) {
      */
     fun setHighQualityAudio(enabled: Boolean) {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 log("TX Huawei SoundQuality [${if (enabled) "QUALITY" else "CONNECTIVITY"}]")
                 sendRawBytes(HuaweiProtocol.buildSoundQualityWrite(enabled))
-                _t300State.value = _t300State.value.copy(highQualityAudio = enabled)
+                _budsState.value = _budsState.value.copy(highQualityAudio = enabled)
                 scope.launch { delay(200); refreshHighQualityAudio() }
             }
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_HIGH_QUALITY_AUDIO, enabled)
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildSwitchFeatureCommandFrame(BudsProtocol.FEATURE_ID_HIGH_QUALITY_AUDIO, enabled)
                 log("TX HighQualityAudio [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
-                _t300State.value = _t300State.value.copy(highQualityAudio = enabled)
+                _budsState.value = _budsState.value.copy(highQualityAudio = enabled)
             }
             else -> return
         }
@@ -1038,12 +1062,12 @@ class T300BleManager(private val context: Context) {
      */
     fun refreshDynamicAudio() {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                 log("TX Nothing BassBoost Req")
                 sendRawBytes(NothingProtocol.buildBassBoostRead())
             }
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_DYNAMIC_AUDIO)
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildSwitchFeatureRequestFrame(BudsProtocol.FEATURE_ID_DYNAMIC_AUDIO)
                 log("TX DynamicAudio Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
             }
@@ -1056,17 +1080,17 @@ class T300BleManager(private val context: Context) {
      */
     fun setDynamicAudio(enabled: Boolean) {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                 log("TX Nothing BassBoost [${if (enabled) "ON" else "OFF"}, lvl=$nothingLastBassLevel]")
                 sendRawBytes(NothingProtocol.buildBassBoostWrite(enabled, nothingLastBassLevel))
-                _t300State.value = _t300State.value.copy(dynamicAudio = enabled, bassLevel = nothingLastBassLevel)
+                _budsState.value = _budsState.value.copy(dynamicAudio = enabled, bassLevel = nothingLastBassLevel)
                 scope.launch { delay(200); refreshDynamicAudio() }
             }
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_DYNAMIC_AUDIO, enabled)
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildSwitchFeatureCommandFrame(BudsProtocol.FEATURE_ID_DYNAMIC_AUDIO, enabled)
                 log("TX DynamicAudio [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
-                _t300State.value = _t300State.value.copy(dynamicAudio = enabled)
+                _budsState.value = _budsState.value.copy(dynamicAudio = enabled)
             }
             else -> return
         }
@@ -1081,7 +1105,7 @@ class T300BleManager(private val context: Context) {
         nothingLastBassLevel = clamped
         log("TX Nothing BassBoost Level [$clamped]")
         sendRawBytes(NothingProtocol.buildBassBoostWrite(true, clamped))
-        _t300State.value = _t300State.value.copy(dynamicAudio = true, bassLevel = clamped)
+        _budsState.value = _budsState.value.copy(dynamicAudio = true, bassLevel = clamped)
         scope.launch { delay(200); refreshDynamicAudio() }
     }
 
@@ -1090,12 +1114,12 @@ class T300BleManager(private val context: Context) {
      */
     fun refreshDualConnection() {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 log("TX Huawei DualConnect Req")
                 sendRawBytes(HuaweiProtocol.buildDualConnectRead())
             }
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_DUAL_CONNECTION)
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildSwitchFeatureRequestFrame(BudsProtocol.FEATURE_ID_DUAL_CONNECTION)
                 log("TX DualConnection Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
             }
@@ -1108,39 +1132,39 @@ class T300BleManager(private val context: Context) {
      */
     fun setDualConnection(enabled: Boolean) {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 log("TX Huawei DualConnect [${if (enabled) "ON" else "OFF"}]")
                 sendRawBytes(HuaweiProtocol.buildDualConnectWrite(enabled))
-                _t300State.value = _t300State.value.copy(dualConnection = enabled)
+                _budsState.value = _budsState.value.copy(dualConnection = enabled)
                 scope.launch { delay(250); refreshDualConnection() }
             }
-            T300Protocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
+            BudsProtocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
                 log("TX Galaxy Seamless [${if (enabled) "ON" else "OFF"}]")
-                val legacy = activeModel == T300Protocol.BudsModel.GALAXY_BUDS
+                val legacy = activeModel == BudsProtocol.BudsModel.GALAXY_BUDS
                 sendRawBytes(GalaxyProtocol.buildSeamlessWrite(enabled, legacy))
-                _t300State.value = _t300State.value.copy(dualConnection = enabled)
+                _budsState.value = _budsState.value.copy(dualConnection = enabled)
             }
-            T300Protocol.ProtocolFamily.BOSE_BMAP_SPP -> {
+            BudsProtocol.ProtocolFamily.BOSE_BMAP_SPP -> {
                 sendRawBytes(BoseProtocol.buildMultipointSet(enabled))
-                _t300State.value = _t300State.value.copy(dualConnection = enabled)
+                _budsState.value = _budsState.value.copy(dualConnection = enabled)
             }
-            T300Protocol.ProtocolFamily.SOUNDCORE_SPP -> {
+            BudsProtocol.ProtocolFamily.SOUNDCORE_SPP -> {
                 sendRawBytes(SoundcoreProtocol.buildDualConnSet(enabled))
-                _t300State.value = _t300State.value.copy(dualConnection = enabled)
+                _budsState.value = _budsState.value.copy(dualConnection = enabled)
             }
-            T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
+            BudsProtocol.ProtocolFamily.XIAOMI_SPP -> {
                 sendRawBytes(XiaomiProtocol.buildSetConfig(XiaomiProtocol.CFG_MULTIPOINT, byteArrayOf(if (enabled) 0x01 else 0x00)))
-                _t300State.value = _t300State.value.copy(dualConnection = enabled)
+                _budsState.value = _budsState.value.copy(dualConnection = enabled)
             }
-            T300Protocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
+            BudsProtocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
                 sendRawBytes(PixelBudsProtocol.buildWriteSettingVarint(pixelActiveChannel, PixelBudsProtocol.SETTING_MULTIPOINT, if (enabled) 1L else 0L))
-                _t300State.value = _t300State.value.copy(dualConnection = enabled)
+                _budsState.value = _budsState.value.copy(dualConnection = enabled)
             }
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_DUAL_CONNECTION, enabled)
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildSwitchFeatureCommandFrame(BudsProtocol.FEATURE_ID_DUAL_CONNECTION, enabled)
                 log("TX DualConnection [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
-                _t300State.value = _t300State.value.copy(dualConnection = enabled)
+                _budsState.value = _budsState.value.copy(dualConnection = enabled)
             }
             else -> return
         }
@@ -1151,13 +1175,13 @@ class T300BleManager(private val context: Context) {
      */
     fun refreshMultiConnectInfo() {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 huaweiMultiDevices.clear()
                 log("TX Huawei DualConnect Enum")
                 sendRawBytes(HuaweiProtocol.buildDualConnectEnumerate())
             }
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildMultiConnectInfoRequestFrame()
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildMultiConnectInfoRequestFrame()
                 log("TX MultiConnect Info Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
             }
@@ -1170,16 +1194,16 @@ class T300BleManager(private val context: Context) {
      */
     fun refreshAutoPlayPause() {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 log("TX Huawei AutoPause Req")
                 sendRawBytes(HuaweiProtocol.buildAutoPauseRead())
             }
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                 log("TX Nothing InEar Req")
                 sendRawBytes(NothingProtocol.buildInEarRead())
             }
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_AUTO_PLAY_PAUSE)
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildSwitchFeatureRequestFrame(BudsProtocol.FEATURE_ID_AUTO_PLAY_PAUSE)
                 log("TX AutoPlayPause Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
             }
@@ -1192,47 +1216,47 @@ class T300BleManager(private val context: Context) {
      */
     fun setAutoPlayPause(enabled: Boolean) {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 log("TX Huawei AutoPause [${if (enabled) "ON" else "OFF"}]")
                 sendRawBytes(HuaweiProtocol.buildAutoPauseWrite(enabled))
-                _t300State.value = _t300State.value.copy(autoPlayPause = enabled)
+                _budsState.value = _budsState.value.copy(autoPlayPause = enabled)
                 scope.launch { delay(200); refreshAutoPlayPause() }
             }
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                 log("TX Nothing InEar [${if (enabled) "ON" else "OFF"}]")
                 sendRawBytes(NothingProtocol.buildInEarWrite(enabled))
-                _t300State.value = _t300State.value.copy(autoPlayPause = enabled)
+                _budsState.value = _budsState.value.copy(autoPlayPause = enabled)
                 scope.launch { delay(200); refreshAutoPlayPause() }
             }
-            T300Protocol.ProtocolFamily.BOSE_BMAP_SPP -> {
+            BudsProtocol.ProtocolFamily.BOSE_BMAP_SPP -> {
                 sendRawBytes(BoseProtocol.buildAutoPauseSet(enabled))
-                _t300State.value = _t300State.value.copy(autoPlayPause = enabled)
+                _budsState.value = _budsState.value.copy(autoPlayPause = enabled)
             }
-            T300Protocol.ProtocolFamily.SOUNDCORE_SPP -> {
+            BudsProtocol.ProtocolFamily.SOUNDCORE_SPP -> {
                 sendRawBytes(SoundcoreProtocol.buildAutoPauseSet(enabled))
-                _t300State.value = _t300State.value.copy(autoPlayPause = enabled)
+                _budsState.value = _budsState.value.copy(autoPlayPause = enabled)
             }
-            T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
+            BudsProtocol.ProtocolFamily.XIAOMI_SPP -> {
                 sendRawBytes(XiaomiProtocol.buildEarDetectionSet(enabled))
-                _t300State.value = _t300State.value.copy(autoPlayPause = enabled)
+                _budsState.value = _budsState.value.copy(autoPlayPause = enabled)
             }
-            T300Protocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
+            BudsProtocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
                 sendRawBytes(SennheiserProtocol.buildPacket(SennheiserProtocol.CMD_SET_AUTO_PAUSE, byteArrayOf(if (enabled) 0x01 else 0x00)))
-                _t300State.value = _t300State.value.copy(autoPlayPause = enabled)
+                _budsState.value = _budsState.value.copy(autoPlayPause = enabled)
             }
-            T300Protocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
+            BudsProtocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
                 sendRawBytes(PixelBudsProtocol.buildWriteSettingVarint(pixelActiveChannel, PixelBudsProtocol.SETTING_OHD, if (enabled) 1L else 0L))
-                _t300State.value = _t300State.value.copy(autoPlayPause = enabled)
+                _budsState.value = _budsState.value.copy(autoPlayPause = enabled)
             }
-            T300Protocol.ProtocolFamily.JBL_GATT -> {
+            BudsProtocol.ProtocolFamily.JBL_GATT -> {
                 sendRawBytes(JblProtocol.buildAutoPlaySet(enabled))
-                _t300State.value = _t300State.value.copy(autoPlayPause = enabled)
+                _budsState.value = _budsState.value.copy(autoPlayPause = enabled)
             }
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_AUTO_PLAY_PAUSE, enabled)
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildSwitchFeatureCommandFrame(BudsProtocol.FEATURE_ID_AUTO_PLAY_PAUSE, enabled)
                 log("TX AutoPlayPause [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
-                _t300State.value = _t300State.value.copy(autoPlayPause = enabled)
+                _budsState.value = _budsState.value.copy(autoPlayPause = enabled)
             }
             else -> return
         }
@@ -1243,7 +1267,7 @@ class T300BleManager(private val context: Context) {
      */
     fun refreshAutoAnswer() {
         if (!activeModel.isRealme) return
-        val frame = T300Protocol.buildSwitchFeatureRequestFrame(T300Protocol.FEATURE_ID_AUTO_ANSWER)
+        val frame = BudsProtocol.buildSwitchFeatureRequestFrame(BudsProtocol.FEATURE_ID_AUTO_ANSWER)
         log("TX AutoAnswer Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
     }
@@ -1253,23 +1277,23 @@ class T300BleManager(private val context: Context) {
      */
     fun setAutoAnswer(enabled: Boolean) {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.BOSE_BMAP_SPP -> {
+            BudsProtocol.ProtocolFamily.BOSE_BMAP_SPP -> {
                 sendRawBytes(BoseProtocol.buildAutoAnswerSet(enabled))
-                _t300State.value = _t300State.value.copy(autoAnswer = enabled)
+                _budsState.value = _budsState.value.copy(autoAnswer = enabled)
             }
-            T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
+            BudsProtocol.ProtocolFamily.XIAOMI_SPP -> {
                 sendRawBytes(XiaomiProtocol.buildSetConfig(XiaomiProtocol.CFG_AUTO_ANSWER, byteArrayOf(if (enabled) 0x01 else 0x00)))
-                _t300State.value = _t300State.value.copy(autoAnswer = enabled)
+                _budsState.value = _budsState.value.copy(autoAnswer = enabled)
             }
-            T300Protocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
+            BudsProtocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
                 sendRawBytes(SennheiserProtocol.buildPacket(SennheiserProtocol.CMD_SET_AUTO_ANSWER, byteArrayOf(if (enabled) 0x01 else 0x00)))
-                _t300State.value = _t300State.value.copy(autoAnswer = enabled)
+                _budsState.value = _budsState.value.copy(autoAnswer = enabled)
             }
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildSwitchFeatureCommandFrame(T300Protocol.FEATURE_ID_AUTO_ANSWER, enabled)
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildSwitchFeatureCommandFrame(BudsProtocol.FEATURE_ID_AUTO_ANSWER, enabled)
                 log("TX AutoAnswer [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
-                _t300State.value = _t300State.value.copy(autoAnswer = enabled)
+                _budsState.value = _budsState.value.copy(autoAnswer = enabled)
             }
             else -> return
         }
@@ -1280,7 +1304,7 @@ class T300BleManager(private val context: Context) {
      */
     fun refreshUseTime() {
         if (!activeModel.isRealme) return
-        val frame = T300Protocol.buildUseTimeRequestFrame()
+        val frame = BudsProtocol.buildUseTimeRequestFrame()
         log("TX UseTime Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
         sendData(frame)
     }
@@ -1290,37 +1314,37 @@ class T300BleManager(private val context: Context) {
      */
     fun refreshEq() {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 log("TX Huawei EQ Req")
                 sendRawBytes(HuaweiProtocol.buildEqRead())
             }
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                 log("TX Nothing EQ Req")
                 sendRawBytes(NothingProtocol.buildEqRead(activeModel.nothingUsesListeningModeEq))
                 if (activeModel.supportsCustomEq) {
                     sendRawBytes(NothingProtocol.buildCustomEqRead())
                 }
             }
-            T300Protocol.ProtocolFamily.SONY_MDR_SPP -> {
+            BudsProtocol.ProtocolFamily.SONY_MDR_SPP -> {
                 sendRawBytes(SonyProtocol.buildEqReq(sonySeq))
             }
-            T300Protocol.ProtocolFamily.BOSE_BMAP_SPP -> {
+            BudsProtocol.ProtocolFamily.BOSE_BMAP_SPP -> {
                 sendRawBytes(BoseProtocol.buildEqReq())
             }
-            T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
+            BudsProtocol.ProtocolFamily.XIAOMI_SPP -> {
                 if (xiaomiAuthenticated) {
                     sendRawBytes(XiaomiProtocol.buildGetConfigReq(XiaomiProtocol.CFG_EQ_PRESET))
                     sendRawBytes(XiaomiProtocol.buildCustomEqReq())
                 }
             }
-            T300Protocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
+            BudsProtocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
                 sendRawBytes(SennheiserProtocol.buildEqGainsReq())
             }
-            T300Protocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
+            BudsProtocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
                 sendRawBytes(PixelBudsProtocol.buildReadSetting(pixelActiveChannel, PixelBudsProtocol.SETTING_USER_EQ))
             }
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildEqRequestFrame()
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildEqRequestFrame()
                 log("TX EQ Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
             }
@@ -1333,18 +1357,18 @@ class T300BleManager(private val context: Context) {
      */
     fun refreshAllEq() {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildAllEqRequestFrame()
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildAllEqRequestFrame()
                 log("TX All EQ Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
             }
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                 if (activeModel.supportsCustomEq) sendRawBytes(NothingProtocol.buildCustomEqRead())
             }
-            T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
+            BudsProtocol.ProtocolFamily.XIAOMI_SPP -> {
                 if (xiaomiAuthenticated) sendRawBytes(XiaomiProtocol.buildCustomEqReq())
             }
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 sendRawBytes(HuaweiProtocol.buildEqRead())
             }
             else -> return
@@ -1365,11 +1389,11 @@ class T300BleManager(private val context: Context) {
         val clampedGains = List(spec.bandLabels.size) { idx ->
             gains.getOrElse(idx) { 0 }.coerceIn(spec.minDb, spec.maxDb)
         }
-        val currentState = _t300State.value
+        val currentState = _budsState.value
         val freqs = currentState.customEqFreqs.takeIf { it.size == clampedGains.size } ?: spec.defaultFreqs
 
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.REALME_TL -> {
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
                 val existing = currentState.customEqProfiles
                 val existingProfile = existing.firstOrNull { it.id == profileId }
                 val targetId = when {
@@ -1379,9 +1403,9 @@ class T300BleManager(private val context: Context) {
                     else -> 1
                 }
                 val action = when {
-                    delete -> T300Protocol.CUSTOM_EQ_ACTION_DELETE
-                    createNew || (existingProfile == null && existing.isEmpty()) -> T300Protocol.CUSTOM_EQ_ACTION_CREATE
-                    else -> T300Protocol.CUSTOM_EQ_ACTION_SAVE
+                    delete -> BudsProtocol.CUSTOM_EQ_ACTION_DELETE
+                    createNew || (existingProfile == null && existing.isEmpty()) -> BudsProtocol.CUSTOM_EQ_ACTION_CREATE
+                    else -> BudsProtocol.CUSTOM_EQ_ACTION_SAVE
                 }
                 val name = (profileName?.trim()?.takeIf { it.isNotEmpty() }
                     ?: existingProfile?.name
@@ -1397,11 +1421,11 @@ class T300BleManager(private val context: Context) {
                     isSelected = !delete,
                     tag = tag
                 )
-                val frame = T300Protocol.buildCustomEqSetFrame(action, profile)
+                val frame = BudsProtocol.buildCustomEqSetFrame(action, profile)
                 log("TX CustomEQ [action=$action, id=$targetId, name=$name, gains=$clampedGains]")
                 sendData(frame)
                 if (!delete) {
-                    _t300State.value = currentState.copy(
+                    _budsState.value = currentState.copy(
                         eqPreset = null,
                         activeCustomEqId = targetId,
                         activeCustomEqName = name,
@@ -1416,7 +1440,7 @@ class T300BleManager(private val context: Context) {
                     refreshEq()
                 }
             }
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 val existing = currentState.customEqProfiles
                 val targetId = when {
                     createNew -> ((existing.maxOfOrNull { it.id } ?: 10) + 1).coerceAtLeast(11)
@@ -1430,7 +1454,7 @@ class T300BleManager(private val context: Context) {
                 log("TX Huawei CustomEQ [id=$targetId, name=$name, del=$delete, gains=$clampedGains]")
                 sendRawBytes(HuaweiProtocol.buildCustomEqWrite(targetId, name, clampedGains, delete))
                 if (!delete) {
-                    _t300State.value = currentState.copy(
+                    _budsState.value = currentState.copy(
                         eqPreset = null,
                         activeCustomEqId = targetId,
                         activeCustomEqName = name,
@@ -1440,7 +1464,7 @@ class T300BleManager(private val context: Context) {
                 }
                 scope.launch { delay(280); refreshEq() }
             }
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                 val bass = clampedGains.getOrElse(0) { 0 }
                 val mid = clampedGains.getOrElse(1) { 0 }
                 val treble = clampedGains.getOrElse(2) { 0 }
@@ -1450,24 +1474,24 @@ class T300BleManager(private val context: Context) {
                     delay(120)
                     sendRawBytes(NothingProtocol.buildSelectCustomEq(activeModel.nothingUsesListeningModeEq))
                 }
-                _t300State.value = currentState.copy(
+                _budsState.value = currentState.copy(
                     eqPreset = null,
                     activeCustomEqName = "Custom",
                     customEqGains = listOf(bass, mid, treble)
                 )
             }
-            T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
+            BudsProtocol.ProtocolFamily.XIAOMI_SPP -> {
                 if (!xiaomiAuthenticated) return
                 if (delete) {
                     log("TX Xiaomi CustomEQ Reset (0x0037)")
                     sendRawBytes(XiaomiProtocol.buildCustomEqReset())
-                    _t300State.value = currentState.copy(
+                    _budsState.value = currentState.copy(
                         customEqGains = List(clampedGains.size) { 0 }
                     )
                 } else {
                     log("TX Xiaomi CustomEQ Save (0x0037) [gains=$clampedGains]")
                     sendRawBytes(XiaomiProtocol.buildCustomEqSave(freqs, clampedGains, spec.maxDb))
-                    _t300State.value = currentState.copy(
+                    _budsState.value = currentState.copy(
                         eqPreset = null,
                         activeCustomEqName = "Custom",
                         customEqGains = clampedGains,
@@ -1476,16 +1500,16 @@ class T300BleManager(private val context: Context) {
                 }
                 scope.launch { delay(220); sendRawBytes(XiaomiProtocol.buildCustomEqReq()) }
             }
-            T300Protocol.ProtocolFamily.SONY_MDR_SPP -> {
+            BudsProtocol.ProtocolFamily.SONY_MDR_SPP -> {
                 log("TX Sony CustomEQ [gains=$clampedGains]")
                 sendRawBytes(SonyProtocol.buildCustomEqSet(sonySeq, clampedGains))
-                _t300State.value = currentState.copy(
+                _budsState.value = currentState.copy(
                     eqPreset = null,
                     activeCustomEqName = "Custom",
                     customEqGains = clampedGains
                 )
             }
-            T300Protocol.ProtocolFamily.BOSE_BMAP_SPP -> {
+            BudsProtocol.ProtocolFamily.BOSE_BMAP_SPP -> {
                 log("TX Bose CustomEQ [gains=$clampedGains]")
                 scope.launch {
                     for (i in clampedGains.indices) {
@@ -1493,22 +1517,22 @@ class T300BleManager(private val context: Context) {
                         delay(50)
                     }
                 }
-                _t300State.value = currentState.copy(
+                _budsState.value = currentState.copy(
                     eqPreset = null,
                     activeCustomEqName = "Custom",
                     customEqGains = clampedGains
                 )
             }
-            T300Protocol.ProtocolFamily.SOUNDCORE_SPP -> {
+            BudsProtocol.ProtocolFamily.SOUNDCORE_SPP -> {
                 log("TX Soundcore CustomEQ [gains=$clampedGains]")
                 sendRawBytes(SoundcoreProtocol.buildCustomEqSet(clampedGains))
-                _t300State.value = currentState.copy(
+                _budsState.value = currentState.copy(
                     eqPreset = null,
                     activeCustomEqName = "Custom",
                     customEqGains = clampedGains
                 )
             }
-            T300Protocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
+            BudsProtocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
                 log("TX Sennheiser CustomEQ [gains=$clampedGains]")
                 scope.launch {
                     for (i in clampedGains.indices) {
@@ -1516,16 +1540,16 @@ class T300BleManager(private val context: Context) {
                         delay(50)
                     }
                 }
-                _t300State.value = currentState.copy(
+                _budsState.value = currentState.copy(
                     eqPreset = null,
                     activeCustomEqName = "Custom",
                     customEqGains = clampedGains
                 )
             }
-            T300Protocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
+            BudsProtocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
                 log("TX PixelBuds CustomEQ [gains=$clampedGains]")
                 sendRawBytes(PixelBudsProtocol.buildWriteUserEq(pixelActiveChannel, clampedGains))
-                _t300State.value = currentState.copy(
+                _budsState.value = currentState.copy(
                     eqPreset = null,
                     activeCustomEqName = "Custom",
                     customEqGains = clampedGains
@@ -1540,7 +1564,7 @@ class T300BleManager(private val context: Context) {
      */
     fun selectCustomEqProfile(profile: CustomEqProfile) {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.REALME_TL -> {
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
                 setCustomEq(
                     gains = profile.gains,
                     profileId = profile.id,
@@ -1549,10 +1573,10 @@ class T300BleManager(private val context: Context) {
                     delete = false
                 )
             }
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 log("TX Huawei Select CustomEQ [id=${profile.id}, name=${profile.name}]")
                 sendRawBytes(HuaweiProtocol.buildEqWrite(profile.id.toByte()))
-                _t300State.value = _t300State.value.copy(
+                _budsState.value = _budsState.value.copy(
                     eqPreset = null,
                     activeCustomEqId = profile.id,
                     activeCustomEqName = profile.name,
@@ -1570,12 +1594,12 @@ class T300BleManager(private val context: Context) {
      */
     fun setHardwareFindBuds(enabled: Boolean, channel: FindBudsChannel = FindBudsChannel.BOTH) {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.REALME_TL -> {
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
                 log("TX Realme FindBuds [${if (enabled) "ON" else "OFF"}]")
-                sendData(T300Protocol.buildFindBudsFrame(enabled))
-                _t300State.value = _t300State.value.copy(hardwareFindActive = enabled)
+                sendData(BudsProtocol.buildFindBudsFrame(enabled))
+                _budsState.value = _budsState.value.copy(hardwareFindActive = enabled)
             }
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                 val sideByte: Byte = when (channel) {
                     FindBudsChannel.LEFT -> 0x01
                     FindBudsChannel.RIGHT -> 0x03
@@ -1583,13 +1607,13 @@ class T300BleManager(private val context: Context) {
                 }
                 log("TX Nothing RingBuds [side=$channel, ${if (enabled) "ON" else "OFF"}]")
                 sendRawBytes(NothingProtocol.buildRingBuds(sideByte, enabled))
-                _t300State.value = _t300State.value.copy(hardwareFindActive = enabled)
+                _budsState.value = _budsState.value.copy(hardwareFindActive = enabled)
             }
-            T300Protocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
-                val legacy = activeModel == T300Protocol.BudsModel.GALAXY_BUDS
+            BudsProtocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
+                val legacy = activeModel == BudsProtocol.BudsModel.GALAXY_BUDS
                 log("TX Galaxy FindBuds [${if (enabled) "ON" else "OFF"}]")
                 sendRawBytes(GalaxyProtocol.buildFindBudsWrite(enabled, legacy))
-                _t300State.value = _t300State.value.copy(hardwareFindActive = enabled)
+                _budsState.value = _budsState.value.copy(hardwareFindActive = enabled)
             }
             else -> return
         }
@@ -1601,7 +1625,7 @@ class T300BleManager(private val context: Context) {
     fun renameFirmwareDevice(newName: String): Boolean {
         if (_connectionState.value != BleConnectionState.CONNECTED) return false
         return when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.BOSE_BMAP_SPP -> {
+            BudsProtocol.ProtocolFamily.BOSE_BMAP_SPP -> {
                 log("TX Bose Rename -> \"$newName\"")
                 sendRawBytes(BoseProtocol.buildRename(newName))
                 true
@@ -1611,8 +1635,8 @@ class T300BleManager(private val context: Context) {
     }
 
     private fun applyStandardEqState(preset: EqPreset) {
-        val cur = _t300State.value
-        _t300State.value = cur.copy(
+        val cur = _budsState.value
+        _budsState.value = cur.copy(
             eqPreset = preset,
             activeCustomEqId = null,
             activeCustomEqName = null,
@@ -1625,48 +1649,48 @@ class T300BleManager(private val context: Context) {
      */
     fun setEqPreset(preset: EqPreset) {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 val hwId = HuaweiProtocol.eqPresetToHuaweiId(preset, activeModel.huaweiEqUsesPro3Ids)
                 log("TX Huawei EQ [${preset.name} -> id=$hwId]")
                 sendRawBytes(HuaweiProtocol.buildEqWrite(hwId))
                 applyStandardEqState(preset)
                 scope.launch { delay(200); refreshEq() }
             }
-            T300Protocol.ProtocolFamily.HONOR_CHOICE_SPP -> {
+            BudsProtocol.ProtocolFamily.HONOR_CHOICE_SPP -> {
                 log("TX HonorChoice EQ [${preset.name}]")
                 sendRawBytes(HuaweiProtocol.buildHonorChoiceEqWrite(preset))
                 applyStandardEqState(preset)
             }
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                 log("TX Nothing EQ [${preset.name}]")
-                val isBuds2a = activeModel == T300Protocol.BudsModel.CMF_BUDS_2A
+                val isBuds2a = activeModel == BudsProtocol.BudsModel.CMF_BUDS_2A
                 sendRawBytes(NothingProtocol.buildEqWrite(preset, activeModel.nothingUsesListeningModeEq, isBuds2a))
                 applyStandardEqState(preset)
                 scope.launch { delay(200); refreshEq() }
             }
-            T300Protocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
+            BudsProtocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
                 log("TX Galaxy EQ [${preset.name}]")
-                val legacy = activeModel == T300Protocol.BudsModel.GALAXY_BUDS
+                val legacy = activeModel == BudsProtocol.BudsModel.GALAXY_BUDS
                 sendRawBytes(GalaxyProtocol.buildEqWrite(preset, legacy))
                 applyStandardEqState(preset)
             }
-            T300Protocol.ProtocolFamily.SONY_MDR_SPP -> {
+            BudsProtocol.ProtocolFamily.SONY_MDR_SPP -> {
                 log("TX Sony EQ [${preset.name}]")
                 sendRawBytes(SonyProtocol.buildEqSet(sonySeq, preset))
                 applyStandardEqState(preset)
             }
-            T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
+            BudsProtocol.ProtocolFamily.XIAOMI_SPP -> {
                 log("TX Xiaomi EQ [${preset.name}]")
                 sendRawBytes(XiaomiProtocol.buildEqSet(preset))
                 applyStandardEqState(preset)
             }
-            T300Protocol.ProtocolFamily.JBL_GATT -> {
+            BudsProtocol.ProtocolFamily.JBL_GATT -> {
                 log("TX JBL EQ [${preset.name}]")
                 sendRawBytes(JblProtocol.buildEqSet(preset))
                 applyStandardEqState(preset)
             }
             else -> {
-                val frame = T300Protocol.buildEqCommandFrame(preset)
+                val frame = BudsProtocol.buildEqCommandFrame(preset)
                 log("TX EQ [${preset.name}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
                 applyStandardEqState(preset)
@@ -1679,7 +1703,7 @@ class T300BleManager(private val context: Context) {
      */
     fun refreshKeySettings() {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 scope.launch {
                     if (activeModel.supportsDoubleTap) {
                         sendRawBytes(HuaweiProtocol.buildDoubleTapRead())
@@ -1694,12 +1718,12 @@ class T300BleManager(private val context: Context) {
                     }
                 }
             }
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                 log("TX Nothing Gestures Req")
                 sendRawBytes(NothingProtocol.buildGestureRead())
             }
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildKeyFunctionRequestFrame()
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildKeyFunctionRequestFrame()
                 log("TX KeySettings Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
             }
@@ -1712,30 +1736,30 @@ class T300BleManager(private val context: Context) {
      */
     fun setKeySetting(side: TouchSide, gesture: TouchGesture, action: TouchAction) {
         when (activeModel.protocolFamily) {
-            T300Protocol.ProtocolFamily.HUAWEI_SPP -> {
-                val isFb3 = activeModel == T300Protocol.BudsModel.HUAWEI_FREEBUDS_3
+            BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
+                val isFb3 = activeModel == BudsProtocol.BudsModel.HUAWEI_FREEBUDS_3
                 val code = HuaweiProtocol.actionToHuaweiTapCode(action, gesture, isFb3)
                 log("TX Huawei Key [${side.name} ${gesture.name} -> ${action.name} (code=$code)]")
                 sendRawBytes(HuaweiProtocol.buildKeyWrite(gesture, side, code))
-                val currentMap = _t300State.value.touchSettings.toMutableMap()
+                val currentMap = _budsState.value.touchSettings.toMutableMap()
                 currentMap[Pair(side, gesture)] = action
-                _t300State.value = _t300State.value.copy(touchSettings = currentMap)
+                _budsState.value = _budsState.value.copy(touchSettings = currentMap)
             }
-            T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+            BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                 log("TX Nothing Gesture [${side.name} ${gesture.name} -> ${action.name}]")
                 sendRawBytes(NothingProtocol.buildGestureWrite(side, gesture, action))
-                val currentMap = _t300State.value.touchSettings.toMutableMap()
+                val currentMap = _budsState.value.touchSettings.toMutableMap()
                 currentMap[Pair(side, gesture)] = action
-                _t300State.value = _t300State.value.copy(touchSettings = currentMap)
+                _budsState.value = _budsState.value.copy(touchSettings = currentMap)
             }
-            T300Protocol.ProtocolFamily.REALME_TL -> {
-                val frame = T300Protocol.buildKeyFunctionCommandFrame(side, gesture, action)
+            BudsProtocol.ProtocolFamily.REALME_TL -> {
+                val frame = BudsProtocol.buildKeyFunctionCommandFrame(side, gesture, action)
                 log("TX KeySetting [${side.name} ${gesture.name} -> ${action.name}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
                 sendData(frame)
 
-                val currentMap = _t300State.value.touchSettings.toMutableMap()
+                val currentMap = _budsState.value.touchSettings.toMutableMap()
                 currentMap[Pair(side, gesture)] = action
-                _t300State.value = _t300State.value.copy(touchSettings = currentMap)
+                _budsState.value = _budsState.value.copy(touchSettings = currentMap)
             }
             else -> return
         }
@@ -1745,7 +1769,7 @@ class T300BleManager(private val context: Context) {
      * Отправка TL-кадра (оборачивается в OPPOv1 SOF 0xAA).
      */
     private fun sendData(data: ByteArray) {
-        sendRawBytes(T300Protocol.wrapOppoFrame(data))
+        sendRawBytes(BudsProtocol.wrapOppoFrame(data))
     }
 
     /**
@@ -1816,17 +1840,17 @@ class T300BleManager(private val context: Context) {
             log("✓ Device ready! Requesting state (${activeModel.protocolFamily})...")
 
             when (activeModel.protocolFamily) {
-                T300Protocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
+                BudsProtocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
                     // Galaxy Buds push 0x61 unsolicited
                     return@launch
                 }
-                T300Protocol.ProtocolFamily.XIAOMI_SPP -> {
+                BudsProtocol.ProtocolFamily.XIAOMI_SPP -> {
                     log("TX Xiaomi Auth Challenge")
                     sendRawBytes(XiaomiProtocol.buildAuthStart())
                     startPolling(gen)
                     return@launch
                 }
-                T300Protocol.ProtocolFamily.BOSE_BMAP_SPP -> {
+                BudsProtocol.ProtocolFamily.BOSE_BMAP_SPP -> {
                     sendRawBytes(BoseProtocol.buildNotifyEnable())
                     delay(80)
                     sendRawBytes(BoseProtocol.buildBatteryReq())
@@ -1845,12 +1869,12 @@ class T300BleManager(private val context: Context) {
                     startPolling(gen)
                     return@launch
                 }
-                T300Protocol.ProtocolFamily.SOUNDCORE_SPP -> {
+                BudsProtocol.ProtocolFamily.SOUNDCORE_SPP -> {
                     sendRawBytes(SoundcoreProtocol.buildStateReq())
                     startPolling(gen)
                     return@launch
                 }
-                T300Protocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
+                BudsProtocol.ProtocolFamily.SENNHEISER_GAIA_SPP -> {
                     for (feat in byteArrayOf(3, 8, 11, 12, 13)) {
                         sendRawBytes(SennheiserProtocol.buildPacket(SennheiserProtocol.CMD_REGISTER_NOTIFY, byteArrayOf(feat)))
                         delay(50)
@@ -1873,7 +1897,7 @@ class T300BleManager(private val context: Context) {
                     startPolling(gen)
                     return@launch
                 }
-                T300Protocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
+                BudsProtocol.ProtocolFamily.PIXEL_BUDS_SPP -> {
                     for (ch in PixelBudsProtocol.PROBE_CHANNELS) {
                         if (gen != sessionGen.get()) return@launch
                         sendRawBytes(PixelBudsProtocol.buildRpcFrame(ch, PixelBudsProtocol.METHOD_GET_SW_INFO))
@@ -1881,7 +1905,7 @@ class T300BleManager(private val context: Context) {
                     }
                     return@launch
                 }
-                T300Protocol.ProtocolFamily.JBL_GATT -> {
+                BudsProtocol.ProtocolFamily.JBL_GATT -> {
                     sendRawBytes(JblProtocol.buildBatteryReq())
                     delay(120)
                     sendRawBytes(JblProtocol.buildNoiseReq())
@@ -1894,7 +1918,7 @@ class T300BleManager(private val context: Context) {
                     startPolling(gen)
                     return@launch
                 }
-                T300Protocol.ProtocolFamily.NOTHING_SPP -> {
+                BudsProtocol.ProtocolFamily.NOTHING_SPP -> {
                     log("TX Nothing Handshake")
                     sendRawBytes(NothingProtocol.buildHandshakeRequest())
                     delay(100)
@@ -1969,7 +1993,7 @@ class T300BleManager(private val context: Context) {
             byteArrayOf(0x03, 0x05, 0x01, 0x02)
         }
         for (eventId in events) {
-            val frame = T300Protocol.buildRegisterNotificationFrame(eventId)
+            val frame = BudsProtocol.buildRegisterNotificationFrame(eventId)
             sendData(frame)
         }
     }
@@ -1978,7 +2002,9 @@ class T300BleManager(private val context: Context) {
         pollJob?.cancel()
         pollJob = scope.launch {
             while (isActive && gen == sessionGen.get() && _connectionState.value == BleConnectionState.CONNECTED) {
+                val foreground = isForegroundMode
                 val interval = when {
+                    !foreground -> BACKGROUND_POLL_INTERVAL_MS
                     activeTransport == ActiveTransport.BT_BATTERY_ONLY || activeModel.isLogitech || activeModel.isGenericBluetooth -> 15_000L
                     activeModel.isBose || activeModel.isSennheiser || activeModel.isJabra || activeModel.isSony || activeModel.isXiaomi -> 10_000L
                     activeModel.isSoundcore || activeModel.isJbl -> 5_000L
@@ -1986,6 +2012,15 @@ class T300BleManager(private val context: Context) {
                 }
                 delay(interval)
                 if (gen != sessionGen.get() || _connectionState.value != BleConnectionState.CONNECTED) break
+
+                // Power-saving background mode: 0 packets while screen is off; 1 battery ping/min when screen is on
+                if (!isForegroundMode) {
+                    val screenOn = try { powerManager?.isInteractive != false } catch (_: Throwable) { true }
+                    if (!screenOn) continue
+                    refreshBattery()
+                    continue
+                }
+
                 if (activeTransport == ActiveTransport.BT_BATTERY_ONLY || activeModel.isLogitech || activeModel.isGenericBluetooth) {
                     refreshBattery()
                     continue
@@ -2042,18 +2077,18 @@ class T300BleManager(private val context: Context) {
             val m = BluetoothDevice::class.java.getMethod("getBatteryLevel")
             val raw = m.invoke(device) as? Int ?: -1
             if (raw in 0..100) {
-                val hours = if (activeModel == T300Protocol.BudsModel.LOGITECH_G435) (raw / 100f) * 18.0f else null
+                val hours = if (activeModel == BudsProtocol.BudsModel.LOGITECH_G435) (raw / 100f) * 18.0f else null
                 log("RX BT HFP Battery (${device.name}): $raw%")
                 updateBatteryState(
                     listOf(
-                        T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, raw, false),
-                        T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, raw, false),
-                        T300Protocol.BatteryInfo(ComponentRole.CASE, -1, false)
+                        BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, raw, false),
+                        BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, raw, false),
+                        BudsProtocol.BatteryInfo(ComponentRole.CASE, -1, false)
                     ),
                     isSnapshot = true
                 )
                 if (hours != null) {
-                    _t300State.value = _t300State.value.copy(batteryHoursLeft = hours)
+                    _budsState.value = _budsState.value.copy(batteryHoursLeft = hours)
                 }
             }
         } catch (_: Throwable) {
@@ -2122,8 +2157,8 @@ class T300BleManager(private val context: Context) {
 
             // Standard Bluetooth / Logitech G435 Bluetooth mode: read BLE Battery Service (0x180F / 0x2A19)
             if (isBatteryOnlyGattProbe || activeModel.isLogitech || activeModel.isGenericBluetooth) {
-                val bas = gatt.getService(T300GattConfig.BATTERY_SERVICE)
-                val lvlChar = bas?.getCharacteristic(T300GattConfig.BATTERY_LEVEL_CHAR)
+                val bas = gatt.getService(BluetoothConfig.BATTERY_SERVICE)
+                val lvlChar = bas?.getCharacteristic(BluetoothConfig.BATTERY_LEVEL_CHAR)
                 if (lvlChar != null) {
                     batteryLevelCharacteristic = lvlChar
                     log("✓ Found BLE Battery Service (0x180F/0x2A19)")
@@ -2144,7 +2179,7 @@ class T300BleManager(private val context: Context) {
 
             // Prioritize JBL GATT service when connecting to JBL
             if (activeModel.isJbl) {
-                val jblSvc = gatt.getService(T300GattConfig.JBL_GATT_SERVICE)
+                val jblSvc = gatt.getService(BluetoothConfig.JBL_GATT_SERVICE)
                 if (jblSvc != null) {
                     for (char in jblSvc.characteristics) {
                         val props = char.properties
@@ -2166,20 +2201,20 @@ class T300BleManager(private val context: Context) {
             }
 
             if (foundWrite == null || foundNotify == null) {
-                for (serviceUuid in T300GattConfig.KNOWN_CANDIDATE_SERVICES) {
+                for (serviceUuid in BluetoothConfig.KNOWN_CANDIDATE_SERVICES) {
                     val service = gatt.getService(serviceUuid) ?: continue
-                    if (serviceUuid == T300GattConfig.NORDIC_UART_SERVICE) {
-                        foundWrite = service.getCharacteristic(T300GattConfig.NORDIC_UART_RX_WRITE)
-                        foundNotify = service.getCharacteristic(T300GattConfig.NORDIC_UART_TX_NOTIFY)
-                    } else if (serviceUuid == T300GattConfig.AIROHA_SERVICE) {
-                        foundWrite = service.getCharacteristic(T300GattConfig.AIROHA_WRITE)
-                        foundNotify = service.getCharacteristic(T300GattConfig.AIROHA_NOTIFY)
+                    if (serviceUuid == BluetoothConfig.NORDIC_UART_SERVICE) {
+                        foundWrite = service.getCharacteristic(BluetoothConfig.NORDIC_UART_RX_WRITE)
+                        foundNotify = service.getCharacteristic(BluetoothConfig.NORDIC_UART_TX_NOTIFY)
+                    } else if (serviceUuid == BluetoothConfig.AIROHA_SERVICE) {
+                        foundWrite = service.getCharacteristic(BluetoothConfig.AIROHA_WRITE)
+                        foundNotify = service.getCharacteristic(BluetoothConfig.AIROHA_NOTIFY)
                     }
                     if (foundWrite != null && foundNotify != null) break
                 }
             }
 
-            if ((foundWrite == null || foundNotify == null) && T300GattConfig.AUTO_DETECT_FALLBACK) {
+            if ((foundWrite == null || foundNotify == null) && BluetoothConfig.AUTO_DETECT_FALLBACK) {
                 for (service in gatt.services) {
                     val sUuidStr = service.uuid.toString().lowercase()
                     if (sUuidStr.startsWith("00001800") || sUuidStr.startsWith("00001801")) continue
@@ -2220,7 +2255,7 @@ class T300BleManager(private val context: Context) {
 
         private fun enableNotifications(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
             gatt.setCharacteristicNotification(characteristic, true)
-            val descriptor = characteristic.getDescriptor(T300GattConfig.CCCD_UUID)
+            val descriptor = characteristic.getDescriptor(BluetoothConfig.CCCD_UUID)
             if (descriptor == null) {
                 finishGattConnection()
                 return
@@ -2256,31 +2291,31 @@ class T300BleManager(private val context: Context) {
             if (bytes.isEmpty()) return
             val lvl = bytes[0].toInt() and 0xFF
             if (lvl in 0..100) {
-                val hours = if (activeModel == T300Protocol.BudsModel.LOGITECH_G435) (lvl / 100f) * 18.0f else null
+                val hours = if (activeModel == BudsProtocol.BudsModel.LOGITECH_G435) (lvl / 100f) * 18.0f else null
                 log("RX BLE Battery Service (0x2A19): $lvl%")
                 updateBatteryState(
                     listOf(
-                        T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, lvl, false),
-                        T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, lvl, false),
-                        T300Protocol.BatteryInfo(ComponentRole.CASE, -1, false)
+                        BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, lvl, false),
+                        BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, lvl, false),
+                        BudsProtocol.BatteryInfo(ComponentRole.CASE, -1, false)
                     ),
                     isSnapshot = true
                 )
                 if (hours != null) {
-                    _t300State.value = _t300State.value.copy(batteryHoursLeft = hours)
+                    _budsState.value = _budsState.value.copy(batteryHoursLeft = hours)
                 }
             }
         }
 
         override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray, status: Int) {
-            if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == T300GattConfig.BATTERY_LEVEL_CHAR) {
+            if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == BluetoothConfig.BATTERY_LEVEL_CHAR) {
                 handleBatteryCharValue(value)
             }
         }
 
         @Deprecated("Deprecated in Java")
         override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
-            if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == T300GattConfig.BATTERY_LEVEL_CHAR) {
+            if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == BluetoothConfig.BATTERY_LEVEL_CHAR) {
                 @Suppress("DEPRECATION")
                 characteristic.value?.let { handleBatteryCharValue(it) }
             }
@@ -2295,7 +2330,7 @@ class T300BleManager(private val context: Context) {
                 jblAcc = rem
                 for (pkt in pkts) handleIncomingJblPacket(pkt)
             } else {
-                T300Protocol.parseFrame(bytes)?.let { handleIncomingFrame(it) }
+                BudsProtocol.parseFrame(bytes)?.let { handleIncomingFrame(it) }
             }
         }
 
@@ -2313,13 +2348,13 @@ class T300BleManager(private val context: Context) {
     /**
      * Обработка распарсенного кадра TL-протокола
      */
-    private fun handleIncomingFrame(frame: T300Protocol.Frame) {
+    private fun handleIncomingFrame(frame: BudsProtocol.Frame) {
         val hexCmd = "0x" + frame.command.toString(16).uppercase().padStart(4, '0')
         val hexPayload = frame.payload.joinToString(" ") { "%02X".format(it) }
 
         when (frame.command) {
-            T300Protocol.CMD_BATTERY_RSP -> {
-                val parsed = T300Protocol.parseBatteryPayload(frame.payload)
+            BudsProtocol.CMD_BATTERY_RSP -> {
+                val parsed = BudsProtocol.parseBatteryPayload(frame.payload)
                 val batteries = normalizeBatteries(parsed)
                 val validBatteries = batteries.filter { it.level >= 0 }
                 val batteryStrs = validBatteries.map {
@@ -2334,59 +2369,59 @@ class T300BleManager(private val context: Context) {
                 val isSnapshot = frame.payload.size >= 2 && frame.payload[0].toInt() == 0
                 updateBatteryState(batteries, isSnapshot = isSnapshot)
             }
-            T300Protocol.CMD_ANC_STATE_RSP -> {
+            BudsProtocol.CMD_ANC_STATE_RSP -> {
                 log("RX $hexCmd [$hexPayload]")
-                val mode = T300Protocol.parseAncStatePayload(frame.payload)
-                val level = T300Protocol.parseAncStateLevel(frame.payload)
+                val mode = BudsProtocol.parseAncStatePayload(frame.payload)
+                val level = BudsProtocol.parseAncStateLevel(frame.payload)
                 if (mode != null) {
                     log("RX ANC State: ${mode.name}${if (level != null) " (${level.name})" else ""}")
-                    _t300State.value = _t300State.value.copy(
+                    _budsState.value = _budsState.value.copy(
                         ancMode = mode,
-                        ancLevel = level ?: _t300State.value.ancLevel
+                        ancLevel = level ?: _budsState.value.ancLevel
                     )
                 }
             }
-            T300Protocol.CMD_SWITCH_FEATURE_RSP -> {
+            BudsProtocol.CMD_SWITCH_FEATURE_RSP -> {
                 log("RX $hexCmd [$hexPayload]")
-                val gm = T300Protocol.parseSwitchFeaturePayload(frame.payload, T300Protocol.FEATURE_ID_GAME_MODE)
+                val gm = BudsProtocol.parseSwitchFeaturePayload(frame.payload, BudsProtocol.FEATURE_ID_GAME_MODE)
                 if (gm != null) {
                     log("RX GameMode State: ${if (gm) "ON" else "OFF"}")
-                    _t300State.value = _t300State.value.copy(gameMode = gm)
+                    _budsState.value = _budsState.value.copy(gameMode = gm)
                 }
-                val sa = T300Protocol.parseSwitchFeaturePayload(frame.payload, T300Protocol.FEATURE_ID_SPATIAL_AUDIO)
+                val sa = BudsProtocol.parseSwitchFeaturePayload(frame.payload, BudsProtocol.FEATURE_ID_SPATIAL_AUDIO)
                 if (sa != null) {
                     log("RX SpatialAudio State: ${if (sa) "ON" else "OFF"}")
-                    _t300State.value = _t300State.value.copy(spatialAudio = sa)
+                    _budsState.value = _budsState.value.copy(spatialAudio = sa)
                 }
-                val hq = T300Protocol.parseSwitchFeaturePayload(frame.payload, T300Protocol.FEATURE_ID_HIGH_QUALITY_AUDIO)
+                val hq = BudsProtocol.parseSwitchFeaturePayload(frame.payload, BudsProtocol.FEATURE_ID_HIGH_QUALITY_AUDIO)
                 if (hq != null) {
                     val codecLabel = if (activeModel.usesLhdc) "LHDC 5.0" else "LDAC"
                     log("RX HighQualityAudio ($codecLabel) State: ${if (hq) "ON" else "OFF"}")
-                    _t300State.value = _t300State.value.copy(highQualityAudio = hq)
+                    _budsState.value = _budsState.value.copy(highQualityAudio = hq)
                 }
-                val da = T300Protocol.parseSwitchFeaturePayload(frame.payload, T300Protocol.FEATURE_ID_DYNAMIC_AUDIO)
+                val da = BudsProtocol.parseSwitchFeaturePayload(frame.payload, BudsProtocol.FEATURE_ID_DYNAMIC_AUDIO)
                 if (da != null) {
                     log("RX DynamicAudio State: ${if (da) "ON" else "OFF"}")
-                    _t300State.value = _t300State.value.copy(dynamicAudio = da)
+                    _budsState.value = _budsState.value.copy(dynamicAudio = da)
                 }
-                val dc = T300Protocol.parseSwitchFeaturePayload(frame.payload, T300Protocol.FEATURE_ID_DUAL_CONNECTION)
+                val dc = BudsProtocol.parseSwitchFeaturePayload(frame.payload, BudsProtocol.FEATURE_ID_DUAL_CONNECTION)
                 if (dc != null) {
                     log("RX DualConnection State: ${if (dc) "ON" else "OFF"}")
-                    _t300State.value = _t300State.value.copy(dualConnection = dc)
+                    _budsState.value = _budsState.value.copy(dualConnection = dc)
                 }
-                val app = T300Protocol.parseSwitchFeaturePayload(frame.payload, T300Protocol.FEATURE_ID_AUTO_PLAY_PAUSE)
+                val app = BudsProtocol.parseSwitchFeaturePayload(frame.payload, BudsProtocol.FEATURE_ID_AUTO_PLAY_PAUSE)
                 if (app != null) {
                     log("RX AutoPlayPause State: ${if (app) "ON" else "OFF"}")
-                    _t300State.value = _t300State.value.copy(autoPlayPause = app)
+                    _budsState.value = _budsState.value.copy(autoPlayPause = app)
                 }
-                val aa = T300Protocol.parseSwitchFeaturePayload(frame.payload, T300Protocol.FEATURE_ID_AUTO_ANSWER)
+                val aa = BudsProtocol.parseSwitchFeaturePayload(frame.payload, BudsProtocol.FEATURE_ID_AUTO_ANSWER)
                 if (aa != null) {
                     log("RX AutoAnswer State: ${if (aa) "ON" else "OFF"}")
-                    _t300State.value = _t300State.value.copy(autoAnswer = aa)
+                    _budsState.value = _budsState.value.copy(autoAnswer = aa)
                 }
             }
-            T300Protocol.CMD_SWITCH_FEATURE_SET_RSP -> {
-                val ok = T300Protocol.parseSwitchFeatureSetResponse(frame.payload)
+            BudsProtocol.CMD_SWITCH_FEATURE_SET_RSP -> {
+                val ok = BudsProtocol.parseSwitchFeatureSetResponse(frame.payload)
                 log("RX SwitchFeature Set Rsp [$hexPayload] -> ${if (ok) "✓ Confirmed" else "✗ Error"}")
                 if (ok) {
                     refreshGameMode()
@@ -2401,66 +2436,66 @@ class T300BleManager(private val context: Context) {
                     if (activeModel.supportsAutoAnswer) refreshAutoAnswer()
                 }
             }
-            T300Protocol.CMD_MULTI_CONNECT_INFO_RSP -> {
+            BudsProtocol.CMD_MULTI_CONNECT_INFO_RSP -> {
                 log("RX $hexCmd [$hexPayload]")
-                val devices = T300Protocol.parseMultiConnectInfoPayload(frame.payload, hasStatusByte = true)
+                val devices = BudsProtocol.parseMultiConnectInfoPayload(frame.payload, hasStatusByte = true)
                 if (devices != null) {
                     log("RX MultiConnect Devices: ${devices.map { "${it.name} (${it.mac}, state=${it.connectState})" }}")
-                    _t300State.value = _t300State.value.copy(connectedDevices = devices)
+                    _budsState.value = _budsState.value.copy(connectedDevices = devices)
                 }
             }
-            T300Protocol.CMD_USE_TIME_RSP -> {
+            BudsProtocol.CMD_USE_TIME_RSP -> {
                 log("RX $hexCmd [$hexPayload]")
-                val useTimes = T300Protocol.parseUseTimePayload(frame.payload)
+                val useTimes = BudsProtocol.parseUseTimePayload(frame.payload)
                 if (useTimes != null) {
                     val leftMin = useTimes[ComponentRole.LEFT_EAR]
                     val rightMin = useTimes[ComponentRole.RIGHT_EAR]
                     log("RX UseTime: L=${leftMin ?: -1}m, R=${rightMin ?: -1}m")
-                    _t300State.value = _t300State.value.copy(
-                        leftUseTimeMinutes = leftMin ?: _t300State.value.leftUseTimeMinutes,
-                        rightUseTimeMinutes = rightMin ?: _t300State.value.rightUseTimeMinutes
+                    _budsState.value = _budsState.value.copy(
+                        leftUseTimeMinutes = leftMin ?: _budsState.value.leftUseTimeMinutes,
+                        rightUseTimeMinutes = rightMin ?: _budsState.value.rightUseTimeMinutes
                     )
                 }
             }
-            T300Protocol.CMD_NOTIFICATION_REGISTER_RSP -> {
+            BudsProtocol.CMD_NOTIFICATION_REGISTER_RSP -> {
                 log("RX Event Reg Rsp [$hexPayload]")
             }
-            T300Protocol.CMD_ANC_RSP -> {
-                val ok = T300Protocol.parseAncResponse(frame.payload)
+            BudsProtocol.CMD_ANC_RSP -> {
+                val ok = BudsProtocol.parseAncResponse(frame.payload)
                 log("RX ANC Rsp [$hexPayload] -> ${if (ok) "✓ Confirmed" else "✗ Error"}")
                 if (ok) {
                     refreshAncState()
                 }
             }
-            T300Protocol.CMD_EQ_RSP -> {
+            BudsProtocol.CMD_EQ_RSP -> {
                 log("RX $hexCmd [$hexPayload]")
-                val rawId = T300Protocol.parseRawEqId(frame.payload)
-                val preset = T300Protocol.parseEqPayload(frame.payload)
+                val rawId = BudsProtocol.parseRawEqId(frame.payload)
+                val preset = BudsProtocol.parseEqPayload(frame.payload)
                 if (preset != null) {
                     log("RX EQ State: ${preset.name} (id=$rawId)")
                     applyStandardEqState(preset)
                 } else if (rawId != null) {
                     log("RX EQ State: Custom (rawId=$rawId)")
-                    _t300State.value = _t300State.value.copy(
+                    _budsState.value = _budsState.value.copy(
                         eqPreset = null
                     )
                     refreshAllEq()
                 }
             }
-            T300Protocol.CMD_EQ_SET_RSP -> {
-                val ok = T300Protocol.parseEqSetResponse(frame.payload)
+            BudsProtocol.CMD_EQ_SET_RSP -> {
+                val ok = BudsProtocol.parseEqSetResponse(frame.payload)
                 log("RX EQ Set Rsp [$hexPayload] -> ${if (ok) "✓ Confirmed" else "✗ Error"}")
                 if (ok) {
                     refreshEq()
                 }
             }
-            T300Protocol.CMD_ALL_EQ_RSP -> {
+            BudsProtocol.CMD_ALL_EQ_RSP -> {
                 log("RX $hexCmd [$hexPayload]")
-                val profiles = T300Protocol.parseCustomEqProfilesPayload(frame.payload)
+                val profiles = BudsProtocol.parseCustomEqProfilesPayload(frame.payload)
                 log("RX All EQ: ${profiles.map { "${it.name}(id=${it.id})${if (it.isSelected) " [active]" else ""}" }}")
                 val activeCustom = profiles.firstOrNull { it.isSelected }
-                _t300State.value = if (activeCustom != null) {
-                    _t300State.value.copy(
+                _budsState.value = if (activeCustom != null) {
+                    _budsState.value.copy(
                         eqPreset = null,
                         activeCustomEqId = activeCustom.id,
                         activeCustomEqName = activeCustom.name,
@@ -2469,14 +2504,14 @@ class T300BleManager(private val context: Context) {
                         customEqFreqs = activeCustom.freqs
                     )
                 } else {
-                    _t300State.value.copy(
+                    _budsState.value.copy(
                         customEqProfiles = profiles,
-                        customEqGains = _t300State.value.customEqGains.ifEmpty { profiles.firstOrNull()?.gains ?: emptyList() },
-                        customEqFreqs = _t300State.value.customEqFreqs.ifEmpty { profiles.firstOrNull()?.freqs ?: emptyList() }
+                        customEqGains = _budsState.value.customEqGains.ifEmpty { profiles.firstOrNull()?.gains ?: emptyList() },
+                        customEqFreqs = _budsState.value.customEqFreqs.ifEmpty { profiles.firstOrNull()?.freqs ?: emptyList() }
                     )
                 }
             }
-            T300Protocol.CMD_CUSTOM_EQ_SET_RSP -> {
+            BudsProtocol.CMD_CUSTOM_EQ_SET_RSP -> {
                 val ok = frame.payload.isNotEmpty() && frame.payload[0].toInt() == 0
                 log("RX CustomEQ Set Rsp [$hexPayload] -> ${if (ok) "OK" else "ERR"}")
                 if (ok) {
@@ -2488,49 +2523,49 @@ class T300BleManager(private val context: Context) {
                     }
                 }
             }
-            T300Protocol.CMD_KEY_FUNCTION_RSP -> {
+            BudsProtocol.CMD_KEY_FUNCTION_RSP -> {
                 log("RX $hexCmd [$hexPayload]")
-                val items = T300Protocol.parseKeyFunctionPayload(frame.payload)
+                val items = BudsProtocol.parseKeyFunctionPayload(frame.payload)
                 if (items.isNotEmpty()) {
                     log("RX KeySettings: ${items.map { "${it.side.name} ${it.gesture.name} = ${it.action.name}" }}")
-                    val currentMap = _t300State.value.touchSettings.toMutableMap()
+                    val currentMap = _budsState.value.touchSettings.toMutableMap()
                     for (item in items) {
                         currentMap[Pair(item.side, item.gesture)] = item.action
                     }
-                    _t300State.value = _t300State.value.copy(touchSettings = currentMap)
+                    _budsState.value = _budsState.value.copy(touchSettings = currentMap)
                 }
             }
-            T300Protocol.CMD_KEY_FUNCTION_SET_RSP -> {
-                val ok = T300Protocol.parseKeyFunctionSetResponse(frame.payload)
+            BudsProtocol.CMD_KEY_FUNCTION_SET_RSP -> {
+                val ok = BudsProtocol.parseKeyFunctionSetResponse(frame.payload)
                 log("RX KeySetting Set Rsp [$hexPayload] -> ${if (ok) "✓ Confirmed" else "✗ Error"}")
                 if (ok) {
                     refreshKeySettings()
                 }
             }
-            T300Protocol.CMD_EVENT -> {
+            BudsProtocol.CMD_EVENT -> {
                 log("RX Event $hexCmd [$hexPayload]")
                 if (frame.payload.isNotEmpty() && frame.payload[0].toInt() == 0x03) {
-                    val mode = T300Protocol.parseAncEventPayload(frame.payload)
-                    val level = T300Protocol.parseAncEventLevel(frame.payload)
+                    val mode = BudsProtocol.parseAncEventPayload(frame.payload)
+                    val level = BudsProtocol.parseAncEventLevel(frame.payload)
                     if (mode != null) {
                         log("RX Event: ANC switched to ${mode.name}${if (level != null) " (${level.name})" else ""}")
-                        _t300State.value = _t300State.value.copy(
+                        _budsState.value = _budsState.value.copy(
                             ancMode = mode,
-                            ancLevel = level ?: _t300State.value.ancLevel
+                            ancLevel = level ?: _budsState.value.ancLevel
                         )
                     }
-                } else if (frame.payload.isNotEmpty() && frame.payload[0] == T300Protocol.EVENT_TYPE_GAME_MODE) {
-                    val gm = T300Protocol.parseGameModeEventPayload(frame.payload)
+                } else if (frame.payload.isNotEmpty() && frame.payload[0] == BudsProtocol.EVENT_TYPE_GAME_MODE) {
+                    val gm = BudsProtocol.parseGameModeEventPayload(frame.payload)
                     if (gm != null) {
                         log("RX Event: GameMode switched to ${if (gm) "ON" else "OFF"}")
-                        _t300State.value = _t300State.value.copy(gameMode = gm)
+                        _budsState.value = _budsState.value.copy(gameMode = gm)
                     }
-                } else if (frame.payload.size > 1 && frame.payload[0] == T300Protocol.EVENT_TYPE_MULTI_CONNECT) {
+                } else if (frame.payload.size > 1 && frame.payload[0] == BudsProtocol.EVENT_TYPE_MULTI_CONNECT) {
                     val subPayload = frame.payload.copyOfRange(1, frame.payload.size)
-                    val devices = T300Protocol.parseMultiConnectInfoPayload(subPayload, hasStatusByte = false)
+                    val devices = BudsProtocol.parseMultiConnectInfoPayload(subPayload, hasStatusByte = false)
                     if (devices != null) {
                         log("RX Event: MultiConnect devices updated: ${devices.map { "${it.name} (state=${it.connectState})" }}")
-                        _t300State.value = _t300State.value.copy(connectedDevices = devices)
+                        _budsState.value = _budsState.value.copy(connectedDevices = devices)
                     }
                 } else {
                     val eventType = if (frame.payload.isNotEmpty()) {
@@ -2541,16 +2576,16 @@ class T300BleManager(private val context: Context) {
                     scheduleStateRefresh("event $eventType")
                 }
             }
-            T300Protocol.CMD_NOTIFICATION -> {
+            BudsProtocol.CMD_NOTIFICATION -> {
                 log("RX Event $hexCmd [$hexPayload]")
-                val mode = T300Protocol.parseAncEventPayload(frame.payload)
-                val gm = T300Protocol.parseGameModeEventPayload(frame.payload)
+                val mode = BudsProtocol.parseAncEventPayload(frame.payload)
+                val gm = BudsProtocol.parseGameModeEventPayload(frame.payload)
                 if (mode != null) {
                     log("RX Event: ANC switched to ${mode.name}")
-                    _t300State.value = _t300State.value.copy(ancMode = mode)
+                    _budsState.value = _budsState.value.copy(ancMode = mode)
                 } else if (gm != null) {
                     log("RX Event: GameMode switched to ${if (gm) "ON" else "OFF"}")
-                    _t300State.value = _t300State.value.copy(gameMode = gm)
+                    _budsState.value = _budsState.value.copy(gameMode = gm)
                 } else {
                     val eventType = if (frame.payload.isNotEmpty()) {
                         "0x%02X".format(frame.payload[0])
@@ -2567,22 +2602,22 @@ class T300BleManager(private val context: Context) {
         }
     }
 
-    private fun normalizeBatteries(list: List<T300Protocol.BatteryInfo>): List<T300Protocol.BatteryInfo> =
+    private fun normalizeBatteries(list: List<BudsProtocol.BatteryInfo>): List<BudsProtocol.BatteryInfo> =
         list.map {
             if (it.role == ComponentRole.CASE && it.level == 0 && !it.isCharging)
-                T300Protocol.BatteryInfo(ComponentRole.CASE, -1, false)
+                BudsProtocol.BatteryInfo(ComponentRole.CASE, -1, false)
             else it
         }
 
-    private fun updateBatteryState(batteries: List<T300Protocol.BatteryInfo>, isSnapshot: Boolean = false) {
-        var current = _t300State.value
+    private fun updateBatteryState(batteries: List<BudsProtocol.BatteryInfo>, isSnapshot: Boolean = false) {
+        var current = _budsState.value
         if (isSnapshot) {
             val left = batteries.firstOrNull { it.role == ComponentRole.LEFT_EAR }
-                ?: T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, -1, false)
+                ?: BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, -1, false)
             val right = batteries.firstOrNull { it.role == ComponentRole.RIGHT_EAR }
-                ?: T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, -1, false)
+                ?: BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, -1, false)
             val case = batteries.firstOrNull { it.role == ComponentRole.CASE }
-                ?: T300Protocol.BatteryInfo(ComponentRole.CASE, -1, false)
+                ?: BudsProtocol.BatteryInfo(ComponentRole.CASE, -1, false)
 
             current = current.copy(
                 leftBattery = left,
@@ -2598,7 +2633,7 @@ class T300BleManager(private val context: Context) {
                 }
             }
         }
-        _t300State.value = current
+        _budsState.value = current
     }
 
     /**
@@ -2612,7 +2647,7 @@ class T300BleManager(private val context: Context) {
                 val p1 = pkg.param(1) // global (1B)
                 val p2 = pkg.param(2) // TWS [L, R, Case] (3B)
                 val p3 = pkg.param(3) // charging flags (1B or 3B)
-                val batteries = mutableListOf<T300Protocol.BatteryInfo>()
+                val batteries = mutableListOf<BudsProtocol.BatteryInfo>()
 
                 if (p2 != null && p2.size >= 3) {
                     val leftChg = p3 != null && p3.size >= 3 && p3[0].toInt() == 1
@@ -2624,15 +2659,15 @@ class T300BleManager(private val context: Context) {
                     val lLvl = if (lRaw in 1..100 || (lRaw == 0 && leftChg)) lRaw else -1
                     val rLvl = if (rRaw in 1..100 || (rRaw == 0 && rightChg)) rRaw else -1
                     val cLvl = if (cRaw in 1..100 || (cRaw == 0 && caseChg)) cRaw else -1
-                    batteries.add(T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, lLvl, leftChg))
-                    batteries.add(T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, rLvl, rightChg))
-                    batteries.add(T300Protocol.BatteryInfo(ComponentRole.CASE, cLvl, caseChg))
+                    batteries.add(BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, lLvl, leftChg))
+                    batteries.add(BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, rLvl, rightChg))
+                    batteries.add(BudsProtocol.BatteryInfo(ComponentRole.CASE, cLvl, caseChg))
                 } else if (p1 != null && p1.isNotEmpty()) {
                     val gLvl = (p1[0].toInt() and 0xFF).let { if (it in 0..100) it else -1 }
                     val gChg = p3 != null && p3.any { it.toInt() == 1 }
-                    batteries.add(T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, gLvl, gChg))
-                    batteries.add(T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, gLvl, gChg))
-                    batteries.add(T300Protocol.BatteryInfo(ComponentRole.CASE, -1, false))
+                    batteries.add(BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, gLvl, gChg))
+                    batteries.add(BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, gLvl, gChg))
+                    batteries.add(BudsProtocol.BatteryInfo(ComponentRole.CASE, -1, false))
                 }
 
                 if (batteries.isNotEmpty()) {
@@ -2663,7 +2698,7 @@ class T300BleManager(private val context: Context) {
                     } else null
                     if (ancMode != null) {
                         log("RX Huawei/Honor ANC: ${ancMode.name}${if (ancLevel != null) " (${ancLevel.name})" else ""}")
-                        _t300State.value = _t300State.value.copy(ancMode = ancMode, ancLevel = ancLevel)
+                        _budsState.value = _budsState.value.copy(ancMode = ancMode, ancLevel = ancLevel)
                     }
                 }
             }
@@ -2676,7 +2711,7 @@ class T300BleManager(private val context: Context) {
                 if (v != null && v.isNotEmpty()) {
                     val on = (v[0].toInt() and 0xFF) == 1
                     log("RX Huawei LowLatency: ${if (on) "ON" else "OFF"}")
-                    _t300State.value = _t300State.value.copy(gameMode = on)
+                    _budsState.value = _budsState.value.copy(gameMode = on)
                 }
             }
             HuaweiProtocol.CMD_AUTO_PAUSE_READ -> {
@@ -2684,7 +2719,7 @@ class T300BleManager(private val context: Context) {
                 if (v != null && v.isNotEmpty()) {
                     val on = (v[0].toInt() and 0xFF) == 1
                     log("RX Huawei AutoPause: ${if (on) "ON" else "OFF"}")
-                    _t300State.value = _t300State.value.copy(autoPlayPause = on)
+                    _budsState.value = _budsState.value.copy(autoPlayPause = on)
                 }
             }
             HuaweiProtocol.CMD_SOUND_QUALITY_READ -> {
@@ -2692,7 +2727,7 @@ class T300BleManager(private val context: Context) {
                 if (v != null && v.isNotEmpty()) {
                     val hq = (v[0].toInt() and 0xFF) == 1
                     log("RX Huawei SoundQuality: ${if (hq) "QUALITY" else "CONNECTIVITY"}")
-                    _t300State.value = _t300State.value.copy(highQualityAudio = hq)
+                    _budsState.value = _budsState.value.copy(highQualityAudio = hq)
                 }
             }
             HuaweiProtocol.CMD_EQ_READ -> {
@@ -2705,7 +2740,7 @@ class T300BleManager(private val context: Context) {
                     val preset = HuaweiProtocol.huaweiIdToEqPreset(modeId, activeModel.huaweiEqUsesPro3Ids)
                     if (preset != null) {
                         log("RX Huawei EQ: ${preset.name} (id=$modeId)")
-                        _t300State.value = _t300State.value.copy(
+                        _budsState.value = _budsState.value.copy(
                             eqPreset = preset,
                             activeCustomEqId = null,
                             activeCustomEqName = null,
@@ -2714,17 +2749,17 @@ class T300BleManager(private val context: Context) {
                     } else {
                         val customName = activeCustom?.name ?: "EQ #$modeId"
                         log("RX Huawei EQ Custom: $customName (id=$modeId)")
-                        _t300State.value = _t300State.value.copy(
+                        _budsState.value = _budsState.value.copy(
                             eqPreset = null,
                             activeCustomEqId = modeId,
                             activeCustomEqName = customName,
                             customEqProfiles = customProfiles,
-                            customEqGains = activeCustom?.gains ?: _t300State.value.customEqGains,
-                            customEqFreqs = activeCustom?.freqs ?: _t300State.value.customEqFreqs
+                            customEqGains = activeCustom?.gains ?: _budsState.value.customEqGains,
+                            customEqFreqs = activeCustom?.freqs ?: _budsState.value.customEqFreqs
                         )
                     }
                 } else if (customProfiles.isNotEmpty()) {
-                    _t300State.value = _t300State.value.copy(customEqProfiles = customProfiles)
+                    _budsState.value = _budsState.value.copy(customEqProfiles = customProfiles)
                 }
             }
             HuaweiProtocol.CMD_DUAL_CONNECT_READ -> {
@@ -2732,7 +2767,7 @@ class T300BleManager(private val context: Context) {
                 if (v != null && v.isNotEmpty()) {
                     val on = (v[0].toInt() and 0xFF) == 1
                     log("RX Huawei DualConnect: ${if (on) "ON" else "OFF"}")
-                    _t300State.value = _t300State.value.copy(dualConnection = on)
+                    _budsState.value = _budsState.value.copy(dualConnection = on)
                 }
             }
             HuaweiProtocol.CMD_DUAL_CONNECT_ENUMERATE -> {
@@ -2747,10 +2782,10 @@ class T300BleManager(private val context: Context) {
                     val name = if (nameBytes != null && nameBytes.isNotEmpty()) {
                         String(nameBytes, Charsets.UTF_8).trimEnd('\u0000')
                     } else mac
-                    huaweiMultiDevices[idx] = T300Protocol.ConnectedDeviceInfo(mac, name, connState, 0)
+                    huaweiMultiDevices[idx] = BudsProtocol.ConnectedDeviceInfo(mac, name, connState, 0)
                     val sorted = huaweiMultiDevices.entries.sortedBy { it.key }.map { it.value }
                     log("RX Huawei DualConnect Device: $name ($mac, state=$connState)")
-                    _t300State.value = _t300State.value.copy(connectedDevices = sorted)
+                    _budsState.value = _budsState.value.copy(connectedDevices = sorted)
                 }
             }
             HuaweiProtocol.CMD_DUAL_CONNECT_CHANGE_EVENT -> {
@@ -2765,10 +2800,10 @@ class T300BleManager(private val context: Context) {
                     HuaweiProtocol.CMD_TRIPLE_TAP_READ -> TouchGesture.TRIPLE_TAP
                     else -> TouchGesture.LONG_PRESS
                 }
-                val isFb3 = activeModel == T300Protocol.BudsModel.HUAWEI_FREEBUDS_3
+                val isFb3 = activeModel == BudsProtocol.BudsModel.HUAWEI_FREEBUDS_3
                 val left = pkg.param(1)
                 val right = pkg.param(2)
-                val map = _t300State.value.touchSettings.toMutableMap()
+                val map = _budsState.value.touchSettings.toMutableMap()
                 if (left != null && left.isNotEmpty()) {
                     map[Pair(TouchSide.LEFT, gesture)] =
                         HuaweiProtocol.huaweiTapCodeToAction(left[0].toInt(), gesture, isFb3)
@@ -2778,7 +2813,7 @@ class T300BleManager(private val context: Context) {
                         HuaweiProtocol.huaweiTapCodeToAction(right[0].toInt(), gesture, isFb3)
                 }
                 log("RX Huawei Key [${gesture.name}] updated")
-                _t300State.value = _t300State.value.copy(touchSettings = map)
+                _budsState.value = _budsState.value.copy(touchSettings = map)
             }
             else -> {
                 log("RX Huawei $hexCmd (${pkg.params.size} params)")
@@ -2819,7 +2854,7 @@ class T300BleManager(private val context: Context) {
                 if (parsed != null) {
                     val (mode, level) = parsed
                     log("RX Nothing ANC: ${mode.name}${if (level != null) " (${level.name})" else ""}")
-                    _t300State.value = _t300State.value.copy(ancMode = mode, ancLevel = level ?: _t300State.value.ancLevel)
+                    _budsState.value = _budsState.value.copy(ancMode = mode, ancLevel = level ?: _budsState.value.ancLevel)
                 }
             }
             NothingProtocol.CMD_EQ_CLASSIC_RSP,
@@ -2832,7 +2867,7 @@ class T300BleManager(private val context: Context) {
                     if (preset != null) {
                         applyStandardEqState(preset)
                     } else {
-                        _t300State.value = _t300State.value.copy(eqPreset = null, activeCustomEqName = customName)
+                        _budsState.value = _budsState.value.copy(eqPreset = null, activeCustomEqName = customName)
                     }
                 }
             }
@@ -2840,21 +2875,21 @@ class T300BleManager(private val context: Context) {
                 val gains = NothingProtocol.parseCustomEqPayload(p)
                 if (gains != null) {
                     log("RX Nothing CustomEQ: $gains")
-                    _t300State.value = _t300State.value.copy(customEqGains = gains)
+                    _budsState.value = _budsState.value.copy(customEqGains = gains)
                 }
             }
             NothingProtocol.CMD_IN_EAR_RSP -> {
                 val on = NothingProtocol.parseInEarPayload(p)
                 if (on != null) {
                     log("RX Nothing InEar: ${if (on) "ON" else "OFF"}")
-                    _t300State.value = _t300State.value.copy(autoPlayPause = on)
+                    _budsState.value = _budsState.value.copy(autoPlayPause = on)
                 }
             }
             NothingProtocol.CMD_LOW_LATENCY_RSP -> {
                 if (p.isNotEmpty()) {
                     val on = (p[0].toInt() and 0xFF) == 1
                     log("RX Nothing LowLatency: ${if (on) "ON" else "OFF"}")
-                    _t300State.value = _t300State.value.copy(gameMode = on)
+                    _budsState.value = _budsState.value.copy(gameMode = on)
                 }
             }
             NothingProtocol.CMD_BASS_BOOST_RSP -> {
@@ -2863,14 +2898,14 @@ class T300BleManager(private val context: Context) {
                     val (on, lvl) = parsed
                     nothingLastBassLevel = lvl
                     log("RX Nothing BassBoost: ${if (on) "ON" else "OFF"} (lvl=$lvl)")
-                    _t300State.value = _t300State.value.copy(dynamicAudio = on, bassLevel = lvl)
+                    _budsState.value = _budsState.value.copy(dynamicAudio = on, bassLevel = lvl)
                 }
             }
             NothingProtocol.CMD_SPATIAL_RSP -> {
                 val mode = NothingProtocol.parseSpatialPayload(p)
                 if (mode != null) {
                     log("RX Nothing SpatialAudio: mode=$mode")
-                    _t300State.value = _t300State.value.copy(
+                    _budsState.value = _budsState.value.copy(
                         spatialAudioMode = mode,
                         spatialAudio = mode != NothingProtocol.SPATIAL_OFF
                     )
@@ -2880,9 +2915,9 @@ class T300BleManager(private val context: Context) {
                 val items = NothingProtocol.parseGesturesPayload(p)
                 if (items.isNotEmpty()) {
                     log("RX Nothing Gestures: ${items.size} mappings")
-                    val map = _t300State.value.touchSettings.toMutableMap()
+                    val map = _budsState.value.touchSettings.toMutableMap()
                     for (it in items) map[Pair(it.side, it.gesture)] = it.action
-                    _t300State.value = _t300State.value.copy(touchSettings = map)
+                    _budsState.value = _budsState.value.copy(touchSettings = map)
                 }
             }
             else -> {
@@ -2911,16 +2946,16 @@ class T300BleManager(private val context: Context) {
                     }
                     log("RX Galaxy ExtendedStatus -> $valid, anc=${parsed.ancMode}, eq=${parsed.eqPreset ?: parsed.customEqName}")
                     updateBatteryState(parsed.batteries, isSnapshot = true)
-                    _t300State.value = _t300State.value.copy(
-                        ancMode = parsed.ancMode ?: _t300State.value.ancMode,
+                    _budsState.value = _budsState.value.copy(
+                        ancMode = parsed.ancMode ?: _budsState.value.ancMode,
                         eqPreset = parsed.eqPreset,
                         activeCustomEqName = parsed.customEqName,
-                        dualConnection = parsed.seamlessConnection ?: _t300State.value.dualConnection
+                        dualConnection = parsed.seamlessConnection ?: _budsState.value.dualConnection
                     )
                 }
                 if (!galaxyManagerInfoSent) {
                     galaxyManagerInfoSent = true
-                    val legacy = activeModel == T300Protocol.BudsModel.GALAXY_BUDS
+                    val legacy = activeModel == BudsProtocol.BudsModel.GALAXY_BUDS
                     log("TX Galaxy ManagerInfo (0x88)")
                     sendRawBytes(GalaxyProtocol.buildManagerInfo(legacy))
                 }
@@ -2945,7 +2980,7 @@ class T300BleManager(private val context: Context) {
                     val mode = GalaxyProtocol.mapNoiseControlByte(p[0].toInt() and 0xFF)
                     if (mode != null) {
                         log("RX Galaxy ANC: ${mode.name}")
-                        _t300State.value = _t300State.value.copy(ancMode = mode)
+                        _budsState.value = _budsState.value.copy(ancMode = mode)
                     }
                 }
             }
@@ -2953,14 +2988,14 @@ class T300BleManager(private val context: Context) {
                 if (p.isNotEmpty()) {
                     val mode = if ((p[0].toInt() and 0xFF) == 1) AncMode.TRANSPARENCY else AncMode.OFF
                     log("RX Galaxy Ambient: ${mode.name}")
-                    _t300State.value = _t300State.value.copy(ancMode = mode)
+                    _budsState.value = _budsState.value.copy(ancMode = mode)
                 }
             }
             GalaxyProtocol.MSG_NOISE_REDUCTION_UPDATE -> {
                 if (p.isNotEmpty()) {
                     val mode = if ((p[0].toInt() and 0xFF) == 1) AncMode.NOISE_REDUCTION else AncMode.OFF
                     log("RX Galaxy NoiseReduction: ${mode.name}")
-                    _t300State.value = _t300State.value.copy(ancMode = mode)
+                    _budsState.value = _budsState.value.copy(ancMode = mode)
                 }
             }
             else -> {
@@ -2986,26 +3021,26 @@ class T300BleManager(private val context: Context) {
             SonyProtocol.CMD_POWER_NTFY_STATUS -> {
                 if (p.size < 4) return
                 val inq = p[1].toInt() and 0xFF
-                val batteries = mutableListOf<T300Protocol.BatteryInfo>()
+                val batteries = mutableListOf<BudsProtocol.BatteryInfo>()
                 when (inq) {
                     0x00 -> { // Single battery
                         val lvl = (p[2].toInt() and 0xFF).let { if (it in 0..100) it else -1 }
                         val chg = (p[3].toInt() and 0xFF) == 1
-                        batteries.add(T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, lvl, chg))
-                        batteries.add(T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, lvl, chg))
+                        batteries.add(BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, lvl, chg))
+                        batteries.add(BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, lvl, chg))
                     }
                     0x01 -> if (p.size >= 6) { // Left & Right
                         val ll = (p[2].toInt() and 0xFF).let { if (it in 0..100) it else -1 }
                         val lc = (p[3].toInt() and 0xFF) == 1
                         val rl = (p[4].toInt() and 0xFF).let { if (it in 0..100) it else -1 }
                         val rc = (p[5].toInt() and 0xFF) == 1
-                        batteries.add(T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, ll, lc))
-                        batteries.add(T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, rl, rc))
+                        batteries.add(BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, ll, lc))
+                        batteries.add(BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, rl, rc))
                     }
                     0x02 -> { // Cradle
                         val cl = (p[2].toInt() and 0xFF).let { if (it in 0..100) it else -1 }
                         val cc = (p[3].toInt() and 0xFF) == 1
-                        batteries.add(T300Protocol.BatteryInfo(ComponentRole.CASE, if (cl == 0 && !cc) -1 else cl, cc))
+                        batteries.add(BudsProtocol.BatteryInfo(ComponentRole.CASE, if (cl == 0 && !cc) -1 else cl, cc))
                     }
                 }
                 if (batteries.isNotEmpty()) updateBatteryState(batteries, isSnapshot = false)
@@ -3021,7 +3056,7 @@ class T300BleManager(private val context: Context) {
                         else -> AncMode.TRANSPARENCY
                     }
                     log("RX Sony ANC: ${mode.name}")
-                    _t300State.value = _t300State.value.copy(ancMode = mode)
+                    _budsState.value = _budsState.value.copy(ancMode = mode)
                 }
             }
             SonyProtocol.CMD_EQ_RET_PARAM,
@@ -3035,7 +3070,7 @@ class T300BleManager(private val context: Context) {
                         0x05 -> EqPreset.DEEP_BASS
                         else -> null
                     }
-                    var gains = _t300State.value.customEqGains
+                    var gains = _budsState.value.customEqGains
                     if (p.size >= 4) {
                         val bCount = p[3].toInt() and 0xFF
                         if (bCount in 5..6 && p.size >= 4 + bCount) {
@@ -3047,7 +3082,7 @@ class T300BleManager(private val context: Context) {
                         presetId == 0xA0 -> "Custom"
                         else -> "Preset #$presetId"
                     }
-                    _t300State.value = _t300State.value.copy(
+                    _budsState.value = _budsState.value.copy(
                         eqPreset = eq,
                         activeCustomEqName = customLabel,
                         customEqGains = gains
@@ -3086,9 +3121,9 @@ class T300BleManager(private val context: Context) {
                             raw <= 4 -> HuaweiProtocol.AncLevel.GENERAL
                             else -> HuaweiProtocol.AncLevel.COMFORT
                         }
-                        _t300State.value = _t300State.value.copy(
+                        _budsState.value = _budsState.value.copy(
                             ancMode = mode,
-                            ancLevel = if (mode == AncMode.NOISE_REDUCTION) lvl else _t300State.value.ancLevel
+                            ancLevel = if (mode == AncMode.NOISE_REDUCTION) lvl else _budsState.value.ancLevel
                         )
                     }
                     BoseProtocol.FUNC_ANR.toInt() -> {
@@ -3097,7 +3132,7 @@ class T300BleManager(private val context: Context) {
                             3 -> AncMode.TRANSPARENCY
                             else -> AncMode.NOISE_REDUCTION
                         }
-                        _t300State.value = _t300State.value.copy(ancMode = mode)
+                        _budsState.value = _budsState.value.copy(ancMode = mode)
                     }
                     BoseProtocol.FUNC_EQUALIZER.toInt() -> {
                         val gains = when {
@@ -3108,17 +3143,17 @@ class T300BleManager(private val context: Context) {
                         if (gains != null) {
                             val clamped = gains.map { it.coerceIn(-10, 10) }
                             log("RX Bose EQ: $clamped")
-                            _t300State.value = _t300State.value.copy(customEqGains = clamped)
+                            _budsState.value = _budsState.value.copy(customEqGains = clamped)
                         }
                     }
                     BoseProtocol.FUNC_MULTIPOINT.toInt() -> {
-                        _t300State.value = _t300State.value.copy(dualConnection = (p[0].toInt() and 0x01) != 0)
+                        _budsState.value = _budsState.value.copy(dualConnection = (p[0].toInt() and 0x01) != 0)
                     }
                     BoseProtocol.FUNC_AUTO_PAUSE.toInt() -> {
-                        _t300State.value = _t300State.value.copy(autoPlayPause = (p[0].toInt() and 0xFF) != 0)
+                        _budsState.value = _budsState.value.copy(autoPlayPause = (p[0].toInt() and 0xFF) != 0)
                     }
                     BoseProtocol.FUNC_AUTO_ANSWER.toInt() -> {
-                        _t300State.value = _t300State.value.copy(autoAnswer = (p[0].toInt() and 0xFF) != 0)
+                        _budsState.value = _budsState.value.copy(autoAnswer = (p[0].toInt() and 0xFF) != 0)
                     }
                 }
             }
@@ -3135,22 +3170,22 @@ class T300BleManager(private val context: Context) {
                 if (b.size >= 2) {
                     val l = SoundcoreProtocol.scaleBat(b[0].toInt() and 0xFF)
                     val r = SoundcoreProtocol.scaleBat(b[1].toInt() and 0xFF)
-                    val cur = _t300State.value
+                    val cur = _budsState.value
                     updateBatteryState(listOf(
-                        T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, l, cur.leftBattery.isCharging),
-                        T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, r, cur.rightBattery.isCharging)
+                        BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, l, cur.leftBattery.isCharging),
+                        BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, r, cur.rightBattery.isCharging)
                     ), isSnapshot = false)
                 } else if (b.size == 1) {
                     val g = SoundcoreProtocol.scaleBat(b[0].toInt() and 0xFF)
-                    val cur = _t300State.value
+                    val cur = _budsState.value
                     updateBatteryState(listOf(
-                        T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, g, cur.leftBattery.isCharging),
-                        T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, g, cur.rightBattery.isCharging)
+                        BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, g, cur.leftBattery.isCharging),
+                        BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, g, cur.rightBattery.isCharging)
                     ), isSnapshot = false)
                 }
             }
             SoundcoreProtocol.CMD_BATTERY_CHARGING -> {
-                val cur = _t300State.value
+                val cur = _budsState.value
                 if (b.size >= 2) {
                     updateBatteryState(listOf(
                         cur.leftBattery.copy(isCharging = b[0].toInt() == 1),
@@ -3175,26 +3210,26 @@ class T300BleManager(private val context: Context) {
                         2 -> HuaweiProtocol.AncLevel.COMFORT
                         else -> null
                     }
-                    _t300State.value = _t300State.value.copy(
+                    _budsState.value = _budsState.value.copy(
                         ancMode = mode,
-                        ancLevel = if (mode == AncMode.NOISE_REDUCTION) (lvl ?: _t300State.value.ancLevel) else _t300State.value.ancLevel
+                        ancLevel = if (mode == AncMode.NOISE_REDUCTION) (lvl ?: _budsState.value.ancLevel) else _budsState.value.ancLevel
                     )
                 }
             }
             SoundcoreProtocol.CMD_GAMING_UPDATE -> {
-                if (b.isNotEmpty()) _t300State.value = _t300State.value.copy(gameMode = b[0].toInt() == 1)
+                if (b.isNotEmpty()) _budsState.value = _budsState.value.copy(gameMode = b[0].toInt() == 1)
             }
             SoundcoreProtocol.CMD_STATE -> {
                 // Single-headphone (Q30/Q35/Q45) vs Dual-bud state prefix
                 if (b.size >= 6) {
-                    val isSingle = activeModel == T300Protocol.BudsModel.SOUNDCORE_LIFE_Q30 ||
-                        activeModel == T300Protocol.BudsModel.SOUNDCORE_SPACE_Q45
+                    val isSingle = activeModel == BudsProtocol.BudsModel.SOUNDCORE_LIFE_Q30 ||
+                        activeModel == BudsProtocol.BudsModel.SOUNDCORE_SPACE_Q45
                     if (isSingle) {
                         val lvl = SoundcoreProtocol.scaleBat(b[0].toInt() and 0xFF)
                         val chg = b[1].toInt() == 1
                         updateBatteryState(listOf(
-                            T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, lvl, chg),
-                            T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, lvl, chg)
+                            BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, lvl, chg),
+                            BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, lvl, chg)
                         ), isSnapshot = true)
                     } else {
                         val l = SoundcoreProtocol.scaleBat(b[2].toInt() and 0xFF)
@@ -3202,9 +3237,9 @@ class T300BleManager(private val context: Context) {
                         val lc = b[4].toInt() == 1
                         val rc = b[5].toInt() == 1
                         updateBatteryState(listOf(
-                            T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, l, lc),
-                            T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, r, rc),
-                            T300Protocol.BatteryInfo(ComponentRole.CASE, -1, false)
+                            BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, l, lc),
+                            BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, r, rc),
+                            BudsProtocol.BatteryInfo(ComponentRole.CASE, -1, false)
                         ), isSnapshot = true)
                     }
                 }
@@ -3270,9 +3305,9 @@ class T300BleManager(private val context: Context) {
                     val v = p[i + 2].toInt() and 0xFF
                     if (idx == 0x09 && l >= 2 && v <= 2) {
                         val mode = when (v) { 1 -> AncMode.NOISE_REDUCTION; 2 -> AncMode.TRANSPARENCY; else -> AncMode.OFF }
-                        _t300State.value = _t300State.value.copy(ancMode = mode)
+                        _budsState.value = _budsState.value.copy(ancMode = mode)
                     } else if (idx == 0x0A && l >= 2) {
-                        _t300State.value = _t300State.value.copy(autoPlayPause = v == 0)
+                        _budsState.value = _budsState.value.copy(autoPlayPause = v == 0)
                     }
                     i += l + 1
                 }
@@ -3291,7 +3326,7 @@ class T300BleManager(private val context: Context) {
                             val v = p[i + 2].toInt() and 0xFF
                             if (v <= 2) {
                                 val mode = when (v) { 1 -> AncMode.NOISE_REDUCTION; 2 -> AncMode.TRANSPARENCY; else -> AncMode.OFF }
-                                _t300State.value = _t300State.value.copy(ancMode = mode)
+                                _budsState.value = _budsState.value.copy(ancMode = mode)
                             }
                         }
                         i += l + 1
@@ -3307,14 +3342,14 @@ class T300BleManager(private val context: Context) {
                     val v = data[0].toInt() and 0xFF
                     when (key) {
                         XiaomiProtocol.CFG_AUTO_ANSWER -> {
-                            _t300State.value = _t300State.value.copy(autoAnswer = v != 0)
+                            _budsState.value = _budsState.value.copy(autoAnswer = v != 0)
                         }
                         XiaomiProtocol.CFG_MULTIPOINT -> {
-                            _t300State.value = _t300State.value.copy(dualConnection = v != 0)
+                            _budsState.value = _budsState.value.copy(dualConnection = v != 0)
                         }
                         XiaomiProtocol.CFG_LOW_LATENCY -> {
                             log("RX Xiaomi LowLatency (0x002F): ${if (v != 0) "ON" else "OFF"}")
-                            _t300State.value = _t300State.value.copy(gameMode = v != 0)
+                            _budsState.value = _budsState.value.copy(gameMode = v != 0)
                         }
                         XiaomiProtocol.CFG_EQ_PRESET -> {
                             val eq = when (v) {
@@ -3329,13 +3364,13 @@ class T300BleManager(private val context: Context) {
                                 v == 0xFF || v == 0x07 -> "Custom"
                                 else -> "EQ #$v"
                             }
-                            _t300State.value = _t300State.value.copy(eqPreset = eq, activeCustomEqName = customName)
+                            _budsState.value = _budsState.value.copy(eqPreset = eq, activeCustomEqName = customName)
                         }
                         XiaomiProtocol.CFG_CUSTOM_EQ -> {
                             val parsed = XiaomiProtocol.parseCustomEqValue(data)
                             if (parsed != null) {
                                 log("RX Xiaomi CustomEQ (0x0037): freqs=${parsed.first}, gains=${parsed.second}")
-                                _t300State.value = _t300State.value.copy(
+                                _budsState.value = _budsState.value.copy(
                                     customEqFreqs = parsed.first,
                                     customEqGains = parsed.second
                                 )
@@ -3349,7 +3384,7 @@ class T300BleManager(private val context: Context) {
                                 3 -> HuaweiProtocol.AncLevel.DYNAMIC
                                 else -> null
                             }
-                            if (lvl != null) _t300State.value = _t300State.value.copy(ancLevel = lvl)
+                            if (lvl != null) _budsState.value = _budsState.value.copy(ancLevel = lvl)
                         }
                     }
                 }
@@ -3371,34 +3406,34 @@ class T300BleManager(private val context: Context) {
         val v = p[0].toInt() and 0xFF
         when (pkg.baseCmd) {
             SennheiserProtocol.CMD_GET_BATTERY -> if (v <= 100) {
-                val cur = _t300State.value
+                val cur = _budsState.value
                 updateBatteryState(listOf(
-                    T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, v, cur.leftBattery.isCharging),
-                    T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, v, cur.rightBattery.isCharging)
+                    BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, v, cur.leftBattery.isCharging),
+                    BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, v, cur.rightBattery.isCharging)
                 ), isSnapshot = false)
             }
             SennheiserProtocol.CMD_GET_CHARGING -> {
                 val chg = v != 0
-                val cur = _t300State.value
+                val cur = _budsState.value
                 updateBatteryState(listOf(cur.leftBattery.copy(isCharging = chg), cur.rightBattery.copy(isCharging = chg)), isSnapshot = false)
             }
             SennheiserProtocol.CMD_GET_ANC_ENABLED -> {
-                if (v != 0) _t300State.value = _t300State.value.copy(ancMode = AncMode.NOISE_REDUCTION)
-                else if (_t300State.value.ancMode == AncMode.NOISE_REDUCTION) _t300State.value = _t300State.value.copy(ancMode = AncMode.OFF)
+                if (v != 0) _budsState.value = _budsState.value.copy(ancMode = AncMode.NOISE_REDUCTION)
+                else if (_budsState.value.ancMode == AncMode.NOISE_REDUCTION) _budsState.value = _budsState.value.copy(ancMode = AncMode.OFF)
             }
             SennheiserProtocol.CMD_GET_TRANSPARENT -> {
-                if (v != 0) _t300State.value = _t300State.value.copy(ancMode = AncMode.TRANSPARENCY)
-                else if (_t300State.value.ancMode == AncMode.TRANSPARENCY) _t300State.value = _t300State.value.copy(ancMode = AncMode.OFF)
+                if (v != 0) _budsState.value = _budsState.value.copy(ancMode = AncMode.TRANSPARENCY)
+                else if (_budsState.value.ancMode == AncMode.TRANSPARENCY) _budsState.value = _budsState.value.copy(ancMode = AncMode.OFF)
             }
-            SennheiserProtocol.CMD_GET_AUTO_PAUSE -> _t300State.value = _t300State.value.copy(autoPlayPause = v != 0)
-            SennheiserProtocol.CMD_GET_AUTO_ANSWER -> _t300State.value = _t300State.value.copy(autoAnswer = v != 0)
-            SennheiserProtocol.CMD_GET_SPATIAL -> _t300State.value = _t300State.value.copy(spatialAudio = v != 0)
+            SennheiserProtocol.CMD_GET_AUTO_PAUSE -> _budsState.value = _budsState.value.copy(autoPlayPause = v != 0)
+            SennheiserProtocol.CMD_GET_AUTO_ANSWER -> _budsState.value = _budsState.value.copy(autoAnswer = v != 0)
+            SennheiserProtocol.CMD_GET_SPATIAL -> _budsState.value = _budsState.value.copy(spatialAudio = v != 0)
             SennheiserProtocol.CMD_GET_EQ_GAINS -> if (p.size >= 5) {
                 val startOff = if (p.size >= 6) p.size - 5 else 0
                 val raw = List(5) { idx -> p[startOff + idx].toInt() } // signed bytes
                 val scaled = if (raw.any { kotlin.math.abs(it) > 6 }) raw.map { (it / 10).coerceIn(-6, 6) } else raw.map { it.coerceIn(-6, 6) }
                 log("RX Sennheiser EQ: $scaled")
-                _t300State.value = _t300State.value.copy(customEqGains = scaled)
+                _budsState.value = _budsState.value.copy(customEqGains = scaled)
             }
         }
     }
@@ -3421,7 +3456,7 @@ class T300BleManager(private val context: Context) {
                     4 -> AncMode.NOISE_REDUCTION
                     else -> null
                 }
-                if (mode != null) _t300State.value = _t300State.value.copy(ancMode = mode)
+                if (mode != null) _budsState.value = _budsState.value.copy(ancMode = mode)
             }
             JabraProtocol.FEAT_NOISE_MODE -> if (p.isNotEmpty()) {
                 val mode = when (p[0].toInt() and 0xFF) {
@@ -3430,7 +3465,7 @@ class T300BleManager(private val context: Context) {
                     3 -> AncMode.TRANSPARENCY
                     else -> null
                 }
-                if (mode != null) _t300State.value = _t300State.value.copy(ancMode = mode)
+                if (mode != null) _budsState.value = _budsState.value.copy(ancMode = mode)
             }
         }
     }
@@ -3460,7 +3495,7 @@ class T300BleManager(private val context: Context) {
         if (pkg.method == PixelBudsProtocol.METHOD_SUB_RUNTIME) {
             for (f in PixelBudsProtocol.readProtoFields(pkg.payload)) {
                 if (f.num == 6 && f.wire == 2) {
-                    val bats = mutableListOf<T300Protocol.BatteryInfo>()
+                    val bats = mutableListOf<BudsProtocol.BatteryInfo>()
                     for (part in PixelBudsProtocol.readProtoFields(f.bytes)) {
                         if (part.wire != 2) continue
                         var lvl = -1; var chg = false
@@ -3470,9 +3505,9 @@ class T300BleManager(private val context: Context) {
                         }
                         if (lvl !in 0..100) lvl = -1
                         when (part.num) {
-                            1 -> bats.add(T300Protocol.BatteryInfo(ComponentRole.CASE, lvl, chg))
-                            2 -> bats.add(T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, lvl, chg))
-                            3 -> bats.add(T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, lvl, chg))
+                            1 -> bats.add(BudsProtocol.BatteryInfo(ComponentRole.CASE, lvl, chg))
+                            2 -> bats.add(BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, lvl, chg))
+                            3 -> bats.add(BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, lvl, chg))
                         }
                     }
                     if (bats.isNotEmpty()) updateBatteryState(bats, isSnapshot = true)
@@ -3493,13 +3528,13 @@ class T300BleManager(private val context: Context) {
                                 }
                             }
                             log("RX PixelBuds EQ: $gains")
-                            _t300State.value = _t300State.value.copy(customEqGains = gains)
+                            _budsState.value = _budsState.value.copy(customEqGains = gains)
                             continue
                         }
                         if (sv.wire != 0) continue
                         when (sv.num) {
-                            PixelBudsProtocol.SETTING_OHD -> _t300State.value = _t300State.value.copy(autoPlayPause = sv.varint != 0L)
-                            PixelBudsProtocol.SETTING_MULTIPOINT -> _t300State.value = _t300State.value.copy(dualConnection = sv.varint != 0L)
+                            PixelBudsProtocol.SETTING_OHD -> _budsState.value = _budsState.value.copy(autoPlayPause = sv.varint != 0L)
+                            PixelBudsProtocol.SETTING_MULTIPOINT -> _budsState.value = _budsState.value.copy(dualConnection = sv.varint != 0L)
                             PixelBudsProtocol.SETTING_ANC -> {
                                 val mode = when (sv.varint.toInt()) {
                                     1 -> AncMode.OFF
@@ -3507,7 +3542,7 @@ class T300BleManager(private val context: Context) {
                                     3 -> AncMode.TRANSPARENCY
                                     else -> null
                                 }
-                                if (mode != null) _t300State.value = _t300State.value.copy(ancMode = mode)
+                                if (mode != null) _budsState.value = _budsState.value.copy(ancMode = mode)
                             }
                         }
                     }
@@ -3532,9 +3567,9 @@ class T300BleManager(private val context: Context) {
                 val (l2, c2) = dec(p[4].toInt() and 0xFF, p[2].toInt() and 0xFF)
                 val (lc, cc) = if (p.size >= 7) dec(p[6].toInt() and 0xFF, p[5].toInt() and 0xFF) else (-1 to false)
                 updateBatteryState(listOf(
-                    T300Protocol.BatteryInfo(ComponentRole.LEFT_EAR, l1, c1),
-                    T300Protocol.BatteryInfo(ComponentRole.RIGHT_EAR, l2, c2),
-                    T300Protocol.BatteryInfo(ComponentRole.CASE, lc, cc)
+                    BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, l1, c1),
+                    BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, l2, c2),
+                    BudsProtocol.BatteryInfo(ComponentRole.CASE, lc, cc)
                 ), isSnapshot = true)
             }
             JblProtocol.CMD_NOISE -> if (p.size >= 3 && (p[0].toInt() == 0x12 || p[0].toInt() == 0x10)) {
@@ -3552,12 +3587,12 @@ class T300BleManager(private val context: Context) {
                     ambOn -> AncMode.TRANSPARENCY
                     else -> AncMode.OFF
                 }
-                _t300State.value = _t300State.value.copy(ancMode = mode)
+                _budsState.value = _budsState.value.copy(ancMode = mode)
             }
             JblProtocol.CMD_STATUS_RET -> if (p.size >= 2) {
                 when (p[0].toInt() and 0xFF) {
-                    0x31 -> if ((p[1].toInt() and 0xFF) != 0) _t300State.value = _t300State.value.copy(ancMode = AncMode.NOISE_REDUCTION)
-                    0x32 -> if ((p[1].toInt() and 0xFF) != 0) _t300State.value = _t300State.value.copy(ancMode = AncMode.TRANSPARENCY)
+                    0x31 -> if ((p[1].toInt() and 0xFF) != 0) _budsState.value = _budsState.value.copy(ancMode = AncMode.NOISE_REDUCTION)
+                    0x32 -> if ((p[1].toInt() and 0xFF) != 0) _budsState.value = _budsState.value.copy(ancMode = AncMode.TRANSPARENCY)
                     0x34 -> {
                         val code = p[1].toInt() and 0xFF
                         val eq = when (code) {
@@ -3567,9 +3602,9 @@ class T300BleManager(private val context: Context) {
                             3 -> EqPreset.DEEP_BASS
                             else -> null
                         }
-                        _t300State.value = _t300State.value.copy(eqPreset = eq, activeCustomEqName = if (eq == null) "EQ #$code" else null)
+                        _budsState.value = _budsState.value.copy(eqPreset = eq, activeCustomEqName = if (eq == null) "EQ #$code" else null)
                     }
-                    0x38 -> _t300State.value = _t300State.value.copy(autoPlayPause = (p[1].toInt() and 0xFF) != 0)
+                    0x38 -> _budsState.value = _budsState.value.copy(autoPlayPause = (p[1].toInt() and 0xFF) != 0)
                 }
             }
         }

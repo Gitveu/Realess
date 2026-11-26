@@ -8,7 +8,7 @@ import java.util.UUID
  * Наушники сопрягаются по Bluetooth Classic (A2DP/HFP), и realme Link общается с ними
  * преимущественно через RFCOMM SPP сокет. В случае необходимости поддерживается fallback на GATT.
  */
-object T300GattConfig {
+object BluetoothConfig {
 
     /**
      * RFCOMM SPP UUIDs (Bluetooth Classic)

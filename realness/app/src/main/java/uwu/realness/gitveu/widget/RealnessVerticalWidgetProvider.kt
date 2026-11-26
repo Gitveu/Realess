@@ -14,7 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import uwu.realness.gitveu.R
 import uwu.realness.gitveu.RealnessApp
-import uwu.realness.gitveu.protocol.T300Protocol
+import uwu.realness.gitveu.protocol.BudsProtocol
 import uwu.realness.gitveu.ui.MainActivity
 
 class RealnessVerticalWidgetProvider : AppWidgetProvider() {
@@ -131,8 +131,8 @@ class RealnessVerticalWidgetProvider : AppWidgetProvider() {
 
             if (snap.supportsAnc) {
                 rv.setViewVisibility(R.id.widget_vertical_anc_btn, View.VISIBLE)
-                val isActive = snap.ancMode == T300Protocol.AncMode.NOISE_REDUCTION ||
-                    snap.ancMode == T300Protocol.AncMode.TRANSPARENCY
+                val isActive = snap.ancMode == BudsProtocol.AncMode.NOISE_REDUCTION ||
+                    snap.ancMode == BudsProtocol.AncMode.TRANSPARENCY
                 val fg = ContextCompat.getColor(
                     context,
                     if (isActive) R.color.widget_on_primary_container else R.color.widget_on_surface_variant

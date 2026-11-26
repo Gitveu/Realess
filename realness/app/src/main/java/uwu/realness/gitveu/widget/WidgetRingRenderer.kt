@@ -10,7 +10,7 @@ import androidx.annotation.DrawableRes
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import uwu.realness.gitveu.R
-import uwu.realness.gitveu.protocol.T300Protocol
+import uwu.realness.gitveu.protocol.BudsProtocol
 import kotlin.math.roundToInt
 
 /**
@@ -20,10 +20,10 @@ import kotlin.math.roundToInt
 object WidgetRingRenderer {
 
     @DrawableRes
-    fun ancIconRes(mode: T300Protocol.AncMode?): Int = when (mode) {
-        T300Protocol.AncMode.NOISE_REDUCTION -> R.drawable.ic_widget_anc
-        T300Protocol.AncMode.TRANSPARENCY -> R.drawable.ic_widget_anc_trans
-        T300Protocol.AncMode.OFF -> R.drawable.ic_widget_anc_off
+    fun ancIconRes(mode: BudsProtocol.AncMode?): Int = when (mode) {
+        BudsProtocol.AncMode.NOISE_REDUCTION -> R.drawable.ic_widget_anc
+        BudsProtocol.AncMode.TRANSPARENCY -> R.drawable.ic_widget_anc_trans
+        BudsProtocol.AncMode.OFF -> R.drawable.ic_widget_anc_off
         null -> R.drawable.ic_widget_anc
     }
 
@@ -111,7 +111,7 @@ object WidgetRingRenderer {
     fun renderMiniAncRing(
         context: Context,
         level: Int,
-        ancMode: T300Protocol.AncMode?,
+        ancMode: BudsProtocol.AncMode?,
         supportsAnc: Boolean,
         dimmed: Boolean,
         sizeDp: Float = 44f
@@ -144,8 +144,8 @@ object WidgetRingRenderer {
         }
 
         val isActive = supportsAnc && (
-            ancMode == T300Protocol.AncMode.NOISE_REDUCTION ||
-                ancMode == T300Protocol.AncMode.TRANSPARENCY
+            ancMode == BudsProtocol.AncMode.NOISE_REDUCTION ||
+                ancMode == BudsProtocol.AncMode.TRANSPARENCY
             )
         val innerRadius = (size / 2f) - stroke - (size * 0.06f)
         if (innerRadius > 4f) {

@@ -23,16 +23,16 @@ import uwu.realness.gitveu.audio.FindBudsChannel
 import uwu.realness.gitveu.audio.FindBudsPlayer
 import uwu.realness.gitveu.ble.BleConnectionState
 import uwu.realness.gitveu.protocol.HuaweiProtocol
-import uwu.realness.gitveu.protocol.T300Protocol.AncMode
-import uwu.realness.gitveu.protocol.T300Protocol.BatteryInfo
-import uwu.realness.gitveu.protocol.T300Protocol.BudsModel
-import uwu.realness.gitveu.protocol.T300Protocol.ComponentRole
-import uwu.realness.gitveu.protocol.T300Protocol.CustomEqProfile
-import uwu.realness.gitveu.protocol.T300Protocol.EqPreset
-import uwu.realness.gitveu.protocol.T300Protocol.T300State
-import uwu.realness.gitveu.protocol.T300Protocol.TouchAction
-import uwu.realness.gitveu.protocol.T300Protocol.TouchGesture
-import uwu.realness.gitveu.protocol.T300Protocol.TouchSide
+import uwu.realness.gitveu.protocol.BudsProtocol.AncMode
+import uwu.realness.gitveu.protocol.BudsProtocol.BatteryInfo
+import uwu.realness.gitveu.protocol.BudsProtocol.BudsModel
+import uwu.realness.gitveu.protocol.BudsProtocol.ComponentRole
+import uwu.realness.gitveu.protocol.BudsProtocol.CustomEqProfile
+import uwu.realness.gitveu.protocol.BudsProtocol.EqPreset
+import uwu.realness.gitveu.protocol.BudsProtocol.BudsState
+import uwu.realness.gitveu.protocol.BudsProtocol.TouchAction
+import uwu.realness.gitveu.protocol.BudsProtocol.TouchGesture
+import uwu.realness.gitveu.protocol.BudsProtocol.TouchSide
 import uwu.realness.gitveu.usb.LogitechUsbManager
 import uwu.realness.gitveu.widget.WidgetBluetoothReceiver
 import uwu.realness.gitveu.widget.WidgetStateStore
@@ -91,14 +91,14 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         if (usbConn) BleConnectionState.CONNECTED else bleState
     }.stateIn(viewModelScope, SharingStarted.Eagerly, BleConnectionState.DISCONNECTED)
 
-    val t300State: StateFlow<T300State> = combine(
-        bleManager.t300State,
+    val budsState: StateFlow<BudsState> = combine(
+        bleManager.budsState,
         usbManager.connected,
         usbManager.telemetry
     ) { bleState, usbConn, usbTel ->
         if (usbConn && usbTel != null) {
             val lvl = if (usbTel.online) usbTel.percent else -1
-            T300State(
+            BudsState(
                 leftBattery = BatteryInfo(ComponentRole.LEFT_EAR, lvl, usbTel.charging),
                 rightBattery = BatteryInfo(ComponentRole.RIGHT_EAR, lvl, usbTel.charging),
                 caseBattery = BatteryInfo(ComponentRole.CASE, -1, false),
@@ -111,7 +111,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             bleState
         }
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, T300State())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, BudsState())
 
     private val _deviceStatus = MutableStateFlow(SystemDeviceStatus.NO_PAIRED_DEVICE)
     val deviceStatus: StateFlow<SystemDeviceStatus> = _deviceStatus.asStateFlow()
@@ -327,7 +327,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
 
         // Persist last known case battery + sync widgets whenever state changes
         viewModelScope.launch {
-            t300State.collect { st ->
+            budsState.collect { st ->
                 val mac = _detectedBudsDevice.value?.address ?: _lastDeviceMac.value
                 if (!mac.isNullOrBlank() && st.caseBattery.level in 0..100) {
                     val now = System.currentTimeMillis()
@@ -365,7 +365,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
             deviceMac = activeMac,
             model = model,
             connected = connected,
-            state = t300State.value
+            state = budsState.value
         )
         app.updateWidgets()
     }
@@ -669,8 +669,8 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         if (_detectedModel.value.isXiaomi) {
             bleManager.setCustomEq(flat, delete = true)
         } else {
-            val activeId = t300State.value.activeCustomEqId
-            val activeName = t300State.value.activeCustomEqName
+            val activeId = budsState.value.activeCustomEqId
+            val activeName = budsState.value.activeCustomEqName
             bleManager.setCustomEq(flat, profileId = activeId, profileName = activeName)
         }
     }
@@ -682,14 +682,14 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun stopFindBuds() {
         findBudsPlayer.stop()
-        if (t300State.value.hardwareFindActive) {
+        if (budsState.value.hardwareFindActive) {
             bleManager.setHardwareFindBuds(false, findChannel.value)
         }
     }
 
     fun setFindChannel(channel: FindBudsChannel) {
         findBudsPlayer.setChannel(channel)
-        if (t300State.value.hardwareFindActive && _detectedModel.value.isNothing) {
+        if (budsState.value.hardwareFindActive && _detectedModel.value.isNothing) {
             bleManager.setHardwareFindBuds(true, channel)
         }
     }
@@ -851,7 +851,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startDemoAudio() {
         stopDemoAudio()
-        val isSpatial = t300State.value.spatialAudio == true
+        val isSpatial = budsState.value.spatialAudio == true
         val resId = if (isSpatial) R.raw.headset_spatial_audio_fix else R.raw.headset_spatial_audio_off
         try {
             demoPlayer = MediaPlayer.create(getApplication(), resId)?.apply {

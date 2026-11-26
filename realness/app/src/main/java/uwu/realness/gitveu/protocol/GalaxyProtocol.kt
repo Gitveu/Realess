@@ -46,9 +46,9 @@ object GalaxyProtocol {
     )
 
     data class ParsedStatus(
-        val batteries: List<T300Protocol.BatteryInfo>,
-        val ancMode: T300Protocol.AncMode?,
-        val eqPreset: T300Protocol.EqPreset?,
+        val batteries: List<BudsProtocol.BatteryInfo>,
+        val ancMode: BudsProtocol.AncMode?,
+        val eqPreset: BudsProtocol.EqPreset?,
         val customEqName: String?,
         val seamlessConnection: Boolean?
     )
@@ -109,33 +109,33 @@ object GalaxyProtocol {
     fun buildManagerInfo(legacy: Boolean = false): ByteArray =
         buildPacket(MSG_MANAGER_INFO, byteArrayOf(0x01, 0x02, 0x22), legacy)
 
-    fun buildAncWrite(mode: T300Protocol.AncMode, model: T300Protocol.BudsModel): ByteArray {
-        val legacy = model == T300Protocol.BudsModel.GALAXY_BUDS
+    fun buildAncWrite(mode: BudsProtocol.AncMode, model: BudsProtocol.BudsModel): ByteArray {
+        val legacy = model == BudsProtocol.BudsModel.GALAXY_BUDS
         return when (model) {
-            T300Protocol.BudsModel.GALAXY_BUDS_LIVE -> {
-                val on: Byte = if (mode == T300Protocol.AncMode.NOISE_REDUCTION) 0x01 else 0x00
+            BudsProtocol.BudsModel.GALAXY_BUDS_LIVE -> {
+                val on: Byte = if (mode == BudsProtocol.AncMode.NOISE_REDUCTION) 0x01 else 0x00
                 buildPacket(MSG_SET_NOISE_REDUCTION, byteArrayOf(on), false)
             }
-            T300Protocol.BudsModel.GALAXY_BUDS,
-            T300Protocol.BudsModel.GALAXY_BUDS_PLUS -> {
-                val on: Byte = if (mode == T300Protocol.AncMode.TRANSPARENCY) 0x01 else 0x00
+            BudsProtocol.BudsModel.GALAXY_BUDS,
+            BudsProtocol.BudsModel.GALAXY_BUDS_PLUS -> {
+                val on: Byte = if (mode == BudsProtocol.AncMode.TRANSPARENCY) 0x01 else 0x00
                 buildPacket(MSG_SET_AMBIENT, byteArrayOf(on), legacy)
             }
             else -> {
                 val b: Byte = when (mode) {
-                    T300Protocol.AncMode.OFF -> 0x00
-                    T300Protocol.AncMode.NOISE_REDUCTION -> 0x01
-                    T300Protocol.AncMode.TRANSPARENCY -> 0x02
+                    BudsProtocol.AncMode.OFF -> 0x00
+                    BudsProtocol.AncMode.NOISE_REDUCTION -> 0x01
+                    BudsProtocol.AncMode.TRANSPARENCY -> 0x02
                 }
                 buildPacket(MSG_NOISE_CONTROLS, byteArrayOf(b), false)
             }
         }
     }
 
-    fun buildAncLevelWrite(level: HuaweiProtocol.AncLevel, model: T300Protocol.BudsModel): ByteArray {
+    fun buildAncLevelWrite(level: HuaweiProtocol.AncLevel, model: BudsProtocol.BudsModel): ByteArray {
         // Buds3 Pro / Buds4 support Adaptive ANC (0x03) on MSG_NOISE_CONTROLS
         val code: Byte = if (level == HuaweiProtocol.AncLevel.DYNAMIC &&
-            (model == T300Protocol.BudsModel.GALAXY_BUDS_3_PRO || model == T300Protocol.BudsModel.GALAXY_BUDS_4)
+            (model == BudsProtocol.BudsModel.GALAXY_BUDS_3_PRO || model == BudsProtocol.BudsModel.GALAXY_BUDS_4)
         ) {
             0x03
         } else {
@@ -144,12 +144,12 @@ object GalaxyProtocol {
         return buildPacket(MSG_NOISE_CONTROLS, byteArrayOf(code), false)
     }
 
-    fun buildEqWrite(preset: T300Protocol.EqPreset, legacy: Boolean): ByteArray {
+    fun buildEqWrite(preset: BudsProtocol.EqPreset, legacy: Boolean): ByteArray {
         val code: Int = when (preset) {
-            T300Protocol.EqPreset.ORIGINAL_SOUND -> 0 // Normal
-            T300Protocol.EqPreset.DEEP_BASS -> 1      // Bass Boost
-            T300Protocol.EqPreset.PURE_BASS -> 3      // Dynamic
-            T300Protocol.EqPreset.SERENADE -> 4       // Clear
+            BudsProtocol.EqPreset.ORIGINAL_SOUND -> 0 // Normal
+            BudsProtocol.EqPreset.DEEP_BASS -> 1      // Bass Boost
+            BudsProtocol.EqPreset.PURE_BASS -> 3      // Dynamic
+            BudsProtocol.EqPreset.SERENADE -> 4       // Clear
         }
         return if (legacy) {
             val payload = if (code == 0) byteArrayOf(0x00, 0x05) else byteArrayOf(0x01, (code + 4).toByte())
@@ -162,24 +162,24 @@ object GalaxyProtocol {
     fun buildSeamlessWrite(enabled: Boolean, legacy: Boolean = false): ByteArray =
         buildPacket(MSG_SET_SEAMLESS_CONNECTION, byteArrayOf(if (enabled) 0x00 else 0x01), legacy)
 
-    fun mapEqCode(code: Int): Pair<T300Protocol.EqPreset?, String?> = when (code) {
-        0 -> T300Protocol.EqPreset.ORIGINAL_SOUND to null
-        1 -> T300Protocol.EqPreset.DEEP_BASS to null
+    fun mapEqCode(code: Int): Pair<BudsProtocol.EqPreset?, String?> = when (code) {
+        0 -> BudsProtocol.EqPreset.ORIGINAL_SOUND to null
+        1 -> BudsProtocol.EqPreset.DEEP_BASS to null
         2 -> null to "Soft"
-        3 -> T300Protocol.EqPreset.PURE_BASS to null
-        4 -> T300Protocol.EqPreset.SERENADE to null
+        3 -> BudsProtocol.EqPreset.PURE_BASS to null
+        4 -> BudsProtocol.EqPreset.SERENADE to null
         5 -> null to "Treble Boost"
         else -> null to null
     }
 
-    fun mapNoiseControlByte(b: Int): T300Protocol.AncMode? = when (b) {
-        0 -> T300Protocol.AncMode.OFF
-        1, 3 -> T300Protocol.AncMode.NOISE_REDUCTION // 3 = Adaptive ANC on Buds3 Pro / 4 Pro
-        2 -> T300Protocol.AncMode.TRANSPARENCY
+    fun mapNoiseControlByte(b: Int): BudsProtocol.AncMode? = when (b) {
+        0 -> BudsProtocol.AncMode.OFF
+        1, 3 -> BudsProtocol.AncMode.NOISE_REDUCTION // 3 = Adaptive ANC on Buds3 Pro / 4 Pro
+        2 -> BudsProtocol.AncMode.TRANSPARENCY
         else -> null
     }
 
-    fun parseExtendedStatus(p: ByteArray, model: T300Protocol.BudsModel): ParsedStatus? {
+    fun parseExtendedStatus(p: ByteArray, model: BudsProtocol.BudsModel): ParsedStatus? {
         if (p.size < 8) return null
         val rev = p[0].toInt() and 0xFF
         val batL = p[2].toInt() and 0xFF
@@ -205,22 +205,22 @@ object GalaxyProtocol {
         val cVal = if (batCase in 1..100) batCase else -1
 
         val batteries = listOf(
-            T300Protocol.BatteryInfo(T300Protocol.ComponentRole.LEFT_EAR, lVal, leftChg),
-            T300Protocol.BatteryInfo(T300Protocol.ComponentRole.RIGHT_EAR, rVal, rightChg),
-            T300Protocol.BatteryInfo(T300Protocol.ComponentRole.CASE, cVal, caseChg)
+            BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.LEFT_EAR, lVal, leftChg),
+            BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.RIGHT_EAR, rVal, rightChg),
+            BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.CASE, cVal, caseChg)
         )
 
-        val eqIdx = if (model == T300Protocol.BudsModel.GALAXY_BUDS_PLUS) 11 else 9
+        val eqIdx = if (model == BudsProtocol.BudsModel.GALAXY_BUDS_PLUS) 11 else 9
         val eqPair = if (p.size > eqIdx) mapEqCode(p[eqIdx].toInt() and 0xFF) else (null to null)
 
         val ancMode = when (model) {
-            T300Protocol.BudsModel.GALAXY_BUDS_LIVE -> {
+            BudsProtocol.BudsModel.GALAXY_BUDS_LIVE -> {
                 if (p.size > 12) {
-                    if ((p[12].toInt() and 0xFF) == 1) T300Protocol.AncMode.NOISE_REDUCTION else T300Protocol.AncMode.OFF
+                    if ((p[12].toInt() and 0xFF) == 1) BudsProtocol.AncMode.NOISE_REDUCTION else BudsProtocol.AncMode.OFF
                 } else null
             }
-            T300Protocol.BudsModel.GALAXY_BUDS,
-            T300Protocol.BudsModel.GALAXY_BUDS_PLUS -> null
+            BudsProtocol.BudsModel.GALAXY_BUDS,
+            BudsProtocol.BudsModel.GALAXY_BUDS_PLUS -> null
             else -> {
                 if (p.size > 12) mapNoiseControlByte(p[12].toInt() and 0xFF) else null
             }
@@ -237,7 +237,7 @@ object GalaxyProtocol {
         )
     }
 
-    fun parseStatusUpdated(p: ByteArray): List<T300Protocol.BatteryInfo> {
+    fun parseStatusUpdated(p: ByteArray): List<BudsProtocol.BatteryInfo> {
         if (p.size < 7) return emptyList()
         val batL = p[1].toInt() and 0xFF
         val batR = p[2].toInt() and 0xFF
@@ -252,9 +252,9 @@ object GalaxyProtocol {
         val cVal = if (batCase in 1..100) batCase else -1
 
         return listOf(
-            T300Protocol.BatteryInfo(T300Protocol.ComponentRole.LEFT_EAR, lVal, false),
-            T300Protocol.BatteryInfo(T300Protocol.ComponentRole.RIGHT_EAR, rVal, false),
-            T300Protocol.BatteryInfo(T300Protocol.ComponentRole.CASE, cVal, false)
+            BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.LEFT_EAR, lVal, false),
+            BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.RIGHT_EAR, rVal, false),
+            BudsProtocol.BatteryInfo(BudsProtocol.ComponentRole.CASE, cVal, false)
         )
     }
 

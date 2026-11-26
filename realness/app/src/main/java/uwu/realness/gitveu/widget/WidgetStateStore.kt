@@ -3,7 +3,7 @@ package uwu.realness.gitveu.widget
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import uwu.realness.gitveu.R
-import uwu.realness.gitveu.protocol.T300Protocol
+import uwu.realness.gitveu.protocol.BudsProtocol
 
 /**
  * Persistent snapshot store shared between BudsViewModel, RealnessApp, and Home Screen Widgets.
@@ -32,7 +32,7 @@ object WidgetStateStore {
     data class WidgetSnapshot(
         val deviceName: String?,
         val deviceMac: String?,
-        val model: T300Protocol.BudsModel,
+        val model: BudsProtocol.BudsModel,
         val connected: Boolean,
         val leftLevel: Int,
         val leftCharging: Boolean,
@@ -42,7 +42,7 @@ object WidgetStateStore {
         val caseCharging: Boolean,
         val lastCaseLevel: Int?,
         val lastCaseTimeMs: Long?,
-        val ancMode: T300Protocol.AncMode?,
+        val ancMode: BudsProtocol.AncMode?,
         val supportsAnc: Boolean,
         val isSingleBattery: Boolean
     )
@@ -68,9 +68,9 @@ object WidgetStateStore {
         context: Context,
         deviceName: String?,
         deviceMac: String?,
-        model: T300Protocol.BudsModel,
+        model: BudsProtocol.BudsModel,
         connected: Boolean,
-        state: T300Protocol.T300State
+        state: BudsProtocol.BudsState
     ) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val isFallback = state.isStandardBluetoothFallback || model.isGenericBluetooth
@@ -144,10 +144,10 @@ object WidgetStateStore {
     fun loadSnapshot(context: Context): WidgetSnapshot {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val mac = prefs.getString(KEY_DEVICE_MAC, null)
-        val model = T300Protocol.BudsModel.fromNameOrNull(prefs.getString(KEY_MODEL_NAME, null))
-            ?: T300Protocol.BudsModel.UNKNOWN
+        val model = BudsProtocol.BudsModel.fromNameOrNull(prefs.getString(KEY_MODEL_NAME, null))
+            ?: BudsProtocol.BudsModel.UNKNOWN
         val ancName = prefs.getString(KEY_ANC_MODE, null)
-        val ancMode = ancName?.let { n -> T300Protocol.AncMode.entries.firstOrNull { it.name == n } }
+        val ancMode = ancName?.let { n -> BudsProtocol.AncMode.entries.firstOrNull { it.name == n } }
         val lastCase = getLastCaseBattery(context, mac)
 
         var connected = prefs.getBoolean(KEY_CONNECTED, false)

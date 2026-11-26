@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import uwu.realness.gitveu.R
 import uwu.realness.gitveu.audio.FindBudsChannel
-import uwu.realness.gitveu.protocol.T300Protocol
+import uwu.realness.gitveu.protocol.BudsProtocol
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -43,9 +43,9 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CustomEqEditorSheet(
-    spec: T300Protocol.CustomEqSpec,
+    spec: BudsProtocol.CustomEqSpec,
     initialGains: List<Int>,
-    editingProfile: T300Protocol.CustomEqProfile?,
+    editingProfile: BudsProtocol.CustomEqProfile?,
     isCreatingNew: Boolean,
     onDismiss: () -> Unit,
     onApply: (gains: List<Int>, profileName: String?) -> Unit,
