@@ -166,6 +166,16 @@ class RealnessVerticalWidgetProvider : AppWidgetProvider() {
         for (id in appWidgetIds) {
             appWidgetManager.updateAppWidget(id, views)
         }
+        val app = RealnessApp.from(context)
+        app.runBroadcastSync(goAsync()) {
+            app.syncWidgetFromActiveDevice()
+        }
+    }
+
+    override fun onDisabled(context: Context) {
+        super.onDisabled(context)
+        val app = RealnessApp.from(context)
+        if (!app.hasAnyWidgets()) app.cancelPeriodicWidgetSync()
     }
 
     override fun onReceive(context: Context, intent: Intent) {

@@ -121,6 +121,9 @@ class T300BleManager(private val context: Context) {
             _connectionState.value != BleConnectionState.DISCONNECTED
     }
 
+    val activeDevice: BluetoothDevice? get() = activeBtDevice
+    val currentModel: T300Protocol.BudsModel get() = activeModel
+
     private var pollJob: Job? = null
     private var eventRefreshJob: Job? = null
     private val sendMutex = Mutex()

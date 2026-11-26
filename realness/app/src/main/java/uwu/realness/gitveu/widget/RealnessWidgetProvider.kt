@@ -58,6 +58,7 @@ class RealnessWidgetProvider : AppWidgetProvider() {
                 context, 100, openIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             rv.setOnClickPendingIntent(R.id.widget_root, openPi)
+            rv.setOnClickPendingIntent(R.id.widget_bat_case_card, actionPendingIntent(context, ACTION_REFRESH, 104))
 
             if (snap.isSingleBattery) {
                 rv.setViewVisibility(R.id.widget_tws_row, View.GONE)
@@ -200,6 +201,16 @@ class RealnessWidgetProvider : AppWidgetProvider() {
         for (id in appWidgetIds) {
             appWidgetManager.updateAppWidget(id, views)
         }
+        val app = RealnessApp.from(context)
+        app.runBroadcastSync(goAsync()) {
+            app.syncWidgetFromActiveDevice()
+        }
+    }
+
+    override fun onDisabled(context: Context) {
+        super.onDisabled(context)
+        val app = RealnessApp.from(context)
+        if (!app.hasAnyWidgets()) app.cancelPeriodicWidgetSync()
     }
 
     override fun onReceive(context: Context, intent: Intent) {

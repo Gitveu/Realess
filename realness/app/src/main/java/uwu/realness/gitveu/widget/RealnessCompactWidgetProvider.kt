@@ -21,6 +21,7 @@ class RealnessCompactWidgetProvider : AppWidgetProvider() {
 
     companion object {
         const val ACTION_CYCLE_ANC = "uwu.realness.gitveu.widget.ACTION_CYCLE_ANC"
+        const val ACTION_COMPACT_REFRESH = "uwu.realness.gitveu.widget.ACTION_COMPACT_REFRESH"
 
         fun updateAll(context: Context) {
             val mgr = AppWidgetManager.getInstance(context)
@@ -43,6 +44,14 @@ class RealnessCompactWidgetProvider : AppWidgetProvider() {
                 context, 200, openIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             rv.setOnClickPendingIntent(R.id.widget_compact_root, openPi)
+
+            val refreshIntent = Intent(context, RealnessCompactWidgetProvider::class.java).apply {
+                action = ACTION_COMPACT_REFRESH
+            }
+            val refreshPi = PendingIntent.getBroadcast(
+                context, 202, refreshIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            rv.setOnClickPendingIntent(R.id.widget_compact_case_card, refreshPi)
 
             if (snap.isSingleBattery) {
                 rv.setViewVisibility(R.id.widget_compact_tws_group, View.GONE)
@@ -170,15 +179,29 @@ class RealnessCompactWidgetProvider : AppWidgetProvider() {
         for (id in appWidgetIds) {
             appWidgetManager.updateAppWidget(id, views)
         }
+        val app = RealnessApp.from(context)
+        app.runBroadcastSync(goAsync()) {
+            app.syncWidgetFromActiveDevice()
+        }
+    }
+
+    override fun onDisabled(context: Context) {
+        super.onDisabled(context)
+        val app = RealnessApp.from(context)
+        if (!app.hasAnyWidgets()) app.cancelPeriodicWidgetSync()
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action != ACTION_CYCLE_ANC) return
+        val cycleAnc = when (intent.action) {
+            ACTION_CYCLE_ANC -> true
+            ACTION_COMPACT_REFRESH -> false
+            else -> return
+        }
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                RealnessApp.from(context).executeWidgetAction(targetAnc = null, cycleAnc = true)
+                RealnessApp.from(context).executeWidgetAction(targetAnc = null, cycleAnc = cycleAnc)
             } finally {
                 pendingResult.finish()
             }

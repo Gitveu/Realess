@@ -90,6 +90,7 @@
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="uwu.realness.gitveu.widget.ACTION_CYCLE_ANC" />
+                <action android:name="uwu.realness.gitveu.widget.ACTION_COMPACT_REFRESH" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
@@ -139,15 +140,18 @@
                 android:resource="@xml/widget_realness_mini_info" />
         </receiver>
 
-        <!-- Keeps widgets synced when headsets disconnect or BT turns off in the background -->
+        <!-- Keeps widgets synced automatically on BT connect/disconnect/battery & periodic refresh -->
         <receiver
             android:name=".widget.WidgetBluetoothReceiver"
             android:exported="true">
             <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
                 <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
                 <action android:name="android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED" />
+                <action android:name="android.bluetooth.headset.profile.action.CONNECTION_STATE_CHANGED" />
                 <action android:name="android.bluetooth.adapter.action.STATE_CHANGED" />
                 <action android:name="android.bluetooth.device.action.BATTERY_LEVEL_CHANGED" />
+                <action android:name="uwu.realness.gitveu.widget.ACTION_WIDGET_SYNC" />
             </intent-filter>
         </receiver>
     </application>
