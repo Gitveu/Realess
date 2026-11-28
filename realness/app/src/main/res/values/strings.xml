@@ -292,7 +292,7 @@
     <string name="settings_app_info_desc">Open Android system settings for realness</string>
     <string name="settings_about_section">About</string>
     <string name="settings_about_version">Version %1$s (build %2$d)</string>
-    <string name="settings_about_summary">Open-source multi-brand headset companion: 16 brands, 14 protocol families, plus Standard Bluetooth fallback.</string>
+    <string name="settings_about_summary">Open-source multi-brand headset companion: 22 brands, 20 protocol families, AirPods/Beats BLE beacons, plus Standard Bluetooth fallback.</string>
     <string name="settings_about_github">GitHub repository</string>
     <string name="settings_about_devices">Supported devices list</string>
     <string name="popup_status_connecting">Connecting…</string>
@@ -300,4 +300,47 @@
     <string name="popup_status_preview">Preview</string>
     <string name="popup_open_app">Open settings</string>
     <string name="popup_close_desc">Close popup</string>
+
+    <!-- Active Bluetooth Codec & AirPods BLE Beacon -->
+    <string name="codec_hires_badge">Hi-Res</string>
+    <string name="airpods_beacon_note">Passive BLE beacon mode: L/R/Case battery and case lid state are read from Apple BLE broadcasts without root.</string>
+    <string name="airpods_airoha_active_note">Airoha RACE active mode: live battery, ANC/Transparency, and Game Mode without FlyCC.</string>
+    <string name="airpods_huilian_active_note">Huilian StarFun active mode: live battery, ANC/Transparency, EQ, In-Ear detection, and Game Mode without StarFun.</string>
+    <string name="airpods_replica_badge">Replica (BLE)</string>
+    <string name="airpods_replica_chip">Replica · Airoha (%s)</string>
+    <string name="airpods_replica_huilian_chip">Replica · Huilian (%s)</string>
+    <string name="airpods_lid_open">Case lid open</string>
+    <string name="airpods_lid_closed">Case lid closed</string>
+
+    <!-- EQ Share Code & AutoEQ / Wavelet Import -->
+    <string name="eq_btn_share_code">Code</string>
+    <string name="eq_btn_import_code">Import</string>
+    <string name="eq_btn_import_file">AutoEQ .txt</string>
+    <string name="eq_share_copied">EQ share code copied to clipboard</string>
+    <string name="eq_import_dialog_title">Import EQ curve</string>
+    <string name="eq_import_dialog_desc">Paste a realness share code (RNQ1:...), Wavelet GraphicEQ line, AutoEQ ParametricEQ text, or dB values.</string>
+    <string name="eq_import_paste_clipboard">Paste from clipboard</string>
+    <string name="eq_import_success">Imported (%1$s · %2$d pts → %3$d bands)</string>
+    <string name="eq_import_error">Could not recognize EQ code or file format</string>
+
+    <!-- In-App GitHub Updater -->
+    <string name="settings_updates_section">Updates</string>
+    <string name="settings_updates_prerelease_title">Include pre-releases</string>
+    <string name="settings_updates_prerelease_desc">Check beta / pre-release builds on GitHub.</string>
+    <string name="settings_updates_check_btn">Check for updates</string>
+    <string name="settings_updates_checking">Checking GitHub Releases…</string>
+    <string name="settings_updates_uptodate">Up to date (v%s)</string>
+    <string name="settings_updates_available">Update available: %s</string>
+    <string name="settings_updates_install_btn">Download %s</string>
+    <string name="settings_updates_error">Check failed: %s</string>
+    <string name="update_dialog_title">Update %s available</string>
+    <string name="update_downloading_pct">Downloading APK… %d%%</string>
+    <string name="update_ready_install">APK downloaded and ready to install.</string>
+    <string name="update_error_fmt">Download failed: %s</string>
+    <string name="update_open_github">GitHub</string>
+    <string name="update_skip_version">Skip</string>
+    <string name="update_download_install">Download &amp; install</string>
+    <string name="update_install_now">Install</string>
+    <string name="update_later">Later</string>
+    <string name="update_install_perm_toast">Allow installing updates from realness, then tap Install again.</string>
 </resources>

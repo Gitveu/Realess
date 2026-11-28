@@ -62,7 +62,11 @@ import kotlinx.coroutines.launch
 import uwu.realness.gitveu.BuildConfig
 import uwu.realness.gitveu.R
 import uwu.realness.gitveu.RealnessApp
+import uwu.realness.gitveu.ble.ActiveCodecInfo
 import uwu.realness.gitveu.ble.BleConnectionState
+import uwu.realness.gitveu.update.AppReleaseInfo
+import uwu.realness.gitveu.update.AppUpdater
+import uwu.realness.gitveu.update.UpdateCheckState
 import uwu.realness.gitveu.protocol.HuaweiProtocol
 import uwu.realness.gitveu.protocol.NothingProtocol
 import uwu.realness.gitveu.protocol.BudsProtocol
@@ -332,6 +336,8 @@ fun MainScreen(
     val findIsPlaying by viewModel.findIsPlaying.collectAsState()
     val findVolumeProgress by viewModel.findVolumeProgress.collectAsState()
     val findChannel by viewModel.findChannel.collectAsState()
+    val activeCodec by viewModel.activeCodec.collectAsState()
+    val updateCheckState by AppUpdater.checkState.collectAsState()
 
     var selectedTouchSide by remember { mutableStateOf(TouchSide.LEFT) }
     var activeEditingGesture by remember { mutableStateOf<Pair<TouchSide, TouchGesture>?>(null) }
@@ -341,6 +347,15 @@ fun MainScreen(
     var creatingNewCustomProfile by remember { mutableStateOf(false) }
     var showFindBudsSheet by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
+    var activeUpdateDialog by remember { mutableStateOf<AppReleaseInfo?>(null) }
+
+    // Silent background update check on startup (throttled to 30 min like keqdroid)
+    LaunchedEffect(Unit) {
+        val rel = AppUpdater.checkForUpdate(context, force = false)
+        if (rel != null && !AppUpdater.isSkipped(context, rel.tagName)) {
+            activeUpdateDialog = rel
+        }
+    }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
@@ -367,6 +382,11 @@ fun MainScreen(
                 onOpenBatterySettings = onOpenBatterySettings,
                 onOpenAppSettings = onOpenSettings,
                 onOpenUrl = onOpenUrl,
+                onOpenUpdateDialog = { release ->
+                    drawerScope.launch { drawerState.close() }
+                    AppUpdater.resetDownloadState()
+                    activeUpdateDialog = release
+                },
                 onPreviewPopup = {
                     val popupMgr = RealnessApp.from(context).popupManager
                     if (!popupMgr.canDrawOverlays()) {
@@ -395,10 +415,21 @@ fun MainScreen(
                     scrollBehavior = scrollBehavior,
                     navigationIcon = {
                         IconButton(onClick = { drawerScope.launch { drawerState.open() } }) {
-                            Icon(
-                                imageVector = Icons.Rounded.Menu,
-                                contentDescription = stringResource(R.string.drawer_menu_desc)
-                            )
+                            Box {
+                                Icon(
+                                    imageVector = Icons.Rounded.Menu,
+                                    contentDescription = stringResource(R.string.drawer_menu_desc)
+                                )
+                                if (updateCheckState is UpdateCheckState.Available) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primary)
+                                    )
+                                }
+                            }
                         }
                     },
                     title = {
@@ -456,7 +487,7 @@ fun MainScreen(
                     UnsupportedDeviceCard(deviceName = unsupportedDeviceName!!)
                 }
 
-                // Expressive Hero Device Card with Quick Actions (Find earbuds + Rename)
+                // Expressive Hero Device Card with Quick Actions (Find earbuds + Rename) & Active A2DP Codec
                 StatusDeviceCard(
                     deviceStatus = deviceStatus,
                     connectionState = connectionState,
@@ -465,6 +496,7 @@ fun MainScreen(
                     displayMac = displayDeviceMac,
                     manualModelOverride = manualModelOverride,
                     unsupportedDeviceName = unsupportedDeviceName,
+                    activeCodec = activeCodec,
                     findIsPlaying = findIsPlaying || budsState.hardwareFindActive,
                     canRename = hasKnownDevice,
                     onRetryConnect = { viewModel.manualReconnect() },
@@ -484,6 +516,16 @@ fun MainScreen(
                     )
                     if (isStandardBtMode && isConnected) {
                         StandardBluetoothModeCard()
+                    }
+                    if ((budsState.isPassiveBeaconMode || budsState.isLikelyReplica || !budsState.replicaChipInfo.isNullOrBlank()) && isConnected) {
+                        AirPodsBeaconCard(
+                            modelName = budsState.beaconModelName,
+                            lidOpen = budsState.caseLidOpen,
+                            isLikelyReplica = budsState.isLikelyReplica,
+                            replicaChipInfo = budsState.replicaChipInfo,
+                            protocolName = budsState.activeReplicaProtocolName,
+                            isPassiveMode = budsState.isPassiveBeaconMode
+                        )
                     }
                 } else {
                     val cachedCaseSubtitle = if (budsState.caseBattery.level < 0 && lastCaseBattery != null) {
@@ -521,6 +563,16 @@ fun MainScreen(
                             icon = Icons.Rounded.Headphones
                         )
                     }
+                    if ((budsState.isPassiveBeaconMode || budsState.isLikelyReplica || !budsState.replicaChipInfo.isNullOrBlank()) && isConnected) {
+                        AirPodsBeaconCard(
+                            modelName = budsState.beaconModelName,
+                            lidOpen = budsState.caseLidOpen,
+                            isLikelyReplica = budsState.isLikelyReplica,
+                            replicaChipInfo = budsState.replicaChipInfo,
+                            protocolName = budsState.activeReplicaProtocolName,
+                            isPassiveMode = budsState.isPassiveBeaconMode
+                        )
+                    }
                 }
 
                 if (!isStandardBtMode) {
@@ -539,7 +591,7 @@ fun MainScreen(
                 }
 
                 // Noise Cancellation (ANC) Section
-                if (!detectedModel.isSupported || detectedModel.supportsAnc) {
+                if (!detectedModel.isSupported || detectedModel.supportsAnc || budsState.activeReplicaAnc) {
                     SectionHeader(title = stringResource(R.string.section_anc))
                     AncModeSelector(
                         currentMode = budsState.ancMode,
@@ -555,8 +607,10 @@ fun MainScreen(
                 }
 
                 // Sound Effects (EQ) + Protocol-Aware Custom Equalizer Section
-                val customEqSpec = detectedModel.customEqSpec()
-                if (!detectedModel.isSupported || detectedModel.supportsEq || customEqSpec != null) {
+                val customEqSpec = detectedModel.customEqSpec() ?: if (budsState.activeReplicaCustomEq) {
+                    BudsProtocol.BudsModel.AIRPODS_CLONE_JIELI.customEqSpec()
+                } else null
+                if (!detectedModel.isSupported || detectedModel.supportsEq || budsState.activeReplicaEq || customEqSpec != null) {
                     SectionHeader(title = stringResource(R.string.section_eq))
                     EqPresetSelector(
                         currentPreset = budsState.eqPreset,
@@ -564,7 +618,7 @@ fun MainScreen(
                         activeCustomId = budsState.activeCustomEqId,
                         customProfiles = budsState.customEqProfiles,
                         customEqSpec = customEqSpec,
-                        showPresets = !detectedModel.isSupported || (detectedModel.supportsEq && !detectedModel.isBose && !detectedModel.isSoundcore && !detectedModel.isSennheiser && !detectedModel.isPixelBuds),
+                        showPresets = !detectedModel.isSupported || budsState.activeReplicaEq || (detectedModel.supportsEq && !detectedModel.isBose && !detectedModel.isSoundcore && !detectedModel.isSennheiser && !detectedModel.isPixelBuds),
                         model = detectedModel,
                         enabled = isConnected,
                         onPresetSelected = { viewModel.setEqPreset(it) },
@@ -668,13 +722,15 @@ fun MainScreen(
                 // Other Section: Game Mode / Low Latency, Dual Connection, Auto Play/Pause, Auto Answer
                 val hasOtherSection = !detectedModel.isSupported ||
                     detectedModel.supportsGameMode ||
+                    budsState.activeReplicaGameMode ||
                     detectedModel.supportsDualConnection ||
                     detectedModel.supportsAutoPlayPause ||
+                    budsState.activeReplicaAutoPause ||
                     detectedModel.supportsAutoAnswer
                 if (hasOtherSection) {
                     SectionHeader(title = stringResource(R.string.section_other))
 
-                    if (!detectedModel.isSupported || detectedModel.supportsGameMode) {
+                    if (!detectedModel.isSupported || detectedModel.supportsGameMode || budsState.activeReplicaGameMode) {
                         val useLowLatencyLabel = detectedModel.isXiaomi || detectedModel.isHuawei || detectedModel.isNothing
                         SwitchFeatureCard(
                             title = stringResource(if (useLowLatencyLabel) R.string.low_latency_title else R.string.game_mode_title),
@@ -682,7 +738,7 @@ fun MainScreen(
                             icon = Icons.Rounded.SportsEsports,
                             checked = budsState.gameMode,
                             enabled = isConnected,
-                            allowToggleWhenUnknown = detectedModel.isXiaomi || detectedModel.isGalaxy || detectedModel.isSoundcore,
+                            allowToggleWhenUnknown = detectedModel.isXiaomi || detectedModel.isGalaxy || detectedModel.isSoundcore || detectedModel.isAirohaReplica || budsState.activeReplicaGameMode,
                             onToggle = { viewModel.setGameMode(it) }
                         )
                     }
@@ -707,7 +763,7 @@ fun MainScreen(
                         }
                     }
 
-                    if (detectedModel.supportsAutoPlayPause) {
+                    if (detectedModel.supportsAutoPlayPause || budsState.activeReplicaAutoPause) {
                         SwitchFeatureCard(
                             title = stringResource(R.string.auto_play_pause_title),
                             description = stringResource(R.string.auto_play_pause_desc),
@@ -846,6 +902,19 @@ fun MainScreen(
                     onDismiss = { showRenameDialog = false }
                 )
             }
+
+            // In-App GitHub Release Update Dialog
+            activeUpdateDialog?.let { release ->
+                UpdateReleaseDialog(
+                    release = release,
+                    onOpenInBrowser = { url -> onOpenUrl(url) },
+                    onSkipVersion = {
+                        AppUpdater.skipVersion(context, release.tagName)
+                        activeUpdateDialog = null
+                    },
+                    onDismiss = { activeUpdateDialog = null }
+                )
+            }
         }
     }
 }
@@ -871,10 +940,16 @@ fun ModelPickerDrawerContent(
     onOpenBatterySettings: () -> Unit,
     onOpenAppSettings: () -> Unit,
     onOpenUrl: (String) -> Unit,
+    onOpenUpdateDialog: (AppReleaseInfo) -> Unit,
     onPreviewPopup: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val popupManager = remember(context) { RealnessApp.from(context).popupManager }
+    val updateCheckState by AppUpdater.checkState.collectAsState()
+    var includePrereleases by remember(systemStateRevision) {
+        mutableStateOf(AppUpdater.includePrereleases(context))
+    }
     val grouped = remember { BudsProtocol.BudsModel.modelsByBrand }
     val isAutoSelected = manualModelOverride == null
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -1346,6 +1421,112 @@ fun ModelPickerDrawerContent(
                         }
                     }
 
+                    // Section 2.5: In-App Updates (GitHub Releases)
+                    Text(
+                        text = stringResource(R.string.settings_updates_section),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                    )
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shape = RoundedCornerShape(24.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            val statusLabel = when (val st = updateCheckState) {
+                                UpdateCheckState.Checking -> stringResource(R.string.settings_updates_checking)
+                                is UpdateCheckState.UpToDate -> stringResource(R.string.settings_updates_uptodate, st.currentVersion)
+                                is UpdateCheckState.Available -> stringResource(R.string.settings_updates_available, st.release.tagName)
+                                is UpdateCheckState.Error -> stringResource(R.string.settings_updates_error, st.message)
+                                UpdateCheckState.Idle -> stringResource(R.string.settings_updates_uptodate, BuildConfig.VERSION_NAME)
+                            }
+                            Text(
+                                text = statusLabel,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (updateCheckState is UpdateCheckState.Available) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 10.dp)
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.settings_updates_prerelease_title),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.settings_updates_prerelease_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = includePrereleases,
+                                    onCheckedChange = { checked ->
+                                        includePrereleases = checked
+                                        AppUpdater.setIncludePrereleases(context, checked)
+                                    }
+                                )
+                            }
+
+                            val availableRelease = (updateCheckState as? UpdateCheckState.Available)?.release
+                            if (availableRelease != null) {
+                                Button(
+                                    onClick = { onOpenUpdateDialog(availableRelease) },
+                                    shape = CircleShape,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.SystemUpdate,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(stringResource(R.string.settings_updates_install_btn, availableRelease.tagName))
+                                }
+                            }
+
+                            FilledTonalButton(
+                                onClick = {
+                                    scope.launch {
+                                        val rel = AppUpdater.checkForUpdate(context, force = true)
+                                        if (rel != null) {
+                                            onOpenUpdateDialog(rel)
+                                        }
+                                    }
+                                },
+                                enabled = updateCheckState !is UpdateCheckState.Checking,
+                                shape = CircleShape,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Refresh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(stringResource(R.string.settings_updates_check_btn))
+                            }
+                        }
+                    }
+
                     // Section 3: About
                     Text(
                         text = stringResource(R.string.settings_about_section),
@@ -1412,13 +1593,13 @@ fun ModelPickerDrawerContent(
                             DrawerLinkRow(
                                 icon = Icons.Rounded.Code,
                                 title = stringResource(R.string.settings_about_github),
-                                onClick = { onOpenUrl("https://github.com/Gitveu/Realess") }
+                                onClick = { onOpenUrl("https://github.com/Gitveu/Realness") }
                             )
                             DrawerLinkRow(
                                 icon = Icons.Rounded.DevicesOther,
                                 title = stringResource(R.string.settings_about_devices),
                                 onClick = {
-                                    onOpenUrl("https://github.com/Gitveu/Realess/blob/main/SUPPORTED_DEVICES.md")
+                                    onOpenUrl("https://github.com/Gitveu/Realness/blob/main/SUPPORTED_DEVICES.md")
                                 }
                             )
                         }
@@ -1631,6 +1812,7 @@ fun StatusDeviceCard(
     displayMac: String?,
     manualModelOverride: BudsProtocol.BudsModel?,
     unsupportedDeviceName: String?,
+    activeCodec: ActiveCodecInfo?,
     findIsPlaying: Boolean,
     canRename: Boolean,
     onRetryConnect: () -> Unit,
@@ -1729,6 +1911,70 @@ fun StatusDeviceCard(
                         color = badgeContent,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                     )
+                }
+            }
+
+            // Active Bluetooth A2DP Codec & Bitrate pills
+            if (activeCodec != null && (connectionState == BleConnectionState.CONNECTED || deviceStatus == SystemDeviceStatus.DEVICE_CONNECTED_OS)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        color = if (activeCodec.isHiRes) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+                        shape = CircleShape
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (activeCodec.isHiRes) Icons.Rounded.HighQuality else Icons.Rounded.GraphicEq,
+                                contentDescription = null,
+                                tint = if (activeCodec.isHiRes) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = activeCodec.codecName,
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = if (activeCodec.isHiRes) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
+                    val techSpec = listOfNotNull(
+                        activeCodec.sampleRateLabel,
+                        activeCodec.bitsPerSample?.let { "${it}-bit" }
+                    ).joinToString(" · ")
+                    if (techSpec.isNotEmpty()) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            shape = CircleShape
+                        ) {
+                            Text(
+                                text = techSpec,
+                                style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    if (!activeCodec.bitrateLabel.isNullOrBlank()) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            shape = CircleShape
+                        ) {
+                            Text(
+                                text = activeCodec.bitrateLabel,
+                                style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -1926,6 +2172,75 @@ fun SingleHeadsetBatteryCard(
                 trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                 strokeCap = StrokeCap.Round
             )
+        }
+    }
+}
+
+@Composable
+fun AirPodsBeaconCard(
+    modelName: String?,
+    lidOpen: Boolean?,
+    isLikelyReplica: Boolean = false,
+    replicaChipInfo: String? = null,
+    protocolName: String? = null,
+    isPassiveMode: Boolean = true
+) {
+    val isHuilian = protocolName?.contains("Huilian", ignoreCase = true) == true
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = if (!isPassiveMode) Icons.Rounded.Memory else Icons.Rounded.Sensors,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                val replicaTag = when {
+                    !replicaChipInfo.isNullOrBlank() && isHuilian -> stringResource(R.string.airpods_replica_huilian_chip, replicaChipInfo)
+                    !replicaChipInfo.isNullOrBlank() -> stringResource(R.string.airpods_replica_chip, replicaChipInfo)
+                    !protocolName.isNullOrBlank() -> protocolName
+                    isLikelyReplica -> stringResource(R.string.airpods_replica_badge)
+                    else -> null
+                }
+                val header = listOfNotNull(
+                    modelName,
+                    replicaTag,
+                    lidOpen?.let {
+                        stringResource(if (it) R.string.airpods_lid_open else R.string.airpods_lid_closed)
+                    }
+                ).joinToString(" · ")
+                if (header.isNotEmpty()) {
+                    Text(
+                        text = header,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Text(
+                    text = stringResource(
+                        when {
+                            !isPassiveMode && isHuilian -> R.string.airpods_huilian_active_note
+                            !isPassiveMode -> R.string.airpods_airoha_active_note
+                            else -> R.string.airpods_beacon_note
+                        }
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

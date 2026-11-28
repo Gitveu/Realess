@@ -22,6 +22,17 @@ object BluetoothConfig {
     // Стандартный SPP UUID (Serial Port Profile, BaseBRDevice.K)
     val STANDARD_SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
 
+    // Airoha RACE RFCOMM SPP UUID (TigerBuilder / HR / FlyCC AirPods replicas)
+    val AIROHA_RACE_SPP_UUID: UUID = UUID.fromString("00000000-0000-0000-0099-AABBCCDDEEFF")
+
+    // Zhuhai JieLi (JL_SPP) Vendor RFCOMM SPP UUID (AC697x / AC700x AirPods replicas & TWS)
+    val JIELI_VENDOR_SPP_UUID: UUID = UUID.fromString("FE010000-1234-5678-ABCD-00805F9B34FB")
+
+    // JieLi RCSP BLE GATT Service & Characteristics (0xAE00 / 0xAE01 / 0xAE02)
+    val JIELI_GATT_SERVICE: UUID = UUID.fromString("0000ae00-0000-1000-8000-00805f9b34fb")
+    val JIELI_GATT_WRITE: UUID = UUID.fromString("0000ae01-0000-1000-8000-00805f9b34fb")
+    val JIELI_GATT_NOTIFY: UUID = UUID.fromString("0000ae02-0000-1000-8000-00805f9b34fb")
+
     // Дополнительные вендорные UUID (BaseBRDevice.I / J)
     val ALT_VENDOR_SPP_UUID_1: UUID = UUID.fromString("db764ac8-4b08-7f25-aafe-59d03c27bae4")
     val ALT_VENDOR_SPP_UUID_2: UUID = UUID.fromString("db764ac8-4b08-7f25-aafe-59d03c27bae3")
@@ -51,6 +62,17 @@ object BluetoothConfig {
 
     // JBL BLE GATT Service UUID (kde-headphones)
     val JBL_GATT_SERVICE: UUID = UUID.fromString("65786365-6c70-6f69-6e74-2e636f6d0000")
+
+    // QCY BLE GATT Service & Characteristics (hui1601/Quicky)
+    val QCY_GATT_SERVICE: UUID = UUID.fromString("0000a001-0000-1000-8000-00805f9b34fb")
+    val QCY_GATT_WRITE: UUID = UUID.fromString("00001001-0000-1000-8000-00805f9b34fb")
+    val QCY_GATT_NOTIFY: UUID = UUID.fromString("00001002-0000-1000-8000-00805f9b34fb")
+    val QCY_GATT_BATTERY: UUID = UUID.fromString("00000008-0000-1000-8000-00805f9b34fb")
+
+    // Qualcomm GAIA BLE GATT Service (SoundPEATS / Moondrop Space Travel)
+    val GAIA_BLE_SERVICE: UUID = UUID.fromString("00001100-d102-11e1-9b23-00025b00a5a5")
+    val GAIA_BLE_WRITE: UUID = UUID.fromString("00001101-d102-11e1-9b23-00025b00a5a5")
+    val GAIA_BLE_NOTIFY: UUID = UUID.fromString("00001102-d102-11e1-9b23-00025b00a5a5")
 
     // Standard BLE Battery Service (used by Logitech G435 in Bluetooth mode)
     val BATTERY_SERVICE: UUID = UUID.fromString("0000180F-0000-1000-8000-00805F9B34FB")
@@ -124,6 +146,16 @@ object BluetoothConfig {
     )
 
     val STANDARD_SPP_ONLY_UUIDS = listOf(
+        STANDARD_SPP_UUID
+    )
+
+    val AIROHA_RACE_SPP_UUIDS = listOf(
+        AIROHA_RACE_SPP_UUID,
+        STANDARD_SPP_UUID
+    )
+
+    val JIELI_SPP_UUIDS = listOf(
+        JIELI_VENDOR_SPP_UUID,
         STANDARD_SPP_UUID
     )
 

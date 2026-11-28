@@ -63,11 +63,13 @@ class WidgetBluetoothReceiver : BroadcastReceiver() {
             BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED -> {
                 val state = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1)
                 val device = extractDevice(intent) ?: return
+                val isA2dp = action == BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED
                 when (state) {
                     BluetoothProfile.STATE_CONNECTED -> {
                         if (!app.shouldHandleBluetoothEvents()) return
                         app.runBroadcastSync(goAsync()) {
-                            app.syncWidgetOnBluetoothConnected(device, fromAudioProfile = true)
+                            // Only A2DP is unconditionally an audio headset profile; HFP is also used by smartwatches
+                            app.syncWidgetOnBluetoothConnected(device, fromAudioProfile = isA2dp)
                         }
                     }
                     BluetoothProfile.STATE_DISCONNECTED -> {

@@ -2,20 +2,34 @@ package uwu.realness.gitveu.ble
 
 import android.annotation.SuppressLint
 import android.bluetooth.*
+import android.bluetooth.le.BluetoothLeScanner
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.Build
 import android.os.PowerManager
 import android.util.Log
 import uwu.realness.gitveu.audio.FindBudsChannel
+import uwu.realness.gitveu.protocol.AirPodsBeaconProtocol
+import uwu.realness.gitveu.protocol.AirohaRaceProtocol
+import uwu.realness.gitveu.protocol.BaseusProtocol
 import uwu.realness.gitveu.protocol.BoseProtocol
+import uwu.realness.gitveu.protocol.EdifierProtocol
 import uwu.realness.gitveu.protocol.GalaxyProtocol
+import uwu.realness.gitveu.protocol.HuilianProtocol
 import uwu.realness.gitveu.protocol.HuaweiProtocol
 import uwu.realness.gitveu.protocol.JabraProtocol
 import uwu.realness.gitveu.protocol.JblProtocol
+import uwu.realness.gitveu.protocol.JieliRcspProtocol
+import uwu.realness.gitveu.protocol.MoondropProtocol
 import uwu.realness.gitveu.protocol.NothingProtocol
 import uwu.realness.gitveu.protocol.PixelBudsProtocol
+import uwu.realness.gitveu.protocol.QcyProtocol
 import uwu.realness.gitveu.protocol.SennheiserProtocol
 import uwu.realness.gitveu.protocol.SonyProtocol
+import uwu.realness.gitveu.protocol.SoundPeatsProtocol
 import uwu.realness.gitveu.protocol.SoundcoreProtocol
 import uwu.realness.gitveu.protocol.BudsProtocol
 import uwu.realness.gitveu.protocol.XiaomiProtocol
@@ -53,6 +67,7 @@ enum class ActiveTransport {
     NONE,
     RFCOMM_SPP,
     BLE_GATT,
+    BLE_BEACON,
     BT_BATTERY_ONLY
 }
 
@@ -107,6 +122,32 @@ class BudsConnectionManager(private val context: Context) {
     private var jblAcc = ByteArray(0)
     private var jblGattRetryAttempt = 0
     private var isBatteryOnlyGattProbe = false
+    private var baseusUseCrc = false
+    private var qcyBatteryCharacteristic: BluetoothGattCharacteristic? = null
+    private var airPodsScanCallback: ScanCallback? = null
+    private var airPodsBestRssi: Int = Int.MIN_VALUE
+    private var airPodsBestAddr: String? = null
+    private var airPodsMatchedExactMac: Boolean = false
+    private var lastBeaconLogMs: Long = 0L
+    private val lastAirPodsBeaconByMac = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, AirPodsBeaconProtocol.BeaconTelemetry>>()
+    private var airPodsScanStopJob: Job? = null
+    private var promotedReplicaFamily: BudsProtocol.ProtocolFamily? = null
+    private var isReplicaGattProbe: Boolean = false
+    private var replicaProbeJob: Job? = null
+    private var jieliSeq: Int = 1
+    private var jieliAuthDone: Boolean = false
+    private var jieliHostChallenge: ByteArray? = null
+    private val jieliVoiceDetails = mutableMapOf<Int, ByteArray>()
+    private var jieliDynamicEq: Boolean = true
+
+    private fun nextJieliSeq(): Int {
+        val s = jieliSeq
+        jieliSeq = if (jieliSeq >= 255) 1 else jieliSeq + 1
+        return s
+    }
+
+    private val effectiveFamily: BudsProtocol.ProtocolFamily
+        get() = promotedReplicaFamily ?: activeModel.protocolFamily
 
     private val _connectionState = MutableStateFlow(BleConnectionState.DISCONNECTED)
     val connectionState: StateFlow<BleConnectionState> = _connectionState.asStateFlow()
@@ -135,6 +176,20 @@ class BudsConnectionManager(private val context: Context) {
         isForegroundMode = foreground
         val gen = sessionGen.get()
         if (_connectionState.value == BleConnectionState.CONNECTED) {
+            if (activeTransport == ActiveTransport.BLE_BEACON) {
+                if (foreground) {
+                    startAirPodsBeaconScan(gen)
+                } else {
+                    airPodsScanStopJob?.cancel()
+                    airPodsScanStopJob = scope.launch {
+                        delay(6_000L)
+                        if (!isForegroundMode && gen == sessionGen.get()) {
+                            stopAirPodsBeaconScan()
+                        }
+                    }
+                }
+                return
+            }
             if (foreground) {
                 scope.launch {
                     refreshBattery()
@@ -231,6 +286,33 @@ class BudsConnectionManager(private val context: Context) {
         connectJob = scope.launch {
             if (gen != sessionGen.get()) return@launch
 
+            // Apple AirPods / Beats: start passive BLE beacon immediately, then silently probe Airoha RACE & Huilian StarFun!
+            if (activeModel.isAirPods) {
+                enterAirPodsBeaconMode(device, gen, runAutoProbe = true)
+                return@launch
+            }
+
+            // Explicit Huilian StarFun replica (SPP ch 3 / 0x00001101 -> fallback to BLE beacon)
+            if (activeModel.isHuilianReplica) {
+                val ok = tryConnectHuilianSpp(device, gen)
+                if (!ok && gen == sessionGen.get()) {
+                    log("Huilian StarFun SPP unavailable -> falling back to AirPods Replica BLE beacon")
+                    enterAirPodsBeaconMode(device, gen, runAutoProbe = false)
+                }
+                return@launch
+            }
+
+            // Explicit JieLi (JL_SPP) RCSP replica (FE010000 / 0x00001101 SPP -> AE00 GATT -> BLE beacon)
+            if (activeModel.isJieliReplica) {
+                val ok = tryConnectJieliSpp(device, gen, silentProbe = false)
+                if (!ok && gen == sessionGen.get()) {
+                    log("JieLi JL_SPP unavailable -> attempting JieLi BLE GATT (0xAE00)...")
+                    jblGattRetryAttempt = 0
+                    connectGatt(device, gen, transport = BluetoothDevice.TRANSPORT_LE, isBatteryOnlyProbe = false)
+                }
+                return@launch
+            }
+
             // Logitech G435 / G733 or Standard Bluetooth (HFP + BLE Battery Service 0x180F/0x2A19)
             if (activeModel.isLogitech || activeModel.isGenericBluetooth) {
                 enterStandardBluetoothBatteryMode(
@@ -242,10 +324,11 @@ class BudsConnectionManager(private val context: Context) {
                 return@launch
             }
 
-            // JBL uses BLE GATT directly (with automatic fallback to TRANSPORT_AUTO -> HFP battery on status=133)
-            if (activeModel.isJbl) {
+            // BLE GATT-primary protocols (JBL, QCY, Baseus, Moondrop) with automatic fallback to HFP battery
+            if (activeModel.isJbl || activeModel.isQcy || activeModel.isBaseus || activeModel.isMoondrop) {
                 jblGattRetryAttempt = 0
-                log("Connecting JBL via BLE GATT (TRANSPORT_LE)...")
+                baseusUseCrc = activeModel == BudsProtocol.BudsModel.BASEUS_BP1_ULTRA
+                log("Connecting ${activeModel.protocolFamily} via BLE GATT (TRANSPORT_LE)...")
                 connectGatt(device, gen, transport = BluetoothDevice.TRANSPORT_LE, isBatteryOnlyProbe = false)
                 return@launch
             }
@@ -256,7 +339,7 @@ class BudsConnectionManager(private val context: Context) {
                 return@launch
             }
 
-            if (!activeModel.isRealme) {
+            if (!activeModel.isRealme && !activeModel.isEdifier && !activeModel.isSoundPeats && !activeModel.isAirohaReplica) {
                 log("${activeModel.protocolFamily} SPP socket unavailable")
                 if (gen == sessionGen.get()) {
                     disconnectInternal(emitUnexpected = true)
@@ -264,8 +347,9 @@ class BudsConnectionManager(private val context: Context) {
                 return@launch
             }
 
-            // Attempt 2: BLE GATT Fallback (realme / OnePlus / OPPO)
+            // Attempt 2: BLE GATT Fallback (realme / OnePlus / OPPO / Edifier / SoundPEATS / Airoha RACE)
             log("SPP sockets unavailable. Falling back to BLE GATT...")
+            jblGattRetryAttempt = 0
             connectGatt(device, gen)
         }
     }
@@ -283,6 +367,462 @@ class BudsConnectionManager(private val context: Context) {
         connectJob = scope.launch {
             enterStandardBluetoothBatteryMode(device, gen, isFallback = true, tryBleBas = false)
         }
+    }
+
+    private fun enterAirPodsBeaconMode(device: BluetoothDevice, gen: Int, runAutoProbe: Boolean = false) {
+        if (gen != sessionGen.get()) return
+        activeTransport = ActiveTransport.BLE_BEACON
+        activeBtDevice = device
+        airPodsBestRssi = Int.MIN_VALUE
+        airPodsBestAddr = null
+        airPodsMatchedExactMac = false
+        lastBeaconLogMs = 0L
+
+        // Instant zero-radio SDP UUID fingerprint check:
+        // Genuine Apple AirPods NEVER advertise JieLi Vendor SPP (FE010000) or Standard SPP (0x1101)
+        val cachedUuids = try { device.uuids?.map { it.uuid } ?: emptyList() } catch (_: Throwable) { emptyList() }
+        val hasJieliVendorSpp = cachedUuids.any { it == BluetoothConfig.JIELI_VENDOR_SPP_UUID }
+        val hasStandardSpp = cachedUuids.any { it == BluetoothConfig.STANDARD_SPP_UUID }
+        val sdpIndicatesReplica = hasJieliVendorSpp || hasStandardSpp
+
+        val cachedBeacon = lastAirPodsBeaconByMac[device.address]?.let { (ts, tel) ->
+            if (System.currentTimeMillis() - ts <= 10 * 60_000L) tel else null
+        }
+
+        _budsState.value = BudsProtocol.BudsState(
+            leftBattery = cachedBeacon?.let { BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, it.leftLevel, it.leftCharging) }
+                ?: BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, -1, false),
+            rightBattery = cachedBeacon?.let { BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, it.rightLevel, it.rightCharging) }
+                ?: BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, -1, false),
+            caseBattery = cachedBeacon?.let { BudsProtocol.BatteryInfo(ComponentRole.CASE, it.caseLevel, it.caseCharging) }
+                ?: BudsProtocol.BatteryInfo(ComponentRole.CASE, -1, false),
+            isPassiveBeaconMode = true,
+            caseLidOpen = cachedBeacon?.lidOpen,
+            beaconModelName = cachedBeacon?.modelName,
+            isLikelyReplica = sdpIndicatesReplica || cachedBeacon?.isLikelyReplica == true || activeModel.brand == BudsProtocol.Brand.AIRPODS_CLONE,
+            replicaChipInfo = if (hasJieliVendorSpp) "JieLi (JL_SPP)" else null
+        )
+        _connectionState.value = BleConnectionState.CONNECTED
+        log("AirPods / Beats passive BLE beacon listener active (Company ID 0x004C)")
+        if (hasJieliVendorSpp) {
+            log("SDP fingerprint: JieLi Vendor SPP (FE010000) detected -> AirPods Replica!")
+        } else if (hasStandardSpp) {
+            log("SDP fingerprint: Standard SPP (0x1101) detected -> AirPods Replica!")
+        }
+        // Seed single-battery fallback from HFP until BLE proximity frame arrives
+        if (cachedBeacon == null || (cachedBeacon.leftLevel < 0 && cachedBeacon.rightLevel < 0)) {
+            pollStandardBluetoothBattery(device)
+        }
+        startAirPodsBeaconScan(gen)
+
+        // For any connected AirPods*, silently probe JieLi RCSP -> Airoha RACE (GATT/SPP) -> Huilian StarFun (C0)
+        // so clones with standard "AirPods (...)" names auto-unlock ANC/Game Mode without manual picker!
+        if (runAutoProbe && (activeModel.brand == BudsProtocol.Brand.APPLE || activeModel.brand == BudsProtocol.Brand.AIRPODS_CLONE)) {
+            startSilentReplicaAutoProbe(device, gen, hasJieliVendorSpp, hasStandardSpp)
+        }
+    }
+
+    private fun startSilentReplicaAutoProbe(
+        device: BluetoothDevice,
+        gen: Int,
+        hasJieliVendorSpp: Boolean = false,
+        hasStandardSpp: Boolean = false
+    ) {
+        replicaProbeJob?.cancel()
+        replicaProbeJob = scope.launch {
+            delay(350)
+            if (gen != sessionGen.get() || promotedReplicaFamily != null) return@launch
+
+            // Step 1: If SDP exposes JieLi Vendor SPP (FE010000) or Standard SPP, silently probe JieLi RCSP first!
+            if (hasJieliVendorSpp || hasStandardSpp) {
+                log("AirPods auto-probe: checking JieLi RCSP (JL_SPP)...")
+                if (tryConnectJieliSpp(device, gen, silentProbe = true)) return@launch
+                if (gen != sessionGen.get() || promotedReplicaFamily != null) return@launch
+            }
+
+            // Step 2: Probe BLE GATT for Airoha RACE (AIROHA_SERVICE) or JieLi RCSP (0xAE00)
+            log("AirPods auto-probe: checking Airoha RACE / JieLi GATT...")
+            isReplicaGattProbe = true
+            try {
+                bluetoothGatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+                } else {
+                    device.connectGatt(context, false, gattCallback)
+                }
+            } catch (_: Throwable) {
+                isReplicaGattProbe = false
+            }
+
+            val deadline = System.currentTimeMillis() + 3_200L
+            while (System.currentTimeMillis() < deadline &&
+                gen == sessionGen.get() &&
+                isReplicaGattProbe &&
+                promotedReplicaFamily == null
+            ) {
+                delay(120)
+            }
+            if (gen != sessionGen.get() || promotedReplicaFamily != null) return@launch
+
+            if (isReplicaGattProbe) {
+                isReplicaGattProbe = false
+                bluetoothGatt?.let { g ->
+                    try { g.disconnect(); g.close() } catch (_: Exception) {}
+                }
+                bluetoothGatt = null
+            }
+
+            // Step 3: Silently probe Airoha RACE SPP -> Huilian StarFun C0 (RFCOMM ch 3 / 0x1101)
+            log("AirPods auto-probe: checking Airoha SPP & Huilian StarFun (C0)...")
+            if (tryProbeAirohaSppSilent(device, gen)) return@launch
+            if (gen != sessionGen.get() || promotedReplicaFamily != null) return@launch
+            tryConnectHuilianSpp(device, gen, silentProbe = true)
+        }
+    }
+
+    private suspend fun tryConnectJieliSpp(
+        device: BluetoothDevice,
+        gen: Int,
+        silentProbe: Boolean
+    ): Boolean {
+        val candidateUuids = BluetoothConfig.JIELI_SPP_UUIDS
+        for (uuid in candidateUuids) {
+            if (gen != sessionGen.get()) return false
+            val label = if (uuid == BluetoothConfig.JIELI_VENDOR_SPP_UUID) "JieLi Vendor SPP (FE010000)" else "Standard SPP (JL_SPP)"
+            if (!silentProbe) log("Attempting SPP ($label)...")
+            val sock = openRfcommSocketWithTimeout(device, uuid, 2_200L) ?: continue
+            if (gen != sessionGen.get()) {
+                try { sock.close() } catch (_: Exception) {}
+                return false
+            }
+
+            if (silentProbe) {
+                // Send JieLi RCSP auth reset + challenge + direct GetADVInfo (0xC1) to verify real JieLi RCSP response
+                val confirmed = try {
+                    val out = sock.outputStream
+                    val inp = sock.inputStream
+                    jieliHostChallenge = JieliRcspProtocol.buildAuthChallenge()
+                    jieliAuthDone = false
+                    out.write(JieliRcspProtocol.AUTH_RESET)
+                    out.flush()
+                    delay(180)
+                    out.write(jieliHostChallenge!!)
+                    out.flush()
+                    delay(220)
+                    out.write(JieliRcspProtocol.buildGetAdvInfo(nextJieliSeq()))
+                    out.flush()
+                    val probeDeadline = System.currentTimeMillis() + 1_300L
+                    val buf = ByteArray(256)
+                    var acc = ByteArray(0)
+                    var gotJieli = false
+                    while (System.currentTimeMillis() < probeDeadline && gen == sessionGen.get()) {
+                        val avail = try { inp.available() } catch (_: Exception) { 0 }
+                        if (avail > 0) {
+                            val n = inp.read(buf, 0, minOf(avail, buf.size))
+                            if (n > 0) {
+                                val slice = buf.copyOfRange(0, n)
+                                log("RX JieLi probe [$label]: ${slice.joinToString(" ") { "%02X".format(it) }}")
+                                acc += slice
+                                val (items, rem) = JieliRcspProtocol.parseStream(acc, acceptRawAuth = true)
+                                acc = rem
+                                if (items.isNotEmpty()) {
+                                    gotJieli = true
+                                    bluetoothSocket = sock
+                                    socketInputStream = inp
+                                    socketOutputStream = out
+                                    promotedReplicaFamily = BudsProtocol.ProtocolFamily.JIELI_RCSP
+                                    activeTransport = ActiveTransport.RFCOMM_SPP
+                                    _connectionState.value = BleConnectionState.CONNECTED
+                                    log("✓ Auto-detected JieLi RCSP replica via $label!")
+                                    for (item in items) handleIncomingJieliItem(item)
+                                    break
+                                }
+                            }
+                        }
+                        delay(70)
+                    }
+                    gotJieli
+                } catch (_: Throwable) {
+                    false
+                }
+                if (!confirmed) {
+                    try { sock.close() } catch (_: Exception) {}
+                    continue
+                }
+                startSocketReader(gen)
+                if (jieliAuthDone) {
+                    requestJieliFullState()
+                }
+                startPolling(gen)
+                return true
+            } else {
+                bluetoothSocket = sock
+                socketInputStream = sock.inputStream
+                socketOutputStream = sock.outputStream
+                activeTransport = ActiveTransport.RFCOMM_SPP
+                _connectionState.value = BleConnectionState.CONNECTED
+                log("✓ SPP connected successfully via $label!")
+                startSocketReader(gen)
+                finishConnectionReady(gen)
+                return true
+            }
+        }
+        return false
+    }
+
+    private suspend fun tryProbeAirohaSppSilent(device: BluetoothDevice, gen: Int): Boolean {
+        val sock = openRfcommSocketWithTimeout(device, BluetoothConfig.AIROHA_RACE_SPP_UUID, 1_800L)
+            ?: return false
+        if (gen != sessionGen.get()) {
+            try { sock.close() } catch (_: Exception) {}
+            return false
+        }
+        bluetoothSocket = sock
+        socketInputStream = sock.inputStream
+        socketOutputStream = sock.outputStream
+        promotedReplicaFamily = BudsProtocol.ProtocolFamily.AIROHA_RACE
+        activeTransport = ActiveTransport.RFCOMM_SPP
+        log("✓ Auto-detected Airoha RACE replica via SPP!")
+        startSocketReader(gen)
+        finishConnectionReady(gen)
+        return true
+    }
+
+    private suspend fun tryConnectHuilianSpp(
+        device: BluetoothDevice,
+        gen: Int,
+        silentProbe: Boolean = false
+    ): Boolean {
+        // Try standard SPP UUID first, then RFCOMM channel 3 via reflection (OpenHuilian StarFun channel)
+        val sock = openRfcommSocketWithTimeout(device, BluetoothConfig.STANDARD_SPP_UUID, 2_000L)
+            ?: openRfcommChannelWithTimeout(device, 3, 2_000L)
+            ?: return false
+
+        if (gen != sessionGen.get()) {
+            try { sock.close() } catch (_: Exception) {}
+            return false
+        }
+
+        if (silentProbe) {
+            // Verify the peer actually speaks Huilian C0 before promoting (avoids false positives on standard SPP)
+            val confirmed = try {
+                val out = sock.outputStream
+                val inp = sock.inputStream
+                out.write(HuilianProtocol.buildModelReq())
+                out.flush()
+                delay(120)
+                out.write(HuilianProtocol.buildBatteryReq())
+                out.flush()
+                val probeDeadline = System.currentTimeMillis() + 1_100L
+                val buf = ByteArray(128)
+                var gotC0 = false
+                while (System.currentTimeMillis() < probeDeadline && gen == sessionGen.get()) {
+                    val avail = try { inp.available() } catch (_: Exception) { 0 }
+                    if (avail > 0) {
+                        val n = inp.read(buf, 0, minOf(avail, buf.size))
+                        if (n > 0) {
+                            val slice = buf.copyOfRange(0, n)
+                            val (pkts, _) = HuilianProtocol.parsePacketsFromStreamBuffer(slice)
+                            if (pkts.isNotEmpty()) {
+                                gotC0 = true
+                                for (pkt in pkts) handleIncomingHuilianPacket(pkt)
+                                break
+                            }
+                        }
+                    }
+                    delay(80)
+                }
+                gotC0
+            } catch (_: Throwable) {
+                false
+            }
+            if (!confirmed) {
+                try { sock.close() } catch (_: Exception) {}
+                return false
+            }
+            promotedReplicaFamily = BudsProtocol.ProtocolFamily.HUILIAN_SPP
+            log("✓ Auto-detected Huilian StarFun replica via SPP (C0)!")
+        }
+
+        bluetoothSocket = sock
+        socketInputStream = sock.inputStream
+        socketOutputStream = sock.outputStream
+        activeTransport = ActiveTransport.RFCOMM_SPP
+        _connectionState.value = BleConnectionState.CONNECTED
+        startSocketReader(gen)
+        finishConnectionReady(gen)
+        return true
+    }
+
+    private suspend fun openRfcommSocketWithTimeout(
+        device: BluetoothDevice,
+        uuid: UUID,
+        timeoutMs: Long
+    ): BluetoothSocket? {
+        var socket: BluetoothSocket? = null
+        return try {
+            withTimeoutOrNull(timeoutMs) {
+                withContext(Dispatchers.IO) {
+                    val s = device.createInsecureRfcommSocketToServiceRecord(uuid)
+                    socket = s
+                    s.connect()
+                    s
+                }
+            } ?: run {
+                try { socket?.close() } catch (_: Exception) {}
+                null
+            }
+        } catch (_: Throwable) {
+            try { socket?.close() } catch (_: Exception) {}
+            null
+        }
+    }
+
+    private suspend fun openRfcommChannelWithTimeout(
+        device: BluetoothDevice,
+        channel: Int,
+        timeoutMs: Long
+    ): BluetoothSocket? {
+        var socket: BluetoothSocket? = null
+        return try {
+            withTimeoutOrNull(timeoutMs) {
+                withContext(Dispatchers.IO) {
+                    val m = device.javaClass.getMethod("createInsecureRfcommSocket", Int::class.javaPrimitiveType)
+                    val s = m.invoke(device, channel) as? BluetoothSocket ?: return@withContext null
+                    socket = s
+                    s.connect()
+                    s
+                }
+            } ?: run {
+                try { socket?.close() } catch (_: Exception) {}
+                null
+            }
+        } catch (_: Throwable) {
+            try { socket?.close() } catch (_: Exception) {}
+            null
+        }
+    }
+
+    private fun startAirPodsBeaconScan(gen: Int) {
+        stopAirPodsBeaconScan()
+        val scanner: BluetoothLeScanner = try {
+            bluetoothAdapter?.bluetoothLeScanner
+        } catch (_: Throwable) {
+            null
+        } ?: run {
+            log("BLE scanner unavailable for AirPods beacon; using HFP battery only")
+            return
+        }
+
+        val callback = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+                if (gen != sessionGen.get()) return
+                if (activeTransport != ActiveTransport.BLE_BEACON && promotedReplicaFamily == null && !activeModel.isAirohaReplica && !activeModel.isHuilianReplica && !activeModel.isJieliReplica) return
+                val mfg = result.scanRecord?.getManufacturerSpecificData(AirPodsBeaconProtocol.APPLE_COMPANY_ID)
+                    ?: return
+                val addr = result.device?.address
+                val rssi = result.rssi
+                val exactMacMatch = !addr.isNullOrBlank() && addr.equals(activeDeviceAddress, ignoreCase = true)
+
+                // Check clone secondary/pairing frame (07 0F 00 <model> <6B MAC>) — confirms replica without corrupting battery
+                val cloneMacModel = AirPodsBeaconProtocol.parseCloneMacFrame(mfg, activeDeviceAddress)
+                if (cloneMacModel != null) {
+                    if (exactMacMatch) airPodsMatchedExactMac = true
+                    val cur = _budsState.value
+                    if (!cur.isLikelyReplica || cur.beaconModelName == null) {
+                        log("RX AirPods Replica BLE MAC frame [$cloneMacModel, addr=$addr, rssi=$rssi]")
+                    }
+                    _budsState.value = cur.copy(
+                        beaconModelName = cur.beaconModelName ?: cloneMacModel,
+                        isLikelyReplica = true
+                    )
+                    return
+                }
+
+                val tel = AirPodsBeaconProtocol.parseManufacturerData(mfg, exactMacMatch = exactMacMatch) ?: return
+
+                // Reject distant neighbor AirPods beacons (e.g. -95 dBm in another room) unless MAC matches active headset
+                if (!exactMacMatch && (airPodsMatchedExactMac || rssi < -85)) {
+                    return
+                }
+                if (exactMacMatch) {
+                    airPodsMatchedExactMac = true
+                    airPodsBestAddr = addr
+                    airPodsBestRssi = rssi
+                } else {
+                    if (airPodsBestAddr != null && addr != airPodsBestAddr && rssi < airPodsBestRssi - 8) {
+                        return
+                    }
+                    airPodsBestAddr = addr
+                    if (rssi > airPodsBestRssi) airPodsBestRssi = rssi
+                }
+
+                activeDeviceAddress?.let { mac ->
+                    lastAirPodsBeaconByMac[mac] = System.currentTimeMillis() to tel
+                }
+
+                val now = System.currentTimeMillis()
+                val cur = _budsState.value
+                if (now - lastBeaconLogMs >= 5_000L || cur.leftBattery.level != tel.leftLevel || cur.caseBattery.level != tel.caseLevel) {
+                    lastBeaconLogMs = now
+                    log("RX AirPods BLE Beacon [${tel.modelName}, L=${tel.leftLevel}%, R=${tel.rightLevel}%, C=${tel.caseLevel}%, lid=${if (tel.lidOpen) "open" else "closed"}, rssi=$rssi, replica=${tel.isLikelyReplica}]")
+                }
+
+                val inActiveReplica = promotedReplicaFamily != null || activeModel.isAirohaReplica || activeModel.isHuilianReplica || activeModel.isJieliReplica
+                _budsState.value = cur.copy(
+                    leftBattery = if (inActiveReplica && cur.leftBattery.level in 0..100) cur.leftBattery else BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, tel.leftLevel, tel.leftCharging),
+                    rightBattery = if (inActiveReplica && cur.rightBattery.level in 0..100) cur.rightBattery else BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, tel.rightLevel, tel.rightCharging),
+                    caseBattery = if (tel.caseLevel in 0..100) BudsProtocol.BatteryInfo(ComponentRole.CASE, tel.caseLevel, tel.caseCharging) else cur.caseBattery,
+                    isPassiveBeaconMode = !inActiveReplica,
+                    caseLidOpen = tel.lidOpen,
+                    beaconModelName = tel.modelName,
+                    isLikelyReplica = cur.isLikelyReplica || tel.isLikelyReplica || activeModel.brand == BudsProtocol.Brand.AIRPODS_CLONE
+                )
+            }
+        }
+        airPodsScanCallback = callback
+
+        try {
+            val filter = ScanFilter.Builder()
+                .setManufacturerData(
+                    AirPodsBeaconProtocol.APPLE_COMPANY_ID,
+                    byteArrayOf(AirPodsBeaconProtocol.PROXIMITY_TYPE),
+                    byteArrayOf(0xFF.toByte())
+                )
+                .build()
+            val settingsBuilder = ScanSettings.Builder()
+                .setScanMode(
+                    if (isForegroundMode) ScanSettings.SCAN_MODE_LOW_LATENCY
+                    else ScanSettings.SCAN_MODE_LOW_POWER
+                )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                settingsBuilder.setLegacy(false)
+            }
+            val settings = settingsBuilder.build()
+            scanner.startScan(listOf(filter), settings, callback)
+            // When in background (widget/popup sync), stop BLE scan automatically after 6s to save battery
+            if (!isForegroundMode) {
+                airPodsScanStopJob?.cancel()
+                airPodsScanStopJob = scope.launch {
+                    delay(6_000L)
+                    if (!isForegroundMode && gen == sessionGen.get()) {
+                        stopAirPodsBeaconScan()
+                    }
+                }
+            }
+        } catch (t: Throwable) {
+            log("AirPods BLE scan start error: ${t.message}")
+            airPodsScanCallback = null
+        }
+    }
+
+    private fun stopAirPodsBeaconScan() {
+        airPodsScanStopJob?.cancel()
+        airPodsScanStopJob = null
+        val cb = airPodsScanCallback ?: return
+        airPodsScanCallback = null
+        try {
+            bluetoothAdapter?.bluetoothLeScanner?.stopScan(cb)
+        } catch (_: Throwable) {}
     }
 
     private fun enterStandardBluetoothBatteryMode(
@@ -359,7 +899,11 @@ class BudsConnectionManager(private val context: Context) {
             BudsProtocol.ProtocolFamily.PIXEL_BUDS_SPP -> BluetoothConfig.PIXEL_BUDS_SPP_UUIDS
             BudsProtocol.ProtocolFamily.BOSE_BMAP_SPP,
             BudsProtocol.ProtocolFamily.SOUNDCORE_SPP,
-            BudsProtocol.ProtocolFamily.JABRA_SPP -> BluetoothConfig.STANDARD_SPP_ONLY_UUIDS
+            BudsProtocol.ProtocolFamily.JABRA_SPP,
+            BudsProtocol.ProtocolFamily.EDIFIER_SPP,
+            BudsProtocol.ProtocolFamily.SOUNDPEATS_SPP -> BluetoothConfig.STANDARD_SPP_ONLY_UUIDS
+            BudsProtocol.ProtocolFamily.AIROHA_RACE -> BluetoothConfig.AIROHA_RACE_SPP_UUIDS
+            BudsProtocol.ProtocolFamily.JIELI_RCSP -> BluetoothConfig.JIELI_SPP_UUIDS
             else -> {
                 if (activeModel.isOppoOrOnePlus) BluetoothConfig.OPPO_ONEPLUS_SPP_UUIDS
                 else BluetoothConfig.KNOWN_SPP_UUIDS
@@ -455,7 +999,7 @@ class BudsConnectionManager(private val context: Context) {
                     log("RX raw [${incoming.joinToString(" ") { "%02X".format(it) }}]")
                     accumulated += incoming
 
-                    when (activeModel.protocolFamily) {
+                    when (effectiveFamily) {
                         BudsProtocol.ProtocolFamily.HUAWEI_SPP,
                         BudsProtocol.ProtocolFamily.HONOR_CHOICE_SPP -> {
                             val (packets, remaining) = HuaweiProtocol.parsePacketsFromStreamBuffer(accumulated)
@@ -506,6 +1050,31 @@ class BudsConnectionManager(private val context: Context) {
                             val (packets, remaining) = PixelBudsProtocol.parsePacketsFromStreamBuffer(accumulated)
                             accumulated = remaining
                             for (pkg in packets) handleIncomingPixelBudsPacket(pkg)
+                        }
+                        BudsProtocol.ProtocolFamily.EDIFIER_SPP -> {
+                            val (packets, remaining) = EdifierProtocol.parsePacketsFromStreamBuffer(accumulated)
+                            accumulated = remaining
+                            for (pkg in packets) handleIncomingEdifierPacket(pkg)
+                        }
+                        BudsProtocol.ProtocolFamily.SOUNDPEATS_SPP -> {
+                            val (packets, remaining) = SoundPeatsProtocol.parsePacketsFromStreamBuffer(accumulated)
+                            accumulated = remaining
+                            for (pkg in packets) handleIncomingSoundPeatsPacket(pkg)
+                        }
+                        BudsProtocol.ProtocolFamily.AIROHA_RACE -> {
+                            val (packets, remaining) = AirohaRaceProtocol.parsePacketsFromStreamBuffer(accumulated)
+                            accumulated = remaining
+                            for (pkg in packets) handleIncomingAirohaPacket(pkg)
+                        }
+                        BudsProtocol.ProtocolFamily.HUILIAN_SPP -> {
+                            val (packets, remaining) = HuilianProtocol.parsePacketsFromStreamBuffer(accumulated)
+                            accumulated = remaining
+                            for (pkg in packets) handleIncomingHuilianPacket(pkg)
+                        }
+                        BudsProtocol.ProtocolFamily.JIELI_RCSP -> {
+                            val (items, remaining) = JieliRcspProtocol.parseStream(accumulated, acceptRawAuth = !jieliAuthDone)
+                            accumulated = remaining
+                            for (item in items) handleIncomingJieliItem(item)
                         }
                         else -> {
                             val (frames, remaining) = BudsProtocol.parseFramesFromStreamBuffer(accumulated)
@@ -596,6 +1165,18 @@ class BudsConnectionManager(private val context: Context) {
         jblAcc = ByteArray(0)
         jblGattRetryAttempt = 0
         isBatteryOnlyGattProbe = false
+        baseusUseCrc = false
+        qcyBatteryCharacteristic = null
+        promotedReplicaFamily = null
+        isReplicaGattProbe = false
+        replicaProbeJob?.cancel()
+        replicaProbeJob = null
+        jieliSeq = 1
+        jieliAuthDone = false
+        jieliHostChallenge = null
+        jieliVoiceDetails.clear()
+        jieliDynamicEq = true
+        stopAirPodsBeaconScan()
     }
 
     private fun disconnectInternal(emitUnexpected: Boolean) {
@@ -624,7 +1205,7 @@ class BudsConnectionManager(private val context: Context) {
      * Set ANC Mode
      */
     fun setAncMode(mode: AncMode) {
-        when (activeModel.protocolFamily) {
+        when (effectiveFamily) {
             BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 val pkt = HuaweiProtocol.buildAncModeWrite(mode)
                 log("TX Huawei ANC [${mode.name}]")
@@ -718,6 +1299,49 @@ class BudsConnectionManager(private val context: Context) {
                 sendRawBytes(JblProtocol.buildAncSet(mode))
                 _budsState.value = _budsState.value.copy(ancMode = mode)
             }
+            BudsProtocol.ProtocolFamily.EDIFIER_SPP -> {
+                log("TX Edifier ANC [${mode.name}]")
+                sendRawBytes(EdifierProtocol.buildAncSet(mode))
+                _budsState.value = _budsState.value.copy(ancMode = mode)
+            }
+            BudsProtocol.ProtocolFamily.SOUNDPEATS_SPP -> {
+                log("TX SoundPEATS ANC [${mode.name}]")
+                sendRawBytes(SoundPeatsProtocol.buildAncSet(mode))
+                _budsState.value = _budsState.value.copy(ancMode = mode)
+            }
+            BudsProtocol.ProtocolFamily.QCY_GATT -> {
+                log("TX QCY ANC [${mode.name}]")
+                sendRawBytes(QcyProtocol.buildAncSet(mode))
+                _budsState.value = _budsState.value.copy(ancMode = mode)
+            }
+            BudsProtocol.ProtocolFamily.BASEUS_GATT -> {
+                log("TX Baseus ANC [${mode.name}]")
+                sendRawBytes(BaseusProtocol.buildAncSet(mode, baseusUseCrc))
+                _budsState.value = _budsState.value.copy(ancMode = mode)
+            }
+            BudsProtocol.ProtocolFamily.MOONDROP_GAIA -> {
+                log("TX Moondrop ANC [${mode.name}]")
+                sendRawBytes(MoondropProtocol.buildAncSet(mode, ble = activeTransport == ActiveTransport.BLE_GATT))
+                _budsState.value = _budsState.value.copy(ancMode = mode)
+            }
+            BudsProtocol.ProtocolFamily.AIROHA_RACE -> {
+                if (activeTransport == ActiveTransport.BLE_BEACON) return
+                log("TX Airoha RACE ANC [${mode.name}]")
+                sendRawBytes(AirohaRaceProtocol.buildAncSet(mode))
+                _budsState.value = _budsState.value.copy(ancMode = mode)
+            }
+            BudsProtocol.ProtocolFamily.HUILIAN_SPP -> {
+                if (activeTransport == ActiveTransport.BLE_BEACON) return
+                log("TX Huilian StarFun ANC [${mode.name}]")
+                sendRawBytes(HuilianProtocol.buildAncSet(mode))
+                _budsState.value = _budsState.value.copy(ancMode = mode)
+            }
+            BudsProtocol.ProtocolFamily.JIELI_RCSP -> {
+                if (activeTransport == ActiveTransport.BLE_BEACON) return
+                log("TX JieLi RCSP ANC [${mode.name}]")
+                sendRawBytes(JieliRcspProtocol.buildSetAnc(nextJieliSeq(), mode, jieliVoiceDetails[2]))
+                _budsState.value = _budsState.value.copy(ancMode = mode)
+            }
             else -> {
                 val frame = BudsProtocol.buildAncCommandFrame(mode)
                 log("TX ANC [${mode.name}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
@@ -789,7 +1413,7 @@ class BudsConnectionManager(private val context: Context) {
             }
             return
         }
-        when (activeModel.protocolFamily) {
+        when (effectiveFamily) {
             BudsProtocol.ProtocolFamily.HUAWEI_SPP,
             BudsProtocol.ProtocolFamily.HONOR_CHOICE_SPP -> {
                 log("TX Huawei/Honor Battery Req")
@@ -817,6 +1441,54 @@ class BudsConnectionManager(private val context: Context) {
             }
             BudsProtocol.ProtocolFamily.JABRA_SPP -> sendRawBytes(JabraProtocol.buildBatteryReq())
             BudsProtocol.ProtocolFamily.JBL_GATT -> sendRawBytes(JblProtocol.buildBatteryReq())
+            BudsProtocol.ProtocolFamily.AIRPODS_BLE_BEACON -> {
+                activeBtDevice?.let { pollStandardBluetoothBattery(it) }
+                if (airPodsScanCallback == null) startAirPodsBeaconScan(sessionGen.get())
+            }
+            BudsProtocol.ProtocolFamily.EDIFIER_SPP -> sendRawBytes(EdifierProtocol.buildBatteryReq())
+            BudsProtocol.ProtocolFamily.SOUNDPEATS_SPP -> {
+                sendRawBytes(SoundPeatsProtocol.buildLeftBatReq())
+                sendRawBytes(SoundPeatsProtocol.buildRightBatReq())
+                sendRawBytes(SoundPeatsProtocol.buildCaseBatReq())
+            }
+            BudsProtocol.ProtocolFamily.QCY_GATT -> {
+                val gatt = bluetoothGatt
+                val qBat = qcyBatteryCharacteristic
+                if (gatt != null && qBat != null) {
+                    try { gatt.readCharacteristic(qBat) } catch (_: Exception) {}
+                }
+                sendRawBytes(QcyProtocol.buildQuery(QcyProtocol.CMD_BATTERY))
+            }
+            BudsProtocol.ProtocolFamily.BASEUS_GATT -> {
+                sendRawBytes(BaseusProtocol.buildBatteryReq(baseusUseCrc))
+                sendRawBytes(BaseusProtocol.buildCaseReq(baseusUseCrc))
+            }
+            BudsProtocol.ProtocolFamily.MOONDROP_GAIA -> {
+                sendRawBytes(MoondropProtocol.buildBatteryGet(ble = activeTransport == ActiveTransport.BLE_GATT))
+            }
+            BudsProtocol.ProtocolFamily.AIROHA_RACE -> {
+                if (activeTransport == ActiveTransport.BLE_BEACON) {
+                    activeBtDevice?.let { pollStandardBluetoothBattery(it) }
+                    if (airPodsScanCallback == null) startAirPodsBeaconScan(sessionGen.get())
+                } else {
+                    sendRawBytes(AirohaRaceProtocol.buildBatteryReq(isPartner = false))
+                    sendRawBytes(AirohaRaceProtocol.buildBatteryReq(isPartner = true))
+                }
+            }
+            BudsProtocol.ProtocolFamily.HUILIAN_SPP -> {
+                if (activeTransport == ActiveTransport.BLE_BEACON) {
+                    activeBtDevice?.let { pollStandardBluetoothBattery(it) }
+                } else {
+                    sendRawBytes(HuilianProtocol.buildBatteryReq())
+                }
+            }
+            BudsProtocol.ProtocolFamily.JIELI_RCSP -> {
+                if (activeTransport == ActiveTransport.BLE_BEACON) {
+                    activeBtDevice?.let { pollStandardBluetoothBattery(it) }
+                } else {
+                    sendRawBytes(JieliRcspProtocol.buildGetAdvInfo(nextJieliSeq()))
+                }
+            }
             BudsProtocol.ProtocolFamily.LOGITECH_HID -> {
                 activeBtDevice?.let { pollStandardBluetoothBattery(it) }
                 val gatt = bluetoothGatt
@@ -837,7 +1509,7 @@ class BudsConnectionManager(private val context: Context) {
      * Request current ANC mode
      */
     fun refreshAncState() {
-        when (activeModel.protocolFamily) {
+        when (effectiveFamily) {
             BudsProtocol.ProtocolFamily.HUAWEI_SPP,
             BudsProtocol.ProtocolFamily.HONOR_CHOICE_SPP -> {
                 log("TX Huawei/Honor ANC Req")
@@ -870,6 +1542,27 @@ class BudsConnectionManager(private val context: Context) {
                 sendRawBytes(PixelBudsProtocol.buildReadSetting(pixelActiveChannel, PixelBudsProtocol.SETTING_ANC))
             }
             BudsProtocol.ProtocolFamily.JBL_GATT -> sendRawBytes(JblProtocol.buildNoiseReq())
+            BudsProtocol.ProtocolFamily.AIRPODS_BLE_BEACON -> {}
+            BudsProtocol.ProtocolFamily.EDIFIER_SPP -> sendRawBytes(EdifierProtocol.buildAncReq())
+            BudsProtocol.ProtocolFamily.SOUNDPEATS_SPP -> sendRawBytes(SoundPeatsProtocol.buildAncReq())
+            BudsProtocol.ProtocolFamily.QCY_GATT -> sendRawBytes(QcyProtocol.buildQuery(QcyProtocol.CMD_ANC_MODE))
+            BudsProtocol.ProtocolFamily.BASEUS_GATT -> {}
+            BudsProtocol.ProtocolFamily.MOONDROP_GAIA -> sendRawBytes(MoondropProtocol.buildAncGet(ble = activeTransport == ActiveTransport.BLE_GATT))
+            BudsProtocol.ProtocolFamily.AIROHA_RACE -> {
+                if (activeTransport != ActiveTransport.BLE_BEACON) {
+                    sendRawBytes(AirohaRaceProtocol.buildAncStatusReq())
+                }
+            }
+            BudsProtocol.ProtocolFamily.HUILIAN_SPP -> {
+                if (activeTransport != ActiveTransport.BLE_BEACON) {
+                    sendRawBytes(HuilianProtocol.buildAncReq())
+                }
+            }
+            BudsProtocol.ProtocolFamily.JIELI_RCSP -> {
+                if (activeTransport != ActiveTransport.BLE_BEACON) {
+                    sendRawBytes(JieliRcspProtocol.buildGetSysInfo(nextJieliSeq()))
+                }
+            }
             else -> {
                 val frame = BudsProtocol.buildAncStateRequestFrame()
                 log("TX ANC State Req: ${frame.joinToString(" ") { "%02X".format(it) }}")
@@ -910,7 +1603,7 @@ class BudsConnectionManager(private val context: Context) {
      * Set Game Mode / Low Latency (ON / OFF)
      */
     fun setGameMode(enabled: Boolean) {
-        when (activeModel.protocolFamily) {
+        when (effectiveFamily) {
             BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 log("TX Huawei LowLatency [${if (enabled) "ON" else "OFF"}]")
                 sendRawBytes(HuaweiProtocol.buildLowLatencyWrite(enabled))
@@ -940,6 +1633,44 @@ class BudsConnectionManager(private val context: Context) {
                 val isLiberty = activeModel == BudsProtocol.BudsModel.SOUNDCORE_LIBERTY_4_NC
                 log("TX Soundcore Gaming [${if (enabled) "ON" else "OFF"}]")
                 sendRawBytes(SoundcoreProtocol.buildGameModeSet(enabled, isLiberty))
+                _budsState.value = _budsState.value.copy(gameMode = enabled)
+            }
+            BudsProtocol.ProtocolFamily.EDIFIER_SPP -> {
+                log("TX Edifier GameMode [${if (enabled) "ON" else "OFF"}]")
+                sendRawBytes(EdifierProtocol.buildGameModeSet(enabled))
+                _budsState.value = _budsState.value.copy(gameMode = enabled)
+            }
+            BudsProtocol.ProtocolFamily.SOUNDPEATS_SPP -> {
+                log("TX SoundPEATS GameMode [${if (enabled) "ON" else "OFF"}]")
+                sendRawBytes(SoundPeatsProtocol.buildGameModeSet(enabled))
+                _budsState.value = _budsState.value.copy(gameMode = enabled)
+            }
+            BudsProtocol.ProtocolFamily.QCY_GATT -> {
+                log("TX QCY GameMode [${if (enabled) "ON" else "OFF"}]")
+                sendRawBytes(QcyProtocol.buildGameModeSet(enabled))
+                _budsState.value = _budsState.value.copy(gameMode = enabled)
+            }
+            BudsProtocol.ProtocolFamily.BASEUS_GATT -> {
+                log("TX Baseus GameMode [${if (enabled) "ON" else "OFF"}]")
+                sendRawBytes(BaseusProtocol.buildGameModeSet(enabled, baseusUseCrc))
+                _budsState.value = _budsState.value.copy(gameMode = enabled)
+            }
+            BudsProtocol.ProtocolFamily.AIROHA_RACE -> {
+                if (activeTransport == ActiveTransport.BLE_BEACON) return
+                log("TX Airoha RACE GameMode [${if (enabled) "ON" else "OFF"}]")
+                sendRawBytes(AirohaRaceProtocol.buildGameModeSet(enabled))
+                _budsState.value = _budsState.value.copy(gameMode = enabled)
+            }
+            BudsProtocol.ProtocolFamily.HUILIAN_SPP -> {
+                if (activeTransport == ActiveTransport.BLE_BEACON) return
+                log("TX Huilian StarFun GameMode [${if (enabled) "ON" else "OFF"}]")
+                sendRawBytes(HuilianProtocol.buildGameModeSet(enabled))
+                _budsState.value = _budsState.value.copy(gameMode = enabled)
+            }
+            BudsProtocol.ProtocolFamily.JIELI_RCSP -> {
+                if (activeTransport == ActiveTransport.BLE_BEACON) return
+                log("TX JieLi RCSP GameMode [${if (enabled) "ON" else "OFF"}]")
+                sendRawBytes(JieliRcspProtocol.buildSetGameMode(nextJieliSeq(), enabled))
                 _budsState.value = _budsState.value.copy(gameMode = enabled)
             }
             BudsProtocol.ProtocolFamily.REALME_TL -> {
@@ -994,6 +1725,10 @@ class BudsConnectionManager(private val context: Context) {
                 sendRawBytes(JblProtocol.buildSpatialSet(enabled))
                 _budsState.value = _budsState.value.copy(spatialAudio = enabled)
             }
+            BudsProtocol.ProtocolFamily.QCY_GATT -> {
+                sendRawBytes(QcyProtocol.buildSpatialSet(enabled))
+                _budsState.value = _budsState.value.copy(spatialAudio = enabled)
+            }
             BudsProtocol.ProtocolFamily.REALME_TL -> {
                 val frame = BudsProtocol.buildSwitchFeatureCommandFrame(BudsProtocol.FEATURE_ID_SPATIAL_AUDIO, enabled)
                 log("TX SpatialAudio [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
@@ -1046,6 +1781,16 @@ class BudsConnectionManager(private val context: Context) {
                 sendRawBytes(HuaweiProtocol.buildSoundQualityWrite(enabled))
                 _budsState.value = _budsState.value.copy(highQualityAudio = enabled)
                 scope.launch { delay(200); refreshHighQualityAudio() }
+            }
+            BudsProtocol.ProtocolFamily.SOUNDPEATS_SPP -> {
+                log("TX SoundPEATS LDAC [${if (enabled) "ON" else "OFF"}]")
+                sendRawBytes(SoundPeatsProtocol.buildLdacSet(enabled))
+                _budsState.value = _budsState.value.copy(highQualityAudio = enabled)
+            }
+            BudsProtocol.ProtocolFamily.QCY_GATT -> {
+                log("TX QCY LDAC [${if (enabled) "ON" else "OFF"}]")
+                sendRawBytes(QcyProtocol.buildLdacSet(enabled))
+                _budsState.value = _budsState.value.copy(highQualityAudio = enabled)
             }
             BudsProtocol.ProtocolFamily.REALME_TL -> {
                 val frame = BudsProtocol.buildSwitchFeatureCommandFrame(BudsProtocol.FEATURE_ID_HIGH_QUALITY_AUDIO, enabled)
@@ -1160,6 +1905,10 @@ class BudsConnectionManager(private val context: Context) {
                 sendRawBytes(PixelBudsProtocol.buildWriteSettingVarint(pixelActiveChannel, PixelBudsProtocol.SETTING_MULTIPOINT, if (enabled) 1L else 0L))
                 _budsState.value = _budsState.value.copy(dualConnection = enabled)
             }
+            BudsProtocol.ProtocolFamily.SOUNDPEATS_SPP -> {
+                sendRawBytes(SoundPeatsProtocol.buildMultipointSet(enabled))
+                _budsState.value = _budsState.value.copy(dualConnection = enabled)
+            }
             BudsProtocol.ProtocolFamily.REALME_TL -> {
                 val frame = BudsProtocol.buildSwitchFeatureCommandFrame(BudsProtocol.FEATURE_ID_DUAL_CONNECTION, enabled)
                 log("TX DualConnection [${if (enabled) "ON" else "OFF"}]: ${frame.joinToString(" ") { "%02X".format(it) }}")
@@ -1215,7 +1964,7 @@ class BudsConnectionManager(private val context: Context) {
      * Set Auto Play/Pause (ON / OFF)
      */
     fun setAutoPlayPause(enabled: Boolean) {
-        when (activeModel.protocolFamily) {
+        when (effectiveFamily) {
             BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 log("TX Huawei AutoPause [${if (enabled) "ON" else "OFF"}]")
                 sendRawBytes(HuaweiProtocol.buildAutoPauseWrite(enabled))
@@ -1250,6 +1999,19 @@ class BudsConnectionManager(private val context: Context) {
             }
             BudsProtocol.ProtocolFamily.JBL_GATT -> {
                 sendRawBytes(JblProtocol.buildAutoPlaySet(enabled))
+                _budsState.value = _budsState.value.copy(autoPlayPause = enabled)
+            }
+            BudsProtocol.ProtocolFamily.SOUNDPEATS_SPP -> {
+                sendRawBytes(SoundPeatsProtocol.buildInEarSet(enabled))
+                _budsState.value = _budsState.value.copy(autoPlayPause = enabled)
+            }
+            BudsProtocol.ProtocolFamily.QCY_GATT -> {
+                sendRawBytes(QcyProtocol.buildInEarSet(enabled))
+                _budsState.value = _budsState.value.copy(autoPlayPause = enabled)
+            }
+            BudsProtocol.ProtocolFamily.HUILIAN_SPP -> {
+                if (activeTransport == ActiveTransport.BLE_BEACON) return
+                sendRawBytes(HuilianProtocol.buildEarDetectSet(enabled))
                 _budsState.value = _budsState.value.copy(autoPlayPause = enabled)
             }
             BudsProtocol.ProtocolFamily.REALME_TL -> {
@@ -1385,14 +2147,17 @@ class BudsConnectionManager(private val context: Context) {
         createNew: Boolean = false,
         delete: Boolean = false
     ) {
-        val spec = activeModel.customEqSpec() ?: return
+        val spec = activeModel.customEqSpec() ?: if (effectiveFamily == BudsProtocol.ProtocolFamily.JIELI_RCSP) {
+            BudsProtocol.BudsModel.AIRPODS_CLONE_JIELI.customEqSpec()
+        } else null
+        if (spec == null) return
         val clampedGains = List(spec.bandLabels.size) { idx ->
             gains.getOrElse(idx) { 0 }.coerceIn(spec.minDb, spec.maxDb)
         }
         val currentState = _budsState.value
         val freqs = currentState.customEqFreqs.takeIf { it.size == clampedGains.size } ?: spec.defaultFreqs
 
-        when (activeModel.protocolFamily) {
+        when (effectiveFamily) {
             BudsProtocol.ProtocolFamily.REALME_TL -> {
                 val existing = currentState.customEqProfiles
                 val existingProfile = existing.firstOrNull { it.id == profileId }
@@ -1555,6 +2320,30 @@ class BudsConnectionManager(private val context: Context) {
                     customEqGains = clampedGains
                 )
             }
+            BudsProtocol.ProtocolFamily.SOUNDPEATS_SPP -> {
+                log("TX SoundPEATS Parametric CustomEQ [gains=$clampedGains]")
+                scope.launch {
+                    for (frame in SoundPeatsProtocol.buildCustomEqFrames(clampedGains)) {
+                        sendRawBytes(frame)
+                        delay(45)
+                    }
+                }
+                _budsState.value = currentState.copy(
+                    eqPreset = null,
+                    activeCustomEqName = "Custom",
+                    customEqGains = clampedGains
+                )
+            }
+            BudsProtocol.ProtocolFamily.JIELI_RCSP -> {
+                if (activeTransport == ActiveTransport.BLE_BEACON) return
+                log("TX JieLi RCSP CustomEQ [gains=$clampedGains, dynamic=$jieliDynamicEq]")
+                sendRawBytes(JieliRcspProtocol.buildSetCustomEq(nextJieliSeq(), clampedGains, jieliDynamicEq))
+                _budsState.value = currentState.copy(
+                    eqPreset = null,
+                    activeCustomEqName = "Custom",
+                    customEqGains = clampedGains
+                )
+            }
             else -> return
         }
     }
@@ -1593,7 +2382,7 @@ class BudsConnectionManager(private val context: Context) {
      * Trigger optional native firmware Find My Earbuds chime where supported.
      */
     fun setHardwareFindBuds(enabled: Boolean, channel: FindBudsChannel = FindBudsChannel.BOTH) {
-        when (activeModel.protocolFamily) {
+        when (effectiveFamily) {
             BudsProtocol.ProtocolFamily.REALME_TL -> {
                 log("TX Realme FindBuds [${if (enabled) "ON" else "OFF"}]")
                 sendData(BudsProtocol.buildFindBudsFrame(enabled))
@@ -1615,6 +2404,12 @@ class BudsConnectionManager(private val context: Context) {
                 sendRawBytes(GalaxyProtocol.buildFindBudsWrite(enabled, legacy))
                 _budsState.value = _budsState.value.copy(hardwareFindActive = enabled)
             }
+            BudsProtocol.ProtocolFamily.JIELI_RCSP -> {
+                if (activeTransport == ActiveTransport.BLE_BEACON) return
+                log("TX JieLi RCSP FindBuds [${if (enabled) "ON" else "OFF"}]")
+                sendRawBytes(JieliRcspProtocol.buildFindBuds(nextJieliSeq(), enabled))
+                _budsState.value = _budsState.value.copy(hardwareFindActive = enabled)
+            }
             else -> return
         }
     }
@@ -1624,10 +2419,22 @@ class BudsConnectionManager(private val context: Context) {
      */
     fun renameFirmwareDevice(newName: String): Boolean {
         if (_connectionState.value != BleConnectionState.CONNECTED) return false
-        return when (activeModel.protocolFamily) {
+        return when (effectiveFamily) {
             BudsProtocol.ProtocolFamily.BOSE_BMAP_SPP -> {
                 log("TX Bose Rename -> \"$newName\"")
                 sendRawBytes(BoseProtocol.buildRename(newName))
+                true
+            }
+            BudsProtocol.ProtocolFamily.HUILIAN_SPP -> {
+                if (activeTransport == ActiveTransport.BLE_BEACON) return false
+                log("TX Huilian Rename -> \"$newName\"")
+                sendRawBytes(HuilianProtocol.buildRenameSet(newName))
+                true
+            }
+            BudsProtocol.ProtocolFamily.JIELI_RCSP -> {
+                if (activeTransport == ActiveTransport.BLE_BEACON) return false
+                log("TX JieLi RCSP Rename -> \"$newName\"")
+                sendRawBytes(JieliRcspProtocol.buildRename(nextJieliSeq(), newName))
                 true
             }
             else -> false
@@ -1648,7 +2455,7 @@ class BudsConnectionManager(private val context: Context) {
      * Set EQ preset
      */
     fun setEqPreset(preset: EqPreset) {
-        when (activeModel.protocolFamily) {
+        when (effectiveFamily) {
             BudsProtocol.ProtocolFamily.HUAWEI_SPP -> {
                 val hwId = HuaweiProtocol.eqPresetToHuaweiId(preset, activeModel.huaweiEqUsesPro3Ids)
                 log("TX Huawei EQ [${preset.name} -> id=$hwId]")
@@ -1687,6 +2494,33 @@ class BudsConnectionManager(private val context: Context) {
             BudsProtocol.ProtocolFamily.JBL_GATT -> {
                 log("TX JBL EQ [${preset.name}]")
                 sendRawBytes(JblProtocol.buildEqSet(preset))
+                applyStandardEqState(preset)
+            }
+            BudsProtocol.ProtocolFamily.EDIFIER_SPP -> {
+                log("TX Edifier EQ [${preset.name}]")
+                sendRawBytes(EdifierProtocol.buildEqSet(preset))
+                applyStandardEqState(preset)
+            }
+            BudsProtocol.ProtocolFamily.BASEUS_GATT -> {
+                log("TX Baseus EQ [${preset.name}]")
+                sendRawBytes(BaseusProtocol.buildEqSet(preset, baseusUseCrc))
+                applyStandardEqState(preset)
+            }
+            BudsProtocol.ProtocolFamily.MOONDROP_GAIA -> {
+                log("TX Moondrop EQ [${preset.name}]")
+                sendRawBytes(MoondropProtocol.buildEqPresetSet(preset, ble = activeTransport == ActiveTransport.BLE_GATT))
+                applyStandardEqState(preset)
+            }
+            BudsProtocol.ProtocolFamily.HUILIAN_SPP -> {
+                if (activeTransport == ActiveTransport.BLE_BEACON) return
+                log("TX Huilian EQ [${preset.name}]")
+                sendRawBytes(HuilianProtocol.buildEqSet(preset))
+                applyStandardEqState(preset)
+            }
+            BudsProtocol.ProtocolFamily.JIELI_RCSP -> {
+                if (activeTransport == ActiveTransport.BLE_BEACON) return
+                log("TX JieLi RCSP EQ [${preset.name}]")
+                sendRawBytes(JieliRcspProtocol.buildSetEqPreset(nextJieliSeq(), preset))
                 applyStandardEqState(preset)
             }
             else -> {
@@ -1824,6 +2658,9 @@ class BudsConnectionManager(private val context: Context) {
                             log("Error sending GATT: ${e.message}")
                         }
                     }
+                    ActiveTransport.BLE_BEACON -> {
+                        // Passive read-only beacon transport
+                    }
                     ActiveTransport.BT_BATTERY_ONLY,
                     ActiveTransport.NONE -> {
                         log("Error: no active connection")
@@ -1837,9 +2674,9 @@ class BudsConnectionManager(private val context: Context) {
         scope.launch {
             delay(150)
             if (gen != sessionGen.get()) return@launch
-            log("✓ Device ready! Requesting state (${activeModel.protocolFamily})...")
+            log("✓ Device ready! Requesting state ($effectiveFamily)...")
 
-            when (activeModel.protocolFamily) {
+            when (effectiveFamily) {
                 BudsProtocol.ProtocolFamily.GALAXY_BUDS_SPP -> {
                     // Galaxy Buds push 0x61 unsolicited
                     return@launch
@@ -1915,6 +2752,134 @@ class BudsConnectionManager(private val context: Context) {
                     sendRawBytes(JblProtocol.buildStatusReq(0x34))
                     delay(100)
                     sendRawBytes(JblProtocol.buildStatusReq(0x38))
+                    startPolling(gen)
+                    return@launch
+                }
+                BudsProtocol.ProtocolFamily.EDIFIER_SPP -> {
+                    sendRawBytes(EdifierProtocol.buildBatteryReq())
+                    delay(80)
+                    sendRawBytes(EdifierProtocol.buildAncReq())
+                    delay(80)
+                    sendRawBytes(EdifierProtocol.buildGameModeReq())
+                    startPolling(gen)
+                    return@launch
+                }
+                BudsProtocol.ProtocolFamily.SOUNDPEATS_SPP -> {
+                    sendRawBytes(SoundPeatsProtocol.buildLeftBatReq())
+                    delay(60)
+                    sendRawBytes(SoundPeatsProtocol.buildRightBatReq())
+                    delay(60)
+                    sendRawBytes(SoundPeatsProtocol.buildCaseBatReq())
+                    delay(60)
+                    sendRawBytes(SoundPeatsProtocol.buildAncReq())
+                    delay(60)
+                    sendRawBytes(SoundPeatsProtocol.buildGameModeReq())
+                    delay(60)
+                    sendRawBytes(SoundPeatsProtocol.buildInEarReq())
+                    delay(60)
+                    sendRawBytes(SoundPeatsProtocol.buildMultipointReq())
+                    delay(60)
+                    sendRawBytes(SoundPeatsProtocol.buildLdacReq())
+                    startPolling(gen)
+                    return@launch
+                }
+                BudsProtocol.ProtocolFamily.QCY_GATT -> {
+                    sendRawBytes(QcyProtocol.buildQuery(QcyProtocol.CMD_BATTERY))
+                    delay(80)
+                    sendRawBytes(QcyProtocol.buildQuery(QcyProtocol.CMD_ANC_MODE))
+                    delay(80)
+                    sendRawBytes(QcyProtocol.buildQuery(QcyProtocol.CMD_GAME_MODE))
+                    delay(80)
+                    sendRawBytes(QcyProtocol.buildQuery(QcyProtocol.CMD_IN_EAR))
+                    startPolling(gen)
+                    return@launch
+                }
+                BudsProtocol.ProtocolFamily.BASEUS_GATT -> {
+                    sendRawBytes(BaseusProtocol.buildBatteryReq(baseusUseCrc))
+                    delay(80)
+                    sendRawBytes(BaseusProtocol.buildCaseReq(baseusUseCrc))
+                    startPolling(gen)
+                    return@launch
+                }
+                BudsProtocol.ProtocolFamily.MOONDROP_GAIA -> {
+                    val isBle = activeTransport == ActiveTransport.BLE_GATT
+                    sendRawBytes(MoondropProtocol.buildBatteryGet(isBle))
+                    delay(90)
+                    sendRawBytes(MoondropProtocol.buildAncGet(isBle))
+                    startPolling(gen)
+                    return@launch
+                }
+                BudsProtocol.ProtocolFamily.AIROHA_RACE -> {
+                    _budsState.value = _budsState.value.copy(
+                        isLikelyReplica = true,
+                        isPassiveBeaconMode = false,
+                        activeReplicaAnc = true,
+                        activeReplicaGameMode = true,
+                        activeReplicaProtocolName = "Airoha RACE"
+                    )
+                    sendRawBytes(AirohaRaceProtocol.buildSdkVersionReq())
+                    delay(70)
+                    sendRawBytes(AirohaRaceProtocol.buildBuildVersionReq())
+                    delay(70)
+                    sendRawBytes(AirohaRaceProtocol.buildBatteryReq(isPartner = false))
+                    delay(70)
+                    sendRawBytes(AirohaRaceProtocol.buildBatteryReq(isPartner = true))
+                    delay(70)
+                    sendRawBytes(AirohaRaceProtocol.buildAncStatusReq())
+                    startPolling(gen)
+                    return@launch
+                }
+                BudsProtocol.ProtocolFamily.HUILIAN_SPP -> {
+                    _budsState.value = _budsState.value.copy(
+                        isLikelyReplica = true,
+                        isPassiveBeaconMode = false,
+                        activeReplicaAnc = true,
+                        activeReplicaGameMode = true,
+                        activeReplicaAutoPause = true,
+                        activeReplicaEq = true,
+                        activeReplicaProtocolName = "Huilian StarFun"
+                    )
+                    sendRawBytes(HuilianProtocol.buildModelReq())
+                    delay(60)
+                    sendRawBytes(HuilianProtocol.buildModelStrReq())
+                    delay(60)
+                    sendRawBytes(HuilianProtocol.buildBatteryReq())
+                    delay(60)
+                    sendRawBytes(HuilianProtocol.buildAncReq())
+                    delay(60)
+                    sendRawBytes(HuilianProtocol.buildGameModeReq())
+                    delay(60)
+                    sendRawBytes(HuilianProtocol.buildEarDetectReq())
+                    delay(60)
+                    sendRawBytes(HuilianProtocol.buildEqReq())
+                    startPolling(gen)
+                    return@launch
+                }
+                BudsProtocol.ProtocolFamily.JIELI_RCSP -> {
+                    _budsState.value = _budsState.value.copy(
+                        isLikelyReplica = true,
+                        isPassiveBeaconMode = false,
+                        activeReplicaAnc = true,
+                        activeReplicaGameMode = true,
+                        activeReplicaEq = true,
+                        activeReplicaCustomEq = true,
+                        activeReplicaProtocolName = "JieLi RCSP"
+                    )
+                    jieliAuthDone = false
+                    jieliHostChallenge = JieliRcspProtocol.buildAuthChallenge()
+                    log("TX JieLi RCSP Auth Reset + Challenge")
+                    sendRawBytes(JieliRcspProtocol.AUTH_RESET)
+                    delay(250)
+                    jieliHostChallenge?.let { sendRawBytes(it) }
+                    delay(450)
+                    // Also send GetTargetInfo + GetADVInfo in case firmware accepts RCSP without auth
+                    if (!jieliAuthDone && gen == sessionGen.get()) {
+                        sendRawBytes(JieliRcspProtocol.buildGetTargetInfo(nextJieliSeq()))
+                        delay(80)
+                        sendRawBytes(JieliRcspProtocol.buildGetAdvInfo(nextJieliSeq()))
+                        delay(80)
+                        sendRawBytes(JieliRcspProtocol.buildGetSysInfo(nextJieliSeq()))
+                    }
                     startPolling(gen)
                     return@launch
                 }
@@ -2007,7 +2972,10 @@ class BudsConnectionManager(private val context: Context) {
                     !foreground -> BACKGROUND_POLL_INTERVAL_MS
                     activeTransport == ActiveTransport.BT_BATTERY_ONLY || activeModel.isLogitech || activeModel.isGenericBluetooth -> 15_000L
                     activeModel.isBose || activeModel.isSennheiser || activeModel.isJabra || activeModel.isSony || activeModel.isXiaomi -> 10_000L
-                    activeModel.isSoundcore || activeModel.isJbl -> 5_000L
+                    activeModel.isSoundcore || activeModel.isJbl ||
+                        effectiveFamily == BudsProtocol.ProtocolFamily.JIELI_RCSP ||
+                        effectiveFamily == BudsProtocol.ProtocolFamily.AIROHA_RACE ||
+                        effectiveFamily == BudsProtocol.ProtocolFamily.HUILIAN_SPP -> 5_000L
                     else -> POLL_INTERVAL_MS
                 }
                 delay(interval)
@@ -2023,6 +2991,15 @@ class BudsConnectionManager(private val context: Context) {
 
                 if (activeTransport == ActiveTransport.BT_BATTERY_ONLY || activeModel.isLogitech || activeModel.isGenericBluetooth) {
                     refreshBattery()
+                    continue
+                }
+                if (effectiveFamily == BudsProtocol.ProtocolFamily.JIELI_RCSP ||
+                    effectiveFamily == BudsProtocol.ProtocolFamily.AIROHA_RACE ||
+                    effectiveFamily == BudsProtocol.ProtocolFamily.HUILIAN_SPP
+                ) {
+                    refreshBattery()
+                    delay(80)
+                    refreshAncState()
                     continue
                 }
                 if (activeModel.isBose || activeModel.isSoundcore || activeModel.isSennheiser || activeModel.isJabra || activeModel.isSony || activeModel.isXiaomi || activeModel.isJbl) {
@@ -2105,29 +3082,45 @@ class BudsConnectionManager(private val context: Context) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     log("GATT connected (status=$status). Discovering services...")
-                    if (!isBatteryOnlyGattProbe) {
+                    if (!isBatteryOnlyGattProbe && !isReplicaGattProbe) {
                         _connectionState.value = BleConnectionState.DISCOVERING_SERVICES
                     }
                     gatt.discoverServices()
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     log("GATT disconnected (status=$status)")
-                    if (isBatteryOnlyGattProbe || activeTransport == ActiveTransport.BT_BATTERY_ONLY) {
+                    if (isReplicaGattProbe) {
+                        // Silent AirPods replica GATT probe failed -> stay smoothly in passive BLE beacon mode
+                        isReplicaGattProbe = false
+                        try { gatt.close() } catch (_: Exception) {}
+                        if (bluetoothGatt == gatt) bluetoothGatt = null
+                    } else if (isBatteryOnlyGattProbe || activeTransport == ActiveTransport.BT_BATTERY_ONLY) {
                         // Keep HFP battery monitoring active even if BLE GATT probe fails/disconnects
                         try { gatt.close() } catch (_: Exception) {}
                         if (bluetoothGatt == gatt) bluetoothGatt = null
                         batteryLevelCharacteristic = null
-                    } else if (activeModel.isJbl) {
+                    } else if (activeModel.isAirohaReplica || activeModel.isJieliReplica) {
+                        val dev = activeBtDevice
+                        val gen = sessionGen.get()
+                        try { gatt.close() } catch (_: Exception) {}
+                        if (bluetoothGatt == gatt) bluetoothGatt = null
+                        if (dev != null) {
+                            log("${activeModel.protocolFamily} GATT unavailable (status=$status) -> switching to AirPods Replica BLE beacon + HFP mode")
+                            enterAirPodsBeaconMode(dev, gen)
+                        } else {
+                            disconnect()
+                        }
+                    } else if (activeModel.isJbl || activeModel.isQcy || activeModel.isBaseus || activeModel.isMoondrop || activeModel.isEdifier || activeModel.isSoundPeats) {
                         val dev = activeBtDevice
                         val gen = sessionGen.get()
                         try { gatt.close() } catch (_: Exception) {}
                         if (bluetoothGatt == gatt) bluetoothGatt = null
                         if (dev != null && jblGattRetryAttempt == 0) {
                             jblGattRetryAttempt = 1
-                            log("JBL BLE GATT failed (status=$status), retrying with TRANSPORT_AUTO...")
+                            log("${activeModel.protocolFamily} BLE GATT failed (status=$status), retrying with TRANSPORT_AUTO...")
                             connectGatt(dev, gen, transport = BluetoothDevice.TRANSPORT_AUTO, isBatteryOnlyProbe = false)
                         } else if (dev != null) {
-                            log("JBL vendor GATT unavailable (status=$status) -> falling back to standard Bluetooth battery (HFP)")
+                            log("${activeModel.protocolFamily} vendor GATT unavailable (status=$status) -> falling back to standard Bluetooth battery (HFP)")
                             enterStandardBluetoothBatteryMode(dev, gen, isFallback = true, tryBleBas = false)
                         } else {
                             disconnect()
@@ -2143,6 +3136,12 @@ class BudsConnectionManager(private val context: Context) {
             if (gatt != bluetoothGatt) return
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 log("GATT service discovery failed: status=$status")
+                if (isReplicaGattProbe) {
+                    isReplicaGattProbe = false
+                    try { gatt.disconnect(); gatt.close() } catch (_: Exception) {}
+                    if (bluetoothGatt == gatt) bluetoothGatt = null
+                    return
+                }
                 if (isBatteryOnlyGattProbe || activeTransport == ActiveTransport.BT_BATTERY_ONLY) return
                 if (activeModel.isJbl) {
                     val dev = activeBtDevice
@@ -2152,6 +3151,37 @@ class BudsConnectionManager(private val context: Context) {
                     }
                 }
                 disconnect()
+                return
+            }
+
+            // Silent Airoha RACE / JieLi RCSP GATT probe for any AirPods* device
+            if (isReplicaGattProbe) {
+                val airohaSvc = gatt.getService(BluetoothConfig.AIROHA_SERVICE)
+                val airohaW = airohaSvc?.getCharacteristic(BluetoothConfig.AIROHA_WRITE)
+                val airohaN = airohaSvc?.getCharacteristic(BluetoothConfig.AIROHA_NOTIFY)
+                val jieliSvc = gatt.getService(BluetoothConfig.JIELI_GATT_SERVICE)
+                val jieliW = jieliSvc?.getCharacteristic(BluetoothConfig.JIELI_GATT_WRITE)
+                val jieliN = jieliSvc?.getCharacteristic(BluetoothConfig.JIELI_GATT_NOTIFY)
+                isReplicaGattProbe = false
+                if (airohaW != null && airohaN != null) {
+                    log("✓ Auto-detected Airoha RACE service on AirPods* device -> enabling active ANC/Game control!")
+                    promotedReplicaFamily = BudsProtocol.ProtocolFamily.AIROHA_RACE
+                    activeTransport = ActiveTransport.BLE_GATT
+                    writeCharacteristic = airohaW
+                    notifyCharacteristic = airohaN
+                    enableNotifications(gatt, airohaN)
+                } else if (jieliW != null && jieliN != null) {
+                    log("✓ Auto-detected JieLi RCSP GATT (0xAE00) on AirPods* device -> enabling active ANC/EQ/Game control!")
+                    promotedReplicaFamily = BudsProtocol.ProtocolFamily.JIELI_RCSP
+                    activeTransport = ActiveTransport.BLE_GATT
+                    writeCharacteristic = jieliW
+                    notifyCharacteristic = jieliN
+                    enableNotifications(gatt, jieliN)
+                } else {
+                    log("AirPods auto-probe: neither AIROHA_SERVICE nor JIELI 0xAE00 found on GATT")
+                    try { gatt.disconnect(); gatt.close() } catch (_: Exception) {}
+                    if (bluetoothGatt == gatt) bluetoothGatt = null
+                }
                 return
             }
 
@@ -2177,8 +3207,51 @@ class BudsConnectionManager(private val context: Context) {
             var foundWrite: BluetoothGattCharacteristic? = null
             var foundNotify: BluetoothGattCharacteristic? = null
 
-            // Prioritize JBL GATT service when connecting to JBL
-            if (activeModel.isJbl) {
+            // Prioritize vendor GATT services for Airoha / JBL / QCY / Moondrop / SoundPEATS
+            if (activeModel.isAirohaReplica) {
+                val airohaSvc = gatt.getService(BluetoothConfig.AIROHA_SERVICE)
+                if (airohaSvc != null) {
+                    foundWrite = airohaSvc.getCharacteristic(BluetoothConfig.AIROHA_WRITE)
+                    foundNotify = airohaSvc.getCharacteristic(BluetoothConfig.AIROHA_NOTIFY)
+                } else {
+                    val dev = activeBtDevice
+                    if (dev != null) {
+                        log("Airoha RACE service not exposed -> switching to AirPods Replica BLE beacon + HFP mode")
+                        try { gatt.disconnect(); gatt.close() } catch (_: Exception) {}
+                        bluetoothGatt = null
+                        enterAirPodsBeaconMode(dev, sessionGen.get())
+                        return
+                    }
+                }
+            } else if (activeModel.isJieliReplica) {
+                val jieliSvc = gatt.getService(BluetoothConfig.JIELI_GATT_SERVICE)
+                if (jieliSvc != null) {
+                    foundWrite = jieliSvc.getCharacteristic(BluetoothConfig.JIELI_GATT_WRITE)
+                    foundNotify = jieliSvc.getCharacteristic(BluetoothConfig.JIELI_GATT_NOTIFY)
+                } else {
+                    val dev = activeBtDevice
+                    if (dev != null) {
+                        log("JieLi GATT (0xAE00) not exposed -> switching to AirPods Replica BLE beacon + HFP mode")
+                        try { gatt.disconnect(); gatt.close() } catch (_: Exception) {}
+                        bluetoothGatt = null
+                        enterAirPodsBeaconMode(dev, sessionGen.get())
+                        return
+                    }
+                }
+            } else if (activeModel.isQcy) {
+                val qcySvc = gatt.getService(BluetoothConfig.QCY_GATT_SERVICE)
+                if (qcySvc != null) {
+                    foundWrite = qcySvc.getCharacteristic(BluetoothConfig.QCY_GATT_WRITE)
+                    foundNotify = qcySvc.getCharacteristic(BluetoothConfig.QCY_GATT_NOTIFY)
+                    qcyBatteryCharacteristic = qcySvc.getCharacteristic(BluetoothConfig.QCY_GATT_BATTERY)
+                }
+            } else if (activeModel.isMoondrop || activeModel.isSoundPeats) {
+                val gaiaSvc = gatt.getService(BluetoothConfig.GAIA_BLE_SERVICE)
+                if (gaiaSvc != null) {
+                    foundWrite = gaiaSvc.getCharacteristic(BluetoothConfig.GAIA_BLE_WRITE)
+                    foundNotify = gaiaSvc.getCharacteristic(BluetoothConfig.GAIA_BLE_NOTIFY)
+                }
+            } else if (activeModel.isJbl) {
                 val jblSvc = gatt.getService(BluetoothConfig.JBL_GATT_SERVICE)
                 if (jblSvc != null) {
                     for (char in jblSvc.characteristics) {
@@ -2243,7 +3316,13 @@ class BudsConnectionManager(private val context: Context) {
 
             if (foundWrite == null || foundNotify == null) {
                 log("GATT: write/notify characteristics not found")
-                disconnect()
+                val dev = activeBtDevice
+                if (dev != null && (activeModel.isQcy || activeModel.isBaseus || activeModel.isMoondrop || activeModel.isEdifier || activeModel.isSoundPeats)) {
+                    log("${activeModel.protocolFamily} GATT service not found -> falling back to standard Bluetooth battery (HFP)")
+                    enterStandardBluetoothBatteryMode(dev, sessionGen.get(), isFallback = true, tryBleBas = false)
+                } else {
+                    disconnect()
+                }
                 return
             }
 
@@ -2329,6 +3408,32 @@ class BudsConnectionManager(private val context: Context) {
                 val (pkts, rem) = JblProtocol.parsePacketsFromStreamBuffer(jblAcc)
                 jblAcc = rem
                 for (pkt in pkts) handleIncomingJblPacket(pkt)
+            } else if (activeModel.isQcy) {
+                handleIncomingQcyBytes(bytes)
+            } else if (activeModel.isBaseus) {
+                handleIncomingBaseusBytes(bytes)
+            } else if (activeModel.isMoondrop) {
+                handleIncomingMoondropBytes(bytes)
+            } else if (activeModel.isEdifier) {
+                jblAcc += bytes
+                val (pkts, rem) = EdifierProtocol.parsePacketsFromStreamBuffer(jblAcc)
+                jblAcc = rem
+                for (pkt in pkts) handleIncomingEdifierPacket(pkt)
+            } else if (activeModel.isSoundPeats) {
+                jblAcc += bytes
+                val (pkts, rem) = SoundPeatsProtocol.parsePacketsFromStreamBuffer(jblAcc)
+                jblAcc = rem
+                for (pkt in pkts) handleIncomingSoundPeatsPacket(pkt)
+            } else if (activeModel.isAirohaReplica || promotedReplicaFamily == BudsProtocol.ProtocolFamily.AIROHA_RACE) {
+                jblAcc += bytes
+                val (pkts, rem) = AirohaRaceProtocol.parsePacketsFromStreamBuffer(jblAcc)
+                jblAcc = rem
+                for (pkt in pkts) handleIncomingAirohaPacket(pkt)
+            } else if (activeModel.isJieliReplica || promotedReplicaFamily == BudsProtocol.ProtocolFamily.JIELI_RCSP) {
+                jblAcc += bytes
+                val (items, rem) = JieliRcspProtocol.parseStream(jblAcc, acceptRawAuth = !jieliAuthDone)
+                jblAcc = rem
+                for (item in items) handleIncomingJieliItem(item)
             } else {
                 BudsProtocol.parseFrame(bytes)?.let { handleIncomingFrame(it) }
             }
@@ -3605,6 +4710,335 @@ class BudsConnectionManager(private val context: Context) {
                         _budsState.value = _budsState.value.copy(eqPreset = eq, activeCustomEqName = if (eq == null) "EQ #$code" else null)
                     }
                     0x38 -> _budsState.value = _budsState.value.copy(autoPlayPause = (p[1].toInt() and 0xFF) != 0)
+                }
+            }
+        }
+    }
+
+    private fun handleIncomingEdifierPacket(pkg: EdifierProtocol.Packet) {
+        when (pkg.cmd) {
+            EdifierProtocol.CMD_BATTERY_GET -> {
+                val bats = EdifierProtocol.parseBattery(pkg.payload)
+                if (bats.isNotEmpty()) updateBatteryState(bats, isSnapshot = true)
+            }
+            EdifierProtocol.CMD_ANC_MODE -> {
+                EdifierProtocol.parseAncMode(pkg.payload)?.let {
+                    _budsState.value = _budsState.value.copy(ancMode = it)
+                }
+            }
+            EdifierProtocol.CMD_GAME_MODE_GET,
+            EdifierProtocol.CMD_GAME_MODE_SET -> if (pkg.payload.isNotEmpty()) {
+                _budsState.value = _budsState.value.copy(gameMode = (pkg.payload[0].toInt() and 0xFF) != 0)
+            }
+        }
+    }
+
+    private fun handleIncomingSoundPeatsPacket(pkg: SoundPeatsProtocol.Packet) {
+        val baseCmd = pkg.cmd and 0x7FFF
+        val p = pkg.payload
+        when (baseCmd) {
+            SoundPeatsProtocol.CMD_BAT_LEFT_GET -> if (p.isNotEmpty()) {
+                val lvl = p[0].toInt() and 0xFF
+                if (lvl in 0..100) updateBatteryState(listOf(BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, lvl, false)), isSnapshot = false)
+            }
+            SoundPeatsProtocol.CMD_BAT_RIGHT_GET -> if (p.isNotEmpty()) {
+                val lvl = p[0].toInt() and 0xFF
+                if (lvl in 0..100) updateBatteryState(listOf(BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, lvl, false)), isSnapshot = false)
+            }
+            SoundPeatsProtocol.CMD_BAT_BOX_GET -> if (p.isNotEmpty()) {
+                val lvl = p[0].toInt() and 0xFF
+                if (lvl in 0..100) updateBatteryState(listOf(BudsProtocol.BatteryInfo(ComponentRole.CASE, lvl, false)), isSnapshot = false)
+            }
+            SoundPeatsProtocol.CMD_ANC_GET, SoundPeatsProtocol.CMD_ANC_SET -> {
+                SoundPeatsProtocol.parseAncMode(p)?.let { _budsState.value = _budsState.value.copy(ancMode = it) }
+            }
+            SoundPeatsProtocol.CMD_GAME_MODE_GET, SoundPeatsProtocol.CMD_GAME_MODE_SET -> if (p.isNotEmpty()) {
+                _budsState.value = _budsState.value.copy(gameMode = (p[0].toInt() and 0xFF) != 0)
+            }
+            SoundPeatsProtocol.CMD_IN_EAR_GET, SoundPeatsProtocol.CMD_IN_EAR_SET -> if (p.isNotEmpty()) {
+                _budsState.value = _budsState.value.copy(autoPlayPause = (p[0].toInt() and 0xFF) != 0)
+            }
+            SoundPeatsProtocol.CMD_MULTIPOINT_GET, SoundPeatsProtocol.CMD_MULTIPOINT_SET -> if (p.isNotEmpty()) {
+                _budsState.value = _budsState.value.copy(dualConnection = (p[0].toInt() and 0xFF) != 0)
+            }
+            SoundPeatsProtocol.CMD_LDAC_GET, SoundPeatsProtocol.CMD_LDAC_SET -> if (p.isNotEmpty()) {
+                _budsState.value = _budsState.value.copy(highQualityAudio = (p[0].toInt() and 0xFF) != 0)
+            }
+        }
+    }
+
+    private fun handleIncomingQcyBytes(raw: ByteArray) {
+        for (tlv in QcyProtocol.parseNotification(raw)) {
+            when (tlv.cmd) {
+                QcyProtocol.CMD_BATTERY -> {
+                    val bats = QcyProtocol.parseBatteryTriplet(tlv.params)
+                    if (bats.isNotEmpty()) updateBatteryState(bats, isSnapshot = true)
+                }
+                QcyProtocol.CMD_ANC_MODE -> {
+                    QcyProtocol.parseAncMode(tlv.params)?.let { _budsState.value = _budsState.value.copy(ancMode = it) }
+                }
+                QcyProtocol.CMD_GAME_MODE -> if (tlv.params.isNotEmpty()) {
+                    _budsState.value = _budsState.value.copy(gameMode = (tlv.params[0].toInt() and 0xFF) != 0)
+                }
+                QcyProtocol.CMD_IN_EAR -> if (tlv.params.isNotEmpty()) {
+                    _budsState.value = _budsState.value.copy(autoPlayPause = (tlv.params[0].toInt() and 0xFF) == 0x01)
+                }
+                QcyProtocol.CMD_SPATIAL -> if (tlv.params.isNotEmpty()) {
+                    _budsState.value = _budsState.value.copy(spatialAudio = (tlv.params[0].toInt() and 0xFF) != 0)
+                }
+                QcyProtocol.CMD_LDAC -> if (tlv.params.isNotEmpty()) {
+                    _budsState.value = _budsState.value.copy(highQualityAudio = (tlv.params[0].toInt() and 0xFF) != 0)
+                }
+            }
+        }
+    }
+
+    private fun handleIncomingBaseusBytes(raw: ByteArray) {
+        val frame = BaseusProtocol.decodeFrame(raw) ?: return
+        if (frame.isCrc) baseusUseCrc = true
+        when (frame.cmd) {
+            BaseusProtocol.CMD_BATTERY -> {
+                val bats = BaseusProtocol.parseBudsBattery(frame.payload)
+                if (bats.isNotEmpty()) updateBatteryState(bats, isSnapshot = false)
+            }
+            BaseusProtocol.CMD_CASE_BATTERY -> {
+                BaseusProtocol.parseCaseBattery(frame.payload)?.let {
+                    updateBatteryState(listOf(it), isSnapshot = false)
+                }
+            }
+            BaseusProtocol.CMD_GAME_MODE -> if (frame.payload.isNotEmpty()) {
+                _budsState.value = _budsState.value.copy(gameMode = (frame.payload[0].toInt() and 0xFF) != 0)
+            }
+            BaseusProtocol.CMD_ANC_TRANSP -> _budsState.value = _budsState.value.copy(ancMode = AncMode.TRANSPARENCY)
+            BaseusProtocol.CMD_ANC_ON -> _budsState.value = _budsState.value.copy(ancMode = AncMode.NOISE_REDUCTION)
+            BaseusProtocol.CMD_ANC_ACK -> if (frame.payload.isNotEmpty() && frame.payload[0].toInt() == 0) {
+                _budsState.value = _budsState.value.copy(ancMode = AncMode.OFF)
+            }
+        }
+    }
+
+    private fun handleIncomingMoondropBytes(raw: ByteArray) {
+        val pkt = MoondropProtocol.parseBlePacket(raw) ?: return
+        when (pkt.feature) {
+            MoondropProtocol.FEAT_ANC -> {
+                MoondropProtocol.parseAncMode(pkt.payload)?.let {
+                    _budsState.value = _budsState.value.copy(ancMode = it)
+                }
+            }
+            MoondropProtocol.FEAT_CORE -> if (pkt.cmd == MoondropProtocol.CMD_GET_BATTERY && pkt.payload.isNotEmpty()) {
+                val lvl = pkt.payload.last().toInt() and 0xFF
+                if (lvl in 0..100) {
+                    updateBatteryState(listOf(
+                        BudsProtocol.BatteryInfo(ComponentRole.LEFT_EAR, lvl, false),
+                        BudsProtocol.BatteryInfo(ComponentRole.RIGHT_EAR, lvl, false)
+                    ), isSnapshot = false)
+                }
+            }
+        }
+    }
+
+    private fun handleIncomingAirohaPacket(pkg: AirohaRaceProtocol.Packet) {
+        when (pkg.cmdId) {
+            AirohaRaceProtocol.CMD_READ_SDK_VERSION,
+            AirohaRaceProtocol.CMD_GET_BUILD_VERSION -> {
+                AirohaRaceProtocol.parseAsciiInfo(pkg.payload)?.let { info ->
+                    log("RX Airoha RACE chip/SDK: $info")
+                    _budsState.value = _budsState.value.copy(
+                        isLikelyReplica = true,
+                        replicaChipInfo = info
+                    )
+                }
+            }
+            AirohaRaceProtocol.CMD_GET_BATTERY -> {
+                AirohaRaceProtocol.parseBattery(pkg.payload)?.let { bat ->
+                    updateBatteryState(listOf(bat), isSnapshot = false)
+                }
+            }
+            AirohaRaceProtocol.CMD_ANC_PASSTHROUGH -> {
+                AirohaRaceProtocol.parseAncMode(pkg.payload)?.let { mode ->
+                    _budsState.value = _budsState.value.copy(ancMode = mode)
+                }
+            }
+        }
+    }
+
+    private fun handleIncomingHuilianPacket(pkg: HuilianProtocol.Packet) {
+        when (pkg.cmd) {
+            HuilianProtocol.CMD_MODEL_CODE,
+            HuilianProtocol.CMD_MODEL_STR -> {
+                HuilianProtocol.parseAscii(pkg.payload)?.let { info ->
+                    log("RX Huilian StarFun model: $info")
+                    _budsState.value = _budsState.value.copy(
+                        isLikelyReplica = true,
+                        replicaChipInfo = info,
+                        activeReplicaProtocolName = "Huilian StarFun"
+                    )
+                }
+            }
+            HuilianProtocol.CMD_BATTERY -> {
+                val bats = HuilianProtocol.parseBattery(pkg.payload)
+                if (bats.isNotEmpty()) updateBatteryState(bats, isSnapshot = true)
+            }
+            HuilianProtocol.CMD_ANC_GET,
+            HuilianProtocol.CMD_ANC_SET -> {
+                HuilianProtocol.parseAncMode(pkg.payload)?.let { mode ->
+                    _budsState.value = _budsState.value.copy(ancMode = mode)
+                }
+            }
+            HuilianProtocol.CMD_GAME_MODE_GET,
+            HuilianProtocol.CMD_GAME_MODE_SET -> if (pkg.payload.isNotEmpty()) {
+                _budsState.value = _budsState.value.copy(gameMode = (pkg.payload[0].toInt() and 0xFF) != 0)
+            }
+            HuilianProtocol.CMD_EAR_DETECT_GET,
+            HuilianProtocol.CMD_EAR_DETECT_SET -> if (pkg.payload.isNotEmpty()) {
+                _budsState.value = _budsState.value.copy(autoPlayPause = (pkg.payload[0].toInt() and 0xFF) != 0)
+            }
+            HuilianProtocol.CMD_EQ_GET,
+            HuilianProtocol.CMD_EQ_SET -> {
+                HuilianProtocol.parseEqPreset(pkg.payload)?.let { eq ->
+                    _budsState.value = _budsState.value.copy(eqPreset = eq)
+                }
+            }
+        }
+    }
+
+    private fun requestJieliFullState() {
+        scope.launch {
+            sendRawBytes(JieliRcspProtocol.buildGetAdvInfo(nextJieliSeq()))
+            delay(80)
+            sendRawBytes(JieliRcspProtocol.buildGetSysInfo(nextJieliSeq()))
+        }
+    }
+
+    private fun handleIncomingJieliItem(item: JieliRcspProtocol.StreamItem) {
+        when (item) {
+            is JieliRcspProtocol.StreamItem.AuthMsg -> {
+                val raw = item.raw
+                when (raw[0].toInt() and 0xFF) {
+                    0x01 -> {
+                        val expected = jieliHostChallenge?.let { JieliRcspProtocol.encryptedChallenge(it) }
+                        if (expected != null && raw.contentEquals(expected)) {
+                            log("✓ JieLi Auth step 1 verified! Sending PASS...")
+                            sendRawBytes(JieliRcspProtocol.AUTH_PASS)
+                        } else {
+                            log("JieLi Auth: device challenge response mismatch (non-default key?), still sending PASS...")
+                            sendRawBytes(JieliRcspProtocol.AUTH_PASS)
+                        }
+                    }
+                    0x00 -> {
+                        val resp = JieliRcspProtocol.encryptedChallenge(raw)
+                        if (resp != null) {
+                            log("✓ JieLi Auth step 2: answering device challenge...")
+                            sendRawBytes(resp)
+                        }
+                    }
+                    0x02 -> {
+                        if (raw.contentEquals(JieliRcspProtocol.AUTH_PASS)) {
+                            jieliAuthDone = true
+                            log("✓ JieLi RCSP mutual authentication passed!")
+                            _budsState.value = _budsState.value.copy(
+                                isLikelyReplica = true,
+                                isPassiveBeaconMode = false,
+                                activeReplicaAnc = true,
+                                activeReplicaGameMode = true,
+                                activeReplicaEq = true,
+                                activeReplicaCustomEq = true,
+                                activeReplicaProtocolName = "JieLi RCSP"
+                            )
+                            requestJieliFullState()
+                        }
+                    }
+                }
+            }
+            is JieliRcspProtocol.StreamItem.Rcsp -> {
+                handleIncomingJieliPacket(item.packet)
+            }
+        }
+    }
+
+    private fun handleIncomingJieliPacket(pkg: JieliRcspProtocol.Packet) {
+        val data = pkg.data
+        when (pkg.opcode) {
+            JieliRcspProtocol.OP_ADV_GET_INFO -> {
+                if (pkg.status != 0) return
+                jieliAuthDone = true
+                for ((type, value) in JieliRcspProtocol.parseLtvs(data)) {
+                    when (type) {
+                        JieliRcspProtocol.ADV_BATTERY -> {
+                            val bats = JieliRcspProtocol.parseBatteryTriplet(value)
+                            if (bats.isNotEmpty()) updateBatteryState(bats, isSnapshot = true)
+                        }
+                        JieliRcspProtocol.ADV_NAME -> {
+                            val name = String(value.takeWhile { it.toInt() != 0 }.toByteArray(), Charsets.UTF_8).trim()
+                            if (name.isNotEmpty()) {
+                                log("RX JieLi ADV name: $name")
+                                _budsState.value = _budsState.value.copy(
+                                    isLikelyReplica = true,
+                                    replicaChipInfo = "JieLi RCSP ($name)",
+                                    activeReplicaProtocolName = "JieLi RCSP"
+                                )
+                            }
+                        }
+                        JieliRcspProtocol.ADV_WORK_MODE -> if (value.isNotEmpty()) {
+                            val gameOn = (value[0].toInt() and 0xFF) == 1
+                            _budsState.value = _budsState.value.copy(gameMode = gameOn)
+                        }
+                        JieliRcspProtocol.ADV_IN_EAR -> if (value.isNotEmpty()) {
+                            _budsState.value = _budsState.value.copy(autoPlayPause = (value[0].toInt() and 0xFF) != 0)
+                        }
+                    }
+                }
+            }
+            JieliRcspProtocol.OP_ADV_DEVICE_NOTIFY -> {
+                if (data.size >= 17) {
+                    val bats = JieliRcspProtocol.parseBatteryTriplet(data, offset = 14)
+                    if (bats.isNotEmpty()) updateBatteryState(bats, isSnapshot = true)
+                }
+            }
+            JieliRcspProtocol.OP_GET_SYS_INFO,
+            JieliRcspProtocol.OP_SYS_INFO_AUTO_UPDATE -> {
+                if (data.isEmpty() || (data[0].toInt() and 0xFF) != JieliRcspProtocol.FUNC_PUBLIC) return
+                for ((attr, value) in JieliRcspProtocol.parseLtvs(data, startOffset = 1)) {
+                    when (attr) {
+                        JieliRcspProtocol.ATTR_VOICE_MODE -> if (value.size >= 9) {
+                            val modeByte = value[0].toInt() and 0xFF
+                            jieliVoiceDetails[modeByte] = value.copyOfRange(0, 9)
+                            val anc = when (modeByte) {
+                                0 -> AncMode.OFF
+                                1 -> AncMode.NOISE_REDUCTION
+                                2 -> AncMode.TRANSPARENCY
+                                else -> null
+                            }
+                            if (anc != null) {
+                                _budsState.value = _budsState.value.copy(ancMode = anc)
+                            }
+                        }
+                        JieliRcspProtocol.ATTR_ALL_VOICE_MODES -> if (value.isNotEmpty()) {
+                            val count = value[0].toInt() and 0xFF
+                            var off = 1
+                            repeat(count) {
+                                if (off + 9 <= value.size) {
+                                    val entry = value.copyOfRange(off, off + 9)
+                                    jieliVoiceDetails[entry[0].toInt() and 0xFF] = entry
+                                    off += 9
+                                }
+                            }
+                        }
+                        JieliRcspProtocol.ATTR_EQ -> if (value.isNotEmpty()) {
+                            val modeByte = value[0].toInt() and 0xFF
+                            val dynamic = (modeByte and 0x80) != 0
+                            jieliDynamicEq = dynamic
+                            val gains = if (dynamic && value.size >= 2) {
+                                val n = (value[1].toInt() and 0xFF).coerceIn(1, 32)
+                                if (value.size >= 2 + n) (0 until n).map { value[2 + it].toInt() } else null
+                            } else if (!dynamic && value.size >= 11) {
+                                (0 until 10).map { value[1 + it].toInt() }
+                            } else null
+                            if (gains != null) {
+                                _budsState.value = _budsState.value.copy(customEqGains = gains)
+                            }
+                        }
+                    }
                 }
             }
         }

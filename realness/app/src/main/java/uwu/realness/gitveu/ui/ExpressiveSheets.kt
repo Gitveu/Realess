@@ -1,5 +1,9 @@
 package uwu.realness.gitveu.ui
 
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -23,15 +27,23 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import uwu.realness.gitveu.R
+import uwu.realness.gitveu.audio.EqTransferCodec
 import uwu.realness.gitveu.audio.FindBudsChannel
 import uwu.realness.gitveu.protocol.BudsProtocol
+import uwu.realness.gitveu.update.AppReleaseInfo
+import uwu.realness.gitveu.update.AppUpdater
+import uwu.realness.gitveu.update.UpdateDownloadState
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -51,6 +63,8 @@ fun CustomEqEditorSheet(
     onApply: (gains: List<Int>, profileName: String?) -> Unit,
     onReset: () -> Unit
 ) {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val bandCount = spec.bandLabels.size
     val gains = remember(spec, editingProfile, isCreatingNew) {
@@ -66,6 +80,47 @@ fun CustomEqEditorSheet(
         mutableStateOf(
             if (isCreatingNew) "" else (editingProfile?.name ?: "")
         )
+    }
+    var showImportCodeDialog by remember { mutableStateOf(false) }
+
+    fun applyImportedEq(rawText: String, fallbackName: String? = null) {
+        val imported = EqTransferCodec.importFromText(rawText, spec, fallbackName)
+        if (imported == null) {
+            Toast.makeText(context, context.getString(R.string.eq_import_error), Toast.LENGTH_SHORT).show()
+            return
+        }
+        for (i in 0 until bandCount) {
+            gains[i] = imported.gains.getOrElse(i) { 0 }.coerceIn(spec.minDb, spec.maxDb)
+        }
+        if (spec.supportsMultipleProfiles && profileName.isBlank() && !imported.profileName.isNullOrBlank()) {
+            profileName = imported.profileName.take(20)
+        }
+        Toast.makeText(
+            context,
+            context.getString(R.string.eq_import_success, imported.sourceFormat, imported.sourcePointCount, bandCount),
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    val autoEqFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        try {
+            val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+            if (content != null) {
+                val baseName = uri.lastPathSegment
+                    ?.substringAfterLast('/')
+                    ?.substringBeforeLast('.')
+                    ?.replace('_', ' ')
+                    ?.take(20)
+                applyImportedEq(content, fallbackName = baseName)
+            } else {
+                Toast.makeText(context, context.getString(R.string.eq_import_error), Toast.LENGTH_SHORT).show()
+            }
+        } catch (_: Throwable) {
+            Toast.makeText(context, context.getString(R.string.eq_import_error), Toast.LENGTH_SHORT).show()
+        }
     }
 
     ModalBottomSheet(
@@ -183,6 +238,68 @@ fun CustomEqEditorSheet(
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
 
+            // Share code / Import code / AutoEQ & Wavelet (.txt) toolbar
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilledTonalButton(
+                    onClick = {
+                        val code = EqTransferCodec.encodeShareCode(spec, gains.toList(), profileName.trim().ifEmpty { null })
+                        clipboard.setText(AnnotatedString(code))
+                        Toast.makeText(context, context.getString(R.string.eq_share_copied), Toast.LENGTH_SHORT).show()
+                    },
+                    shape = CircleShape,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.eq_btn_share_code),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+                FilledTonalButton(
+                    onClick = { showImportCodeDialog = true },
+                    shape = CircleShape,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Rounded.ContentPasteGo, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.eq_btn_import_code),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+                FilledTonalButton(
+                    onClick = {
+                        try {
+                            autoEqFileLauncher.launch(arrayOf("text/plain", "text/*", "*/*"))
+                        } catch (_: Throwable) {
+                            Toast.makeText(context, context.getString(R.string.eq_import_error), Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    shape = CircleShape,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Rounded.UploadFile, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.eq_btn_import_file),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+
             // Action buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -221,6 +338,88 @@ fun CustomEqEditorSheet(
             }
         }
     }
+
+    if (showImportCodeDialog) {
+        EqImportCodeDialog(
+            onImport = { raw ->
+                showImportCodeDialog = false
+                applyImportedEq(raw)
+            },
+            onDismiss = { showImportCodeDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun EqImportCodeDialog(
+    onImport: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val clipboard = LocalClipboardManager.current
+    var text by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Rounded.GraphicEq,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
+        title = {
+            Text(
+                text = stringResource(R.string.eq_import_dialog_title),
+                style = MaterialTheme.typography.titleLarge
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = stringResource(R.string.eq_import_dialog_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    placeholder = { Text("RNQ1:... / GraphicEQ:...") },
+                    minLines = 3,
+                    maxLines = 6,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                TextButton(
+                    onClick = {
+                        clipboard.getText()?.text?.let { clip ->
+                            if (clip.isNotBlank()) text = clip
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Icon(Icons.Rounded.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(stringResource(R.string.eq_import_paste_clipboard))
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onImport(text) },
+                enabled = text.isNotBlank(),
+                shape = CircleShape
+            ) {
+                Text(stringResource(R.string.eq_btn_import_code))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+        shape = RoundedCornerShape(28.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    )
 }
 
 @Composable
@@ -777,6 +976,208 @@ fun RenameDeviceDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text(stringResource(R.string.cancel))
+            }
+        },
+        shape = RoundedCornerShape(28.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    )
+}
+
+/**
+ * In-app GitHub Releases updater dialog inspired by keqdroid:
+ * displays version transition, Pre-release badge, APK size, release notes, live download
+ * progress bar, FileProvider APK installer launch, and "Skip version" action.
+ */
+@Composable
+fun UpdateReleaseDialog(
+    release: AppReleaseInfo,
+    onOpenInBrowser: (String) -> Unit,
+    onSkipVersion: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val downloadState by AppUpdater.downloadState.collectAsState()
+
+    AlertDialog(
+        onDismissRequest = {
+            if (downloadState !is UpdateDownloadState.Downloading) onDismiss()
+        },
+        icon = {
+            Icon(
+                imageVector = Icons.Rounded.SystemUpdate,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
+        title = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = stringResource(R.string.update_dialog_title, release.tagName),
+                    style = MaterialTheme.typography.titleLarge,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "v${release.currentVersion} → ${release.tagName}",
+                        style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (release.formattedSize.isNotEmpty()) {
+                        Text(
+                            text = "· ${release.formattedSize}",
+                            style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (release.isPrerelease) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.tertiaryContainer,
+                            shape = CircleShape
+                        ) {
+                            Text(
+                                text = "Pre-release",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (release.releaseNotes.isNotBlank()) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 200.dp)
+                    ) {
+                        Text(
+                            text = release.releaseNotes,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .verticalScroll(rememberScrollState())
+                                .padding(12.dp)
+                        )
+                    }
+                }
+
+                when (val dl = downloadState) {
+                    is UpdateDownloadState.Downloading -> {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            val pct = (dl.progress * 100f).roundToInt()
+                            Text(
+                                text = stringResource(R.string.update_downloading_pct, pct),
+                                style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            if (dl.totalBytes > 0L) {
+                                LinearProgressIndicator(
+                                    progress = { dl.progress },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(8.dp)
+                                        .clip(CircleShape)
+                                )
+                            } else {
+                                LinearProgressIndicator(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(8.dp)
+                                        .clip(CircleShape)
+                                )
+                            }
+                        }
+                    }
+                    is UpdateDownloadState.ReadyToInstall -> {
+                        Text(
+                            text = stringResource(R.string.update_ready_install),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    is UpdateDownloadState.Error -> {
+                        Text(
+                            text = stringResource(R.string.update_error_fmt, dl.message),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    UpdateDownloadState.Idle -> {}
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    TextButton(
+                        onClick = { onOpenInBrowser(release.htmlUrl) },
+                        enabled = downloadState !is UpdateDownloadState.Downloading
+                    ) {
+                        Text(stringResource(R.string.update_open_github))
+                    }
+                    TextButton(
+                        onClick = onSkipVersion,
+                        enabled = downloadState !is UpdateDownloadState.Downloading
+                    ) {
+                        Text(stringResource(R.string.update_skip_version))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            val isDownloading = downloadState is UpdateDownloadState.Downloading
+            val readyFile = (downloadState as? UpdateDownloadState.ReadyToInstall)?.apkFile
+            Button(
+                enabled = !isDownloading,
+                shape = CircleShape,
+                onClick = {
+                    if (readyFile != null && readyFile.exists()) {
+                        if (!AppUpdater.canRequestPackageInstalls(context)) {
+                            Toast.makeText(context, context.getString(R.string.update_install_perm_toast), Toast.LENGTH_LONG).show()
+                            AppUpdater.openInstallPermissionSettings(context)
+                        } else {
+                            AppUpdater.launchApkInstaller(context, readyFile)
+                        }
+                    } else {
+                        scope.launch {
+                            val file = AppUpdater.downloadUpdate(context, release)
+                            if (file != null) {
+                                if (!AppUpdater.canRequestPackageInstalls(context)) {
+                                    Toast.makeText(context, context.getString(R.string.update_install_perm_toast), Toast.LENGTH_LONG).show()
+                                    AppUpdater.openInstallPermissionSettings(context)
+                                } else {
+                                    AppUpdater.launchApkInstaller(context, file)
+                                }
+                            }
+                        }
+                    }
+                }
+            ) {
+                Text(
+                    text = if (readyFile != null) {
+                        stringResource(R.string.update_install_now)
+                    } else {
+                        stringResource(R.string.update_download_install)
+                    }
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = downloadState !is UpdateDownloadState.Downloading
+            ) {
+                Text(stringResource(R.string.update_later))
             }
         },
         shape = RoundedCornerShape(28.dp),

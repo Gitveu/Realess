@@ -90,6 +90,15 @@ object BudsProtocol {
         PIXEL_BUDS_SPP,
         JBL_GATT,
         LOGITECH_HID,
+        AIRPODS_BLE_BEACON,
+        AIROHA_RACE,
+        HUILIAN_SPP,
+        JIELI_RCSP,
+        EDIFIER_SPP,
+        SOUNDPEATS_SPP,
+        QCY_GATT,
+        BASEUS_GATT,
+        MOONDROP_GAIA,
         BT_STANDARD
     }
 
@@ -102,6 +111,8 @@ object BudsProtocol {
         HONOR("HONOR"),
         NOTHING("Nothing / CMF"),
         SAMSUNG("Samsung"),
+        APPLE("Apple AirPods / Beats"),
+        AIRPODS_CLONE("AirPods Replicas (Airoha / Huilian / JL)"),
         SONY("Sony"),
         BOSE("Bose"),
         SOUNDCORE("Anker Soundcore"),
@@ -110,6 +121,11 @@ object BudsProtocol {
         JABRA("Jabra"),
         GOOGLE("Google Pixel Buds"),
         JBL("JBL"),
+        EDIFIER("Edifier"),
+        MOONDROP("Moondrop"),
+        QCY("QCY"),
+        SOUNDPEATS("SoundPEATS"),
+        BASEUS("Baseus"),
         LOGITECH("Logitech G"),
         GENERIC("Bluetooth")
     }
@@ -302,6 +318,43 @@ object BudsProtocol {
         JBL_TOUR_LIVE(ProtocolFamily.JBL_GATT, Brand.JBL, "JBL Tour Pro 2/3 / Live Pro 2 / Buds 3"),
         JBL_TUNE_WAVE(ProtocolFamily.JBL_GATT, Brand.JBL, "JBL Tune / Wave / Reflect / Club"),
 
+        // Apple AirPods & Beats (Passive BLE Proximity Pairing Beacon — CAPod / MaterialPods)
+        AIRPODS_PRO(ProtocolFamily.AIRPODS_BLE_BEACON, Brand.APPLE, "AirPods Pro / Pro 2"),
+        AIRPODS_CLASSIC(ProtocolFamily.AIRPODS_BLE_BEACON, Brand.APPLE, "AirPods 1 / 2 / 3 / 4"),
+        AIRPODS_MAX(ProtocolFamily.AIRPODS_BLE_BEACON, Brand.APPLE, "AirPods Max"),
+        BEATS_TWS(ProtocolFamily.AIRPODS_BLE_BEACON, Brand.APPLE, "Beats Studio Buds / Fit Pro / Powerbeats"),
+        BEATS_OVER_EAR(ProtocolFamily.AIRPODS_BLE_BEACON, Brand.APPLE, "Beats Studio / Solo / Flex"),
+
+        // Chinese AirPods Replicas (Airoha 1562/1571 RACE + Huilian 247/277/377 StarFun + JieLi JL_SPP RCSP)
+        AIRPODS_CLONE_AIROHA(ProtocolFamily.AIROHA_RACE, Brand.AIRPODS_CLONE, "AirPods Replica (Airoha 1562 / FlyCC)"),
+        AIRPODS_CLONE_HUILIAN(ProtocolFamily.HUILIAN_SPP, Brand.AIRPODS_CLONE, "AirPods Replica (Huilian 247 / 277 / 377 · StarFun)"),
+        AIRPODS_CLONE_JIELI(ProtocolFamily.JIELI_RCSP, Brand.AIRPODS_CLONE, "AirPods Replica (JieLi JL_SPP · RCSP)"),
+        AIRPODS_CLONE_GENERIC(ProtocolFamily.AIRPODS_BLE_BEACON, Brand.AIRPODS_CLONE, "AirPods Replica (Bluetrum / A.Pods / Air Pro)"),
+
+        // Edifier (edifier-proto 0xAA/0xBB SPP/BLE)
+        EDIFIER_NEOBUDS(ProtocolFamily.EDIFIER_SPP, Brand.EDIFIER, "Edifier NeoBuds Pro / Pro 2 / S"),
+        EDIFIER_TWS(ProtocolFamily.EDIFIER_SPP, Brand.EDIFIER, "Edifier W240TN / TWS1 Pro / X3"),
+        EDIFIER_OVER_EAR(ProtocolFamily.EDIFIER_SPP, Brand.EDIFIER, "Edifier W820NB / WH950NB"),
+
+        // Moondrop (SpaceTravel-Protocol GAIA v3 0x001D)
+        MOONDROP_SPACE_TRAVEL(ProtocolFamily.MOONDROP_GAIA, Brand.MOONDROP, "Moondrop Space Travel / 2"),
+        MOONDROP_GOLDEN_AGES(ProtocolFamily.MOONDROP_GAIA, Brand.MOONDROP, "Moondrop Golden Ages / Robin / Alice"),
+        MOONDROP_GENERIC(ProtocolFamily.MOONDROP_GAIA, Brand.MOONDROP, "Moondrop (Generic)"),
+
+        // QCY (Quicky BLE GATT 0xA001 + 0x521C beacon)
+        QCY_MELOBUDS(ProtocolFamily.QCY_GATT, Brand.QCY, "QCY MeloBuds Pro / HT05 / HT07 / N70"),
+        QCY_T_SERIES(ProtocolFamily.QCY_GATT, Brand.QCY, "QCY T13 / T13 ANC / T17 / T20"),
+        QCY_OVER_EAR(ProtocolFamily.QCY_GATT, Brand.QCY, "QCY H3 / H4"),
+
+        // SoundPEATS (OpenPeats SPP/BLE 0xFF 0x04)
+        SOUNDPEATS_PRO(ProtocolFamily.SOUNDPEATS_SPP, Brand.SOUNDPEATS, "SoundPEATS Air4 Pro / Capsule3 Pro / H3"),
+        SOUNDPEATS_CLASSIC(ProtocolFamily.SOUNDPEATS_SPP, Brand.SOUNDPEATS, "SoundPEATS Air3 / Engine 4 / Clear"),
+
+        // Baseus (baseus-desktop Plain 0xBA/0xAA & CRC 0x789C)
+        BASEUS_BP1_PRO(ProtocolFamily.BASEUS_GATT, Brand.BASEUS, "Baseus Bass BP1 Pro / Bowie M2 / M3"),
+        BASEUS_BP1_ULTRA(ProtocolFamily.BASEUS_GATT, Brand.BASEUS, "Baseus Bass BP1 Ultra"),
+        BASEUS_OVER_EAR(ProtocolFamily.BASEUS_GATT, Brand.BASEUS, "Baseus Bowie H1 / H1i / D05"),
+
         // Logitech G Gaming Headsets (USB-OTG Lightspeed HID + G435 Bluetooth)
         LOGITECH_G733(ProtocolFamily.LOGITECH_HID, Brand.LOGITECH, "Logitech G733 LIGHTSPEED"),
         LOGITECH_G435(ProtocolFamily.LOGITECH_HID, Brand.LOGITECH, "Logitech G435 LIGHTSPEED / BT"),
@@ -325,6 +378,15 @@ object BudsProtocol {
         val isPixelBuds: Boolean get() = protocolFamily == ProtocolFamily.PIXEL_BUDS_SPP
         val isJbl: Boolean get() = protocolFamily == ProtocolFamily.JBL_GATT
         val isLogitech: Boolean get() = protocolFamily == ProtocolFamily.LOGITECH_HID
+        val isAirPods: Boolean get() = protocolFamily == ProtocolFamily.AIRPODS_BLE_BEACON
+        val isAirohaReplica: Boolean get() = protocolFamily == ProtocolFamily.AIROHA_RACE
+        val isHuilianReplica: Boolean get() = protocolFamily == ProtocolFamily.HUILIAN_SPP
+        val isJieliReplica: Boolean get() = protocolFamily == ProtocolFamily.JIELI_RCSP
+        val isEdifier: Boolean get() = protocolFamily == ProtocolFamily.EDIFIER_SPP
+        val isSoundPeats: Boolean get() = protocolFamily == ProtocolFamily.SOUNDPEATS_SPP
+        val isQcy: Boolean get() = protocolFamily == ProtocolFamily.QCY_GATT
+        val isBaseus: Boolean get() = protocolFamily == ProtocolFamily.BASEUS_GATT
+        val isMoondrop: Boolean get() = protocolFamily == ProtocolFamily.MOONDROP_GAIA
         val isGenericBluetooth: Boolean get() = protocolFamily == ProtocolFamily.BT_STANDARD
         val isSingleBatteryHeadset: Boolean
             get() = isLogitech || isGenericBluetooth || this in setOf(
@@ -332,7 +394,8 @@ object BudsProtocol {
                 CMF_HEADPHONE_PRO, CMF_NECKBAND_PRO, CMF_SPEAKER,
                 HUAWEI_FREEBUDS_STUDIO, HUAWEI_FREELACE_PRO, HUAWEI_FREELACE_PRO_2,
                 SONY_WH_1000XM5, SONY_ULT_CH, BOSE_QC_ULTRA_HEADPHONES, BOSE_QC_45_35, BOSE_NC_700,
-                SOUNDCORE_SPACE_Q45, SOUNDCORE_LIFE_Q30, SENNHEISER_MOMENTUM_4, SENNHEISER_ACCENTUM
+                SOUNDCORE_SPACE_Q45, SOUNDCORE_LIFE_Q30, SENNHEISER_MOMENTUM_4, SENNHEISER_ACCENTUM,
+                AIRPODS_MAX, BEATS_OVER_EAR, EDIFIER_OVER_EAR, QCY_OVER_EAR, BASEUS_OVER_EAR
             )
 
         val prefersHuaweiPrivateUuid: Boolean
@@ -348,7 +411,7 @@ object BudsProtocol {
 
         val supportsAnc: Boolean
             get() = when {
-                !isSupported || isLogitech -> false
+                !isSupported || isLogitech || isAirPods || isGenericBluetooth -> false
                 isRealme -> this !in setOf(
                     BUDS_T110, BUDS_CLIP, BUDS_Q2, ONEPLUS_BUDS_CLIP, ONEPLUS_BUDS_Z,
                     OPPO_ENCO_BUDS, OPPO_ENCO_CLIP
@@ -400,8 +463,9 @@ object BudsProtocol {
 
         val supportsEq: Boolean
             get() = when {
-                !isSupported || isLogitech -> false
-                isRealme || isHonorChoice || isNothing || isGalaxy || isSony || isXiaomi || isJbl -> true
+                !isSupported || isLogitech || isAirPods || isGenericBluetooth -> false
+                isRealme || isHonorChoice || isNothing || isGalaxy || isSony || isXiaomi || isJbl ||
+                    isEdifier || isBaseus || isMoondrop || isHuilianReplica || isJieliReplica -> true
                 isHuawei -> this in setOf(
                     HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I, HUAWEI_FREEBUDS_PRO_2,
                     HUAWEI_FREEBUDS_PRO_3, HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREECLIP,
@@ -458,11 +522,12 @@ object BudsProtocol {
             }
 
         val supportsSpatialAudio: Boolean
-            get() = isRealme || isSennheiser || isJbl || supportsNothingSpatial ||
+            get() = isRealme || isSennheiser || isJbl || isQcy || supportsNothingSpatial ||
                 this in setOf(SOUNDCORE_LIBERTY_4_NC, SOUNDCORE_SPACE_Q45, SOUNDCORE_SPACE_A40, SOUNDCORE_GENERIC)
 
         val supportsGameMode: Boolean
             get() = isRealme || (isNothing && this != CMF_SPEAKER) || isSoundcore || isXiaomi ||
+                isEdifier || isSoundPeats || isQcy || isBaseus || isAirohaReplica || isHuilianReplica || isJieliReplica ||
                 (isGalaxy && this != GALAXY_BUDS) || this in setOf(
                 HUAWEI_FREEBUDS_5I, HUAWEI_FREEBUDS_6I, HUAWEI_FREEBUDS_PRO_3,
                 HUAWEI_FREEBUDS_PRO_5, HUAWEI_FREECLIP, HUAWEI_FREECLIP_2,
@@ -472,13 +537,13 @@ object BudsProtocol {
 
         val supportsCustomEq: Boolean
             get() = isRealme || (isNothing && this != CMF_SPEAKER) || isXiaomi || isSony || isBose || isSoundcore ||
-                isSennheiser || isPixelBuds || (isHuawei && supportsEq && this != HUAWEI_FREEBUDS_SE_2)
+                isSennheiser || isPixelBuds || isSoundPeats || isJieliReplica || (isHuawei && supportsEq && this != HUAWEI_FREEBUDS_SE_2)
 
         val supportsHardwareFindBuds: Boolean
-            get() = isRealme || (isNothing && this != CMF_SPEAKER) || isGalaxy
+            get() = isRealme || (isNothing && this != CMF_SPEAKER) || isGalaxy || isJieliReplica
 
         val supportsFirmwareRename: Boolean
-            get() = isBose
+            get() = isBose || isHuilianReplica || isJieliReplica
 
         val supportsBassLevel: Boolean
             get() = isNothing && supportsDynamicAudio
@@ -538,11 +603,16 @@ object BudsProtocol {
                 defaultFreqs = listOf(60, 200, 1000, 4000, 12000),
                 minDb = -6, maxDb = 6, supportsMultipleProfiles = false
             )
+            isSoundPeats || isJieliReplica -> CustomEqSpec(
+                bandLabels = listOf("31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"),
+                defaultFreqs = listOf(31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000),
+                minDb = -12, maxDb = 12, supportsMultipleProfiles = false
+            )
             else -> null
         }
 
         val supportsHighQualityAudio: Boolean
-            get() = this in setOf(
+            get() = isSoundPeats || isQcy || this in setOf(
                 BUDS_T200, BUDS_T500_PRO, BUDS_AIR_5_PRO, BUDS_AIR_6, BUDS_AIR_6_PRO,
                 BUDS_AIR_7, BUDS_AIR_7_PRO, BUDS_AIR_8, BUDS_AIR_8_PRO,
                 ONEPLUS_BUDS_3, ONEPLUS_BUDS_4, ONEPLUS_BUDS_PRO_2, ONEPLUS_BUDS_PRO_3, ONEPLUS_BUDS_PRO_4,
@@ -579,13 +649,13 @@ object BudsProtocol {
                 GALAXY_BUDS_PRO, GALAXY_BUDS_2, GALAXY_BUDS_2_PRO, GALAXY_BUDS_FE,
                 GALAXY_BUDS_3, GALAXY_BUDS_3_PRO, GALAXY_BUDS_4,
                 XIAOMI_REDMI_BUDS_3_PRO, XIAOMI_REDMI_BUDS_5_PRO, XIAOMI_REDMI_BUDS_6_PRO, XIAOMI_REDMI_BUDS_8_ACTIVE, XIAOMI_BUDS_GENERIC
-            ) || isBose || isSoundcore || isPixelBuds
+            ) || isBose || isSoundcore || isPixelBuds || isSoundPeats
 
         val supportsAutoPlayPause: Boolean
             get() = (isNothing && this !in setOf(
                 NOTHING_EAR_OPEN, NOTHING_HEADPHONE_A, CMF_BUDS_NEO, CMF_BUDS_2A,
                 CMF_NECKBAND_PRO, CMF_HEADPHONE_PRO, CMF_CLIP_PRO, CMF_SPEAKER
-            )) || isBose || isSoundcore || isSennheiser || isPixelBuds || isJbl || this in setOf(
+            )) || isBose || isSoundcore || isSennheiser || isPixelBuds || isJbl || isSoundPeats || isQcy || isHuilianReplica || this in setOf(
                 BUDS_AIR_5_PRO, BUDS_AIR_6, BUDS_AIR_6_PRO, BUDS_AIR_7, BUDS_AIR_7_PRO, BUDS_AIR_8, BUDS_AIR_8_PRO,
                 ONEPLUS_BUDS_3, ONEPLUS_BUDS_4, ONEPLUS_BUDS_PRO, ONEPLUS_BUDS_PRO_2, ONEPLUS_BUDS_PRO_3, ONEPLUS_BUDS_PRO_4,
                 OPPO_ENCO_X, OPPO_ENCO_X2, OPPO_ENCO_X3, OPPO_ENCO_X4,
@@ -625,6 +695,67 @@ object BudsProtocol {
                 // 0. Logitech G733 / G435 (Bluetooth & USB product names)
                 if (n.contains("g435") || n.contains("logitech g435")) return LOGITECH_G435
                 if (n.contains("g733") || n.contains("logitech g733")) return LOGITECH_G733
+
+                // 0.5. Apple AirPods, Beats & Chinese AirPods Replicas (Airoha / Huilian StarFun / JL / WB)
+                if (n.contains("huilian") || n.contains("starfun") || n.contains("h2s") || n.contains("h3pro")) {
+                    return AIRPODS_CLONE_HUILIAN
+                }
+                if (n.contains("a.pods") || n.contains("apods") || n.contains("air pro 3") || n.contains("air pro 6") ||
+                    n.contains("airpro") || n.contains("air 4") || n.contains("air san") || n.contains("airpods pro 3") ||
+                    n == "pro 4" || n == "pro 5" || n == "pro 6" || n == "pro4" || n == "pro6" ||
+                    n == "i12" || n == "i14" || n == "i500" || n.contains("airoha") || n.contains("tigerbuilder")
+                ) {
+                    return AIRPODS_CLONE_AIROHA
+                }
+                if (n.contains("airpods")) {
+                    return when {
+                        n.contains("max") -> AIRPODS_MAX
+                        n.contains("pro") -> AIRPODS_PRO
+                        else -> AIRPODS_CLASSIC
+                    }
+                }
+                if (n.contains("powerbeats") || n.contains("beats ")) {
+                    return when {
+                        n.contains("studio buds") || n.contains("fit pro") || n.contains("solo buds") || n.contains("powerbeats pro") -> BEATS_TWS
+                        else -> BEATS_OVER_EAR
+                    }
+                }
+
+                // 0.6. Budget open-protocol brands: Edifier, Moondrop, QCY, SoundPEATS, Baseus
+                if (n.contains("edifier")) {
+                    return when {
+                        n.contains("neobuds") -> EDIFIER_NEOBUDS
+                        n.contains("w820") || n.contains("wh950") || n.contains("wh700") || n.contains("stax") -> EDIFIER_OVER_EAR
+                        else -> EDIFIER_TWS
+                    }
+                }
+                if (n.contains("moondrop") || n.contains("space travel") || n.contains("golden ages") || n.contains("nekocake")) {
+                    return when {
+                        n.contains("space travel") -> MOONDROP_SPACE_TRAVEL
+                        n.contains("golden ages") || n.contains("robin") || n.contains("alice") -> MOONDROP_GOLDEN_AGES
+                        else -> MOONDROP_GENERIC
+                    }
+                }
+                if (n.startsWith("qcy") || n.contains("qcy-") || n.contains("qcy ") || n.contains("melobuds")) {
+                    return when {
+                        n.contains("h3") || n.contains("h4") -> QCY_OVER_EAR
+                        n.contains("melobuds") || n.contains("ht05") || n.contains("ht07") || n.contains("ht08") || n.contains("n70") -> QCY_MELOBUDS
+                        else -> QCY_T_SERIES
+                    }
+                }
+                if (n.contains("soundpeats")) {
+                    return when {
+                        n.contains("pro") || n.contains("h3") || n.contains("air4") || n.contains("air5") || n.contains("capsule3") -> SOUNDPEATS_PRO
+                        else -> SOUNDPEATS_CLASSIC
+                    }
+                }
+                if (n.contains("baseus")) {
+                    return when {
+                        n.contains("bp1 ultra") -> BASEUS_BP1_ULTRA
+                        n.contains("h1") || n.contains("d05") -> BASEUS_OVER_EAR
+                        else -> BASEUS_BP1_PRO
+                    }
+                }
 
                 // 1. Sony MDR
                 if (n.contains("wh-1000") || n.contains("wf-1000") || n.contains("linkbuds") ||
@@ -1107,7 +1238,19 @@ object BudsProtocol {
         val lightsEnabled: Boolean? = null,
         val inactiveMinutes: Int? = null,
         // True when vendor protocol (e.g. JBL GATT / SPP) was unavailable and we fell back to standard BT HFP/BAS battery
-        val isStandardBluetoothFallback: Boolean = false
+        val isStandardBluetoothFallback: Boolean = false,
+        // Passive AirPods / Beats / Replica BLE Proximity Pairing beacon & auto-probed replica chip controls
+        val isPassiveBeaconMode: Boolean = false,
+        val caseLidOpen: Boolean? = null,
+        val beaconModelName: String? = null,
+        val isLikelyReplica: Boolean = false,
+        val replicaChipInfo: String? = null,
+        val activeReplicaAnc: Boolean = false,
+        val activeReplicaGameMode: Boolean = false,
+        val activeReplicaAutoPause: Boolean = false,
+        val activeReplicaEq: Boolean = false,
+        val activeReplicaCustomEq: Boolean = false,
+        val activeReplicaProtocolName: String? = null
     )
 
     data class Frame(

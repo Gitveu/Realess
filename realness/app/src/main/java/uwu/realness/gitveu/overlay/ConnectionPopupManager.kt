@@ -436,8 +436,10 @@ class ConnectionPopupManager(private val app: RealnessApp) {
     }
 
     private fun renderCurrentState() {
-        val conn = app.bleManager.connectionState.value
-        val st = app.bleManager.budsState.value
+        val activeDevMac = app.bleManager.activeDevice?.address
+        val sameDevice = activeMac == null || activeDevMac == null || activeMac.equals(activeDevMac, ignoreCase = true)
+        val conn = if (sameDevice) app.bleManager.connectionState.value else BleConnectionState.CONNECTING
+        val st = if (sameDevice) app.bleManager.budsState.value else BudsProtocol.BudsState()
         val cachedCase = WidgetStateStore.getLastCaseBattery(app, activeMac)
         renderState(conn, st, cachedCase)
     }

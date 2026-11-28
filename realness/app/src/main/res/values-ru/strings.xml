@@ -292,7 +292,7 @@
     <string name="settings_app_info_desc">Разрешения и сведения о приложении в Android</string>
     <string name="settings_about_section">О приложении</string>
     <string name="settings_about_version">Версия %1$s (сборка %2$d)</string>
-    <string name="settings_about_summary">Открытый клиент для наушников: 16 брендов, 14 семейств протоколов и универсальный Standard Bluetooth.</string>
+    <string name="settings_about_summary">Открытый клиент для наушников: 22 бренда, 20 семейств протоколов, BLE-маячки AirPods/Beats и универсальный Standard Bluetooth.</string>
     <string name="settings_about_github">Репозиторий на GitHub</string>
     <string name="settings_about_devices">Список поддерживаемых устройств</string>
     <string name="popup_status_connecting">Подключение…</string>
@@ -300,4 +300,47 @@
     <string name="popup_status_preview">Предпросмотр</string>
     <string name="popup_open_app">Открыть настройки</string>
     <string name="popup_close_desc">Закрыть окно</string>
+
+    <!-- Active Bluetooth Codec & AirPods BLE Beacon -->
+    <string name="codec_hires_badge">Hi-Res</string>
+    <string name="airpods_beacon_note">Пассивный режим BLE-маячка: заряд L/R/кейса и состояние крышки читаются из BLE-пакетов Apple без root.</string>
+    <string name="airpods_airoha_active_note">Активный режим Airoha RACE: точный заряд, ANC/Прозрачность и игровой режим без FlyCC.</string>
+    <string name="airpods_huilian_active_note">Активный режим Huilian StarFun: заряд, ANC/Прозрачность, EQ, автопауза и игровой режим без StarFun.</string>
+    <string name="airpods_replica_badge">Реплика (BLE)</string>
+    <string name="airpods_replica_chip">Реплика · Airoha (%s)</string>
+    <string name="airpods_replica_huilian_chip">Реплика · Huilian (%s)</string>
+    <string name="airpods_lid_open">Крышка кейса открыта</string>
+    <string name="airpods_lid_closed">Крышка кейса закрыта</string>
+
+    <!-- EQ Share Code & AutoEQ / Wavelet Import -->
+    <string name="eq_btn_share_code">Код</string>
+    <string name="eq_btn_import_code">Импорт</string>
+    <string name="eq_btn_import_file">AutoEQ .txt</string>
+    <string name="eq_share_copied">Код EQ скопирован в буфер обмена</string>
+    <string name="eq_import_dialog_title">Импорт кривой EQ</string>
+    <string name="eq_import_dialog_desc">Вставьте код realness (RNQ1:...), строку Wavelet GraphicEQ, текст AutoEQ ParametricEQ или список дБ.</string>
+    <string name="eq_import_paste_clipboard">Вставить из буфера</string>
+    <string name="eq_import_success">Импортировано (%1$s · %2$d точек → %3$d полос)</string>
+    <string name="eq_import_error">Не удалось распознать код или формат файла EQ</string>
+
+    <!-- In-App GitHub Updater -->
+    <string name="settings_updates_section">Обновления</string>
+    <string name="settings_updates_prerelease_title">Получать Pre-release</string>
+    <string name="settings_updates_prerelease_desc">Проверять тестовые pre-release сборки на GitHub.</string>
+    <string name="settings_updates_check_btn">Проверить обновления</string>
+    <string name="settings_updates_checking">Проверка GitHub Releases…</string>
+    <string name="settings_updates_uptodate">Установлена актуальная версия (v%s)</string>
+    <string name="settings_updates_available">Доступно обновление: %s</string>
+    <string name="settings_updates_install_btn">Скачать %s</string>
+    <string name="settings_updates_error">Ошибка проверки: %s</string>
+    <string name="update_dialog_title">Доступно обновление %s</string>
+    <string name="update_downloading_pct">Загрузка APK… %d%%</string>
+    <string name="update_ready_install">APK загружен и готов к установке.</string>
+    <string name="update_error_fmt">Ошибка загрузки: %s</string>
+    <string name="update_open_github">GitHub</string>
+    <string name="update_skip_version">Пропустить</string>
+    <string name="update_download_install">Скачать и установить</string>
+    <string name="update_install_now">Установить</string>
+    <string name="update_later">Позже</string>
+    <string name="update_install_perm_toast">Разрешите установку обновлений для realness и нажмите «Установить» ещё раз.</string>
 </resources>

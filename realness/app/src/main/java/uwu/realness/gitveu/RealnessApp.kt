@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import uwu.realness.gitveu.ble.BleConnectionState
+import uwu.realness.gitveu.ble.BluetoothCodecHelper
 import uwu.realness.gitveu.ble.BudsConnectionManager
 import uwu.realness.gitveu.overlay.ConnectionPopupManager
 import uwu.realness.gitveu.protocol.BudsProtocol
@@ -373,8 +374,12 @@ class RealnessApp : Application() {
             }
         }
 
-        // Next prefer any connected recognized audio headset
-        val connectedBonded = bonded.filter { isDeviceConnectedAtOsLevel(it) }
+        // Next prefer any connected recognized audio headset (excluding smartwatches/peripherals)
+        val connectedBonded = bonded.filter { dev ->
+            isDeviceConnectedAtOsLevel(dev) &&
+                (try { BudsProtocol.BudsModel.fromDeviceName(dev.name).isSupported } catch (_: Throwable) { false } ||
+                    !BluetoothCodecHelper.isNonHeadsetDevice(dev))
+        }
         val connectedSupported = connectedBonded.firstOrNull { dev ->
             try { BudsProtocol.BudsModel.fromDeviceName(dev.name).isSupported } catch (_: Throwable) { false }
         }
@@ -392,13 +397,15 @@ class RealnessApp : Application() {
 
     @SuppressLint("MissingPermission")
     private fun isLikelyAudioDevice(device: BluetoothDevice, fromAudioProfile: Boolean): Boolean {
-        if (fromAudioProfile) return true
         val auto = try {
             BudsProtocol.BudsModel.fromDeviceName(device.name)
         } catch (_: SecurityException) {
             BudsProtocol.BudsModel.UNKNOWN
         }
         if (auto.isSupported) return true
+        // Explicitly reject smartwatches, fitness bands, keyboards, mice, gamepads (even if they connect HFP!)
+        if (BluetoothCodecHelper.isNonHeadsetDevice(device)) return false
+        if (fromAudioProfile) return true
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val savedMac = prefs.getString(KEY_LAST_MAC, null)
         if (savedMac != null && savedMac.equals(device.address, ignoreCase = true)) return true

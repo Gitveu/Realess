@@ -22,8 +22,8 @@ android {
         applicationId = "uwu.realness.gitveu"
         minSdk = 26
         targetSdk = 34
-        versionCode = 18
-        versionName = "1.10"
+        versionCode = 20
+        versionName = "2.1"
 
         resourceConfigurations += listOf("en", "ru")
 

@@ -28,6 +28,12 @@
     <uses-permission
         android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
+    <!-- In-app GitHub Releases updater & APK install -->
+    <uses-permission
+        android:name="android.permission.INTERNET" />
+    <uses-permission
+        android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- Hardware features -->
     <uses-feature
         android:name="android.hardware.bluetooth"
@@ -144,6 +150,17 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_realness_mini_info" />
         </receiver>
+
+        <!-- FileProvider for installing downloaded GitHub Release APKs -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <!-- Keeps widgets synced automatically on BT connect/disconnect/battery & periodic refresh -->
         <receiver

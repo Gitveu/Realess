@@ -21,7 +21,9 @@ import uwu.realness.gitveu.R
 import uwu.realness.gitveu.RealnessApp
 import uwu.realness.gitveu.audio.FindBudsChannel
 import uwu.realness.gitveu.audio.FindBudsPlayer
+import uwu.realness.gitveu.ble.ActiveCodecInfo
 import uwu.realness.gitveu.ble.BleConnectionState
+import uwu.realness.gitveu.ble.BluetoothCodecHelper
 import uwu.realness.gitveu.protocol.HuaweiProtocol
 import uwu.realness.gitveu.protocol.BudsProtocol.AncMode
 import uwu.realness.gitveu.protocol.BudsProtocol.BatteryInfo
@@ -166,6 +168,10 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
     )
     val lastCaseBattery: StateFlow<Pair<Int, Long>?> = _lastCaseBattery.asStateFlow()
 
+    // Active A2DP Bluetooth audio codec & bitrate
+    private val _activeCodec = MutableStateFlow<ActiveCodecInfo?>(null)
+    val activeCodec: StateFlow<ActiveCodecInfo?> = _activeCodec.asStateFlow()
+
     private val bluetoothReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val action = intent?.action ?: return
@@ -213,6 +219,9 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
                 BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED,
                 BluetoothAdapter.ACTION_STATE_CHANGED -> {
                     checkAndAutoConnect()
+                }
+                BluetoothCodecHelper.ACTION_CODEC_CONFIG_CHANGED -> {
+                    refreshActiveCodec()
                 }
                 WidgetBluetoothReceiver.ACTION_BATTERY_LEVEL_CHANGED -> {
                     val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -282,6 +291,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
             addAction(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED)
             addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
             addAction(WidgetBluetoothReceiver.ACTION_BATTERY_LEVEL_CHANGED)
+            addAction(BluetoothCodecHelper.ACTION_CODEC_CONFIG_CHANGED)
         }
         val usbFilter = IntentFilter().apply {
             addAction(LogitechUsbManager.ACTION_USB_PERMISSION)
@@ -484,11 +494,12 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         if (!_hasPermissions.value) return
 
         try {
-            val connectedA2dp = a2dpProfile?.connectedDevices ?: emptyList()
+            val connectedA2dp = (a2dpProfile?.connectedDevices ?: emptyList())
+                .filter { isSupportedBuds(it) || !BluetoothCodecHelper.isNonHeadsetDevice(it) }
             val bonded = bluetoothAdapter?.bondedDevices?.toList() ?: emptyList()
             val manual = _manualModelOverride.value
 
-            // 1. Active supported A2DP headset (or any A2DP device when manual override is chosen)
+            // 1. Active supported A2DP headset (or any A2DP headset when manual override is chosen)
             val connectedSupported = connectedA2dp.firstOrNull { isSupportedBuds(it) }
                 ?: if (manual != null) connectedA2dp.firstOrNull() else null
 
@@ -501,6 +512,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
                 _autoDetectedModel.value = autoModel
                 _detectedModel.value = effectiveModel
                 _unsupportedDeviceName.value = null
+                refreshActiveCodec(connectedSupported)
 
                 val alreadyActive = bleManager.isConnectedOrConnectingTo(connectedSupported.address, effectiveModel)
                 _deviceStatus.value = if (alreadyActive && bleManager.connectionState.value == BleConnectionState.CONNECTED) {
@@ -526,6 +538,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
                 _autoDetectedModel.value = effectiveModel
                 _detectedModel.value = effectiveModel
                 _unsupportedDeviceName.value = null
+                refreshActiveCodec(connectedGeneric)
 
                 val alreadyActive = bleManager.isConnectedOrConnectingTo(connectedGeneric.address, effectiveModel)
                 _deviceStatus.value = if (alreadyActive && bleManager.connectionState.value == BleConnectionState.CONNECTED) {
@@ -542,6 +555,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // No active A2DP device -> close stale link
+            _activeCodec.value = null
             autoReconnectJob?.cancel()
             reconnectAttempt = 0
             if (bleManager.connectionState.value != BleConnectionState.DISCONNECTED) {
@@ -579,6 +593,14 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
         } catch (_: Exception) {
             // SecurityException when permissions revoked
         }
+    }
+
+    fun refreshActiveCodec(device: BluetoothDevice? = _detectedBudsDevice.value) {
+        if (usbManager.connected.value || device == null) {
+            _activeCodec.value = null
+            return
+        }
+        _activeCodec.value = BluetoothCodecHelper.readActiveCodec(a2dpProfile, device)
     }
 
     private fun isSupportedBuds(device: BluetoothDevice?): Boolean {
@@ -891,6 +913,7 @@ class BudsViewModel(application: Application) : AndroidViewModel(application) {
             usbManager.refreshNow()
             return
         }
+        refreshActiveCodec()
         if (bleManager.connectionState.value == BleConnectionState.CONNECTED) {
             val model = _detectedModel.value
             if (model.supportsAnc) bleManager.refreshAncState()
